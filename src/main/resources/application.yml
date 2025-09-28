@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: soccer-hub
+  datasource:
+    hikari:
+      maximum-pool-size: 30
+    username: user
+    password: password
+    url: jdbc:postgresql://localhost:5490/soccer_hub
+  liquibase:
+    enabled: false
+
+app:
+  jwt:
+    issuer: "soccer-hub"
+    access-ttl: 1h
+    refresh-ttl: 30d
+    kid: "RS256"
+    private-cert: "classpath:keys/private.pem"
+    public-cert: "classpath:keys/public.pem"
