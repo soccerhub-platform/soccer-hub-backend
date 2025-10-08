@@ -8,7 +8,9 @@ spring:
     password: password
     url: jdbc:postgresql://localhost:5490/soccer_hub
   liquibase:
-    enabled: false
+    enabled: true
+    change-log: classpath:/db/changelog/changelog-master.xml
+    drop-first: true
 
 app:
   jwt:
