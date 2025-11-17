@@ -1,8 +1,10 @@
 package kz.edu.soccerhub.admin.domain.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
-import kz.edu.soccerhub.common.domain.model.BranchEntity;
 import lombok.*;
 
 import java.util.UUID;
@@ -26,8 +28,7 @@ public class AdminProfileEntity extends AbstractAuditableEntity {
 
     private String phone;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "branch_id")
-    private BranchEntity branch;
+    @Column(name = "branch_id")
+    private UUID branch;
 
 }

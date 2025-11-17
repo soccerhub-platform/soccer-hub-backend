@@ -1,0 +1,66 @@
+package kz.edu.soccerhub.club.application;
+
+import kz.edu.soccerhub.club.domain.model.ClubEntity;
+import kz.edu.soccerhub.club.domain.repository.ClubRepository;
+import kz.edu.soccerhub.common.dto.club.ClubDto;
+import kz.edu.soccerhub.common.dto.club.CreateClubCommand;
+import kz.edu.soccerhub.common.port.ClubPort;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.ZoneId;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class ClubService implements ClubPort {
+
+    private final ClubRepository clubRepository;
+
+    @Override
+    public boolean isExist(UUID clubId) {
+        return clubRepository.existsById(clubId);
+    }
+
+    @Override
+    @Transactional
+    public UUID create(CreateClubCommand command) {
+
+        final UUID clubId = UUID.randomUUID();
+        final String timezone = ZoneId.systemDefault().getId();
+
+        ClubEntity clubEntity = ClubEntity.builder()
+                .id(clubId)
+                .name(command.name())
+                .slug(command.slug())
+                .email(command.email())
+                .phone(command.phone())
+                .website(command.website())
+                .address(command.address())
+                .timezone(timezone)
+                .isActive(true)
+                .build();
+
+        clubRepository.save(clubEntity);
+
+        return clubId;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Collection<ClubDto> findAllByIds(Collection<UUID> ids) {
+        List<ClubEntity> allById = clubRepository.findAllById(ids);
+        return allById.stream()
+                .map(club -> ClubDto.builder()
+                        .id(club.getId())
+                        .name(club.getName())
+                        .slug(club.getSlug())
+                        .active(club.isActive())
+                        .build())
+                .collect(Collectors.toList());
+    }
+}

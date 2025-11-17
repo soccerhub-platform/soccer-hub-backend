@@ -1,13 +1,10 @@
 package kz.edu.soccerhub.common.port;
 
-import java.util.UUID;
+import kz.edu.soccerhub.common.dto.admin.AdminCreateCommand;
+import kz.edu.soccerhub.common.dto.admin.AdminCreateCommandOutput;
 
 public interface AdminPort {
 
-    UUID create(UUID userId,
-                String firstName,
-                String lastName,
-                String phone,
-                UUID branchId);
+    AdminCreateCommandOutput create(AdminCreateCommand command);
 
 }

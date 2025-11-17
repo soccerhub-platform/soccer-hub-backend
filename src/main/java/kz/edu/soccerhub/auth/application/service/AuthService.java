@@ -10,8 +10,11 @@ import kz.edu.soccerhub.auth.domain.repository.AppUserRepo;
 import kz.edu.soccerhub.auth.security.AppUserDetails;
 import kz.edu.soccerhub.auth.security.JwtProperties;
 import kz.edu.soccerhub.common.domain.enums.Role;
+import kz.edu.soccerhub.common.dto.auth.RegisterCommand;
+import kz.edu.soccerhub.common.dto.auth.RegisterCommandOutput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.UnauthorizedException;
+import kz.edu.soccerhub.common.port.AuthPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -31,7 +34,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class AuthService  {
+public class AuthService implements AuthPort {
 
     private final TokenService tokenService;
     private final AuthenticationManager authManager;
@@ -39,6 +42,19 @@ public class AuthService  {
     private final PasswordEncoder passwordEncoder;
     private final AppUserRepo userRepo;
 
+    @Override
+    public RegisterCommandOutput register(RegisterCommand command) {
+        String normalizedEmail = normalizeEmail(command.email());
+
+        userRepo.findByEmail(normalizedEmail).ifPresent(u -> {
+            throw new BadRequestException("Email is already registered", u.getEmail());
+        });
+
+        AppUserEntity user = buildAppUser(normalizedEmail, command.password(), command.roles());
+        userRepo.save(user);
+
+        return new RegisterCommandOutput(user.getId(), user.getEmail());
+    }
     public TokenOutput login(@Valid LoginInput input, String userAgent) {
         Authentication authentication = authManager.authenticate(
                 new UsernamePasswordAuthenticationToken(input.email(), input.password())
@@ -52,26 +68,20 @@ public class AuthService  {
                 .map(Role::valueOf)
                 .collect(Collectors.toSet());
 
-        Tokens tokens = tokenService.issueTokens(user, roles, userAgent);
+        if (roles.isEmpty()) {
+            throw new UnauthorizedException("User has no roles assigned");
+        }
+        if (!roles.contains(input.role())) {
+            throw new UnauthorizedException("User does not have the required role: " + input.role());
+        }
+
+        Tokens tokens = tokenService.issueTokens(user, Set.of(input.role()), userAgent);
 
         return new TokenOutput(
                 tokens.accessToken(),
                 tokens.refreshToken(),
                 jwtProperties.getAccessTtl().toSeconds()
         );
-    }
-
-    public RegisterOutput register(@Valid RegisterInput input) {
-        String normalizedEmail = normalizeEmail(input.email());
-
-        userRepo.findByEmail(normalizedEmail).ifPresent(u -> {
-            throw new BadRequestException("Email is already registered", u.getEmail());
-        });
-
-        AppUserEntity user = buildAppUser(normalizedEmail, input.password(), input.roles());
-        userRepo.save(user);
-
-        return new RegisterOutput(user.getId(), user.getEmail());
     }
 
     public TokenOutput refresh(RefreshInput request, String userAgent) {

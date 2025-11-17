@@ -1,8 +1,12 @@
 package kz.edu.soccerhub.auth.api;
 
 import jakarta.validation.Valid;
-import kz.edu.soccerhub.auth.application.dto.*;
+import kz.edu.soccerhub.auth.application.dto.LoginInput;
+import kz.edu.soccerhub.auth.application.dto.RefreshInput;
+import kz.edu.soccerhub.auth.application.dto.TokenOutput;
 import kz.edu.soccerhub.auth.application.service.AuthService;
+import kz.edu.soccerhub.common.dto.auth.RegisterCommand;
+import kz.edu.soccerhub.common.dto.auth.RegisterCommandOutput;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,7 +31,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<RegisterOutput> register(@RequestBody @Valid RegisterInput input) {
-        return ResponseEntity.ok(authService.register(input));
+    public ResponseEntity<RegisterCommandOutput> register(@RequestBody @Valid RegisterCommand command) {
+        return ResponseEntity.ok(authService.register(command));
     }
 }

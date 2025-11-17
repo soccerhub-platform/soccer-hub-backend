@@ -5,5 +5,6 @@ public enum Role {
     LEAD,
     COACH,
     DISPATCHER,
-    SUPER_ADMIN
+    SUPER_ADMIN,
+    CLIENT
 }
