@@ -5,7 +5,7 @@ import lombok.Builder;
 import java.util.UUID;
 
 @Builder
-public record RegisterCommandOutput(
+public record AuthRegisterCommandOutput(
         UUID id,
         String email
 ) {}

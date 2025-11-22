@@ -9,7 +9,7 @@ import org.hibernate.annotations.UuidGenerator;
 import java.util.UUID;
 
 @Entity
-@Table(name = "clients")
+@Table(name = "client_profiles")
 @Getter
 @Setter
 @AllArgsConstructor
@@ -20,8 +20,6 @@ public class Client extends AbstractAuditableEntity {
     @Id
     @UuidGenerator
     private UUID id;
-
-    private UUID userId;
 
     private String firstName;
 

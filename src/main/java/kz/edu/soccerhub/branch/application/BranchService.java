@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -44,8 +45,14 @@ public class BranchService implements BranchPort {
     }
 
     @Override
+    public Optional<BranchDto> findById(UUID branchId) {
+        return branchRepository.findById(branchId)
+                .map(BranchService::toDto);
+    }
+
+    @Override
     @Transactional(readOnly = true)
-    public Collection<BranchDto> findAlByIds(Collection<UUID> ids) {
+    public Collection<BranchDto> findAllByIds(Collection<UUID> ids) {
         List<BranchEntity> allById = branchRepository.findAllById(ids);
         return allById.stream()
                 .map(BranchService::toDto)
@@ -68,11 +75,18 @@ public class BranchService implements BranchPort {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    @Transactional
+    public void delete(UUID branchId) {
+        branchRepository.deleteById(branchId);
+    }
+
     private static BranchDto toDto(BranchEntity branch) {
         return BranchDto.builder()
                 .id(branch.getId())
                 .name(branch.getName())
                 .address(branch.getAddress())
+                .clubId(branch.getClubId())
                 .active(branch.isActive())
                 .build();
     }

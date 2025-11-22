@@ -132,7 +132,9 @@ CREATE TABLE admin_profiles
     id          UUID PRIMARY KEY,
     first_name  VARCHAR(100) NOT NULL,
     last_name   VARCHAR(100),
+    email       VARCHAR(100) UNIQUE,
     phone       VARCHAR(20) UNIQUE,
+    active      BOOLEAN   DEFAULT TRUE,
     created_at  TIMESTAMP DEFAULT NOW(),
     updated_at  TIMESTAMP DEFAULT NOW(),
     created_by  VARCHAR,
@@ -140,21 +142,22 @@ CREATE TABLE admin_profiles
     branch_id   UUID,
 
     CONSTRAINT fk_admin_profiles_branch FOREIGN KEY (branch_id)
-        REFERENCES branches (id)
+        REFERENCES branches (id),
+    CONSTRAINT fk_admin_profiles_user FOREIGN KEY (id)
+        REFERENCES app_user (id) ON DELETE CASCADE
 );
 
 -- ============================================
--- CLIENTS
+-- CLIENT_PROFILES
 -- ============================================
 
-CREATE TABLE IF NOT EXISTS clients
+CREATE TABLE IF NOT EXISTS client_profiles
 (
     id          UUID PRIMARY KEY,
-    user_id     UUID,
     first_name  VARCHAR(100) NOT NULL,
     last_name   VARCHAR(100),
     phone       VARCHAR(20) UNIQUE,
-    branch_id   UUID         NOT NULL,
+    branch_id   UUID,
     source      VARCHAR,
     comments    VARCHAR,
     status      VARCHAR,
@@ -162,8 +165,10 @@ CREATE TABLE IF NOT EXISTS clients
     updated_at  TIMESTAMP DEFAULT NOW(),
     created_by  VARCHAR,
     modified_by VARCHAR,
-    CONSTRAINT fk_clients_user FOREIGN KEY (user_id)
-        REFERENCES app_user (id) ON DELETE CASCADE
+    CONSTRAINT fk_client_profiles_user FOREIGN KEY (id)
+        REFERENCES app_user (id) ON DELETE CASCADE,
+    CONSTRAINT fk_client_profiles_branch FOREIGN KEY (branch_id)
+        REFERENCES branches (id)
 );
 
 -- ============================================
@@ -183,7 +188,7 @@ CREATE TABLE IF NOT EXISTS players
     created_by  VARCHAR,
     modified_by VARCHAR,
     CONSTRAINT fk_players_client FOREIGN KEY (parent_id)
-        REFERENCES clients (id) ON DELETE CASCADE
+        REFERENCES client_profiles (id) ON DELETE CASCADE
 );
 
 -- ============================================

@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import lombok.*;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.util.UUID;
 
@@ -16,6 +17,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@DynamicUpdate
 public class AdminProfileEntity extends AbstractAuditableEntity {
 
     @Id
@@ -28,7 +30,11 @@ public class AdminProfileEntity extends AbstractAuditableEntity {
 
     private String phone;
 
+    private String email;
+
+    private Boolean active;
+
     @Column(name = "branch_id")
-    private UUID branch;
+    private UUID branchId;
 
 }

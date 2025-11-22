@@ -10,8 +10,8 @@ import kz.edu.soccerhub.auth.domain.repository.AppUserRepo;
 import kz.edu.soccerhub.auth.security.AppUserDetails;
 import kz.edu.soccerhub.auth.security.JwtProperties;
 import kz.edu.soccerhub.common.domain.enums.Role;
-import kz.edu.soccerhub.common.dto.auth.RegisterCommand;
-import kz.edu.soccerhub.common.dto.auth.RegisterCommandOutput;
+import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
+import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.UnauthorizedException;
 import kz.edu.soccerhub.common.port.AuthPort;
@@ -24,6 +24,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -43,7 +44,8 @@ public class AuthService implements AuthPort {
     private final AppUserRepo userRepo;
 
     @Override
-    public RegisterCommandOutput register(RegisterCommand command) {
+    @Transactional
+    public AuthRegisterCommandOutput register(AuthRegisterCommand command) {
         String normalizedEmail = normalizeEmail(command.email());
 
         userRepo.findByEmail(normalizedEmail).ifPresent(u -> {
@@ -53,7 +55,7 @@ public class AuthService implements AuthPort {
         AppUserEntity user = buildAppUser(normalizedEmail, command.password(), command.roles());
         userRepo.save(user);
 
-        return new RegisterCommandOutput(user.getId(), user.getEmail());
+        return new AuthRegisterCommandOutput(user.getId(), user.getEmail());
     }
     public TokenOutput login(@Valid LoginInput input, String userAgent) {
         Authentication authentication = authManager.authenticate(
@@ -117,6 +119,11 @@ public class AuthService implements AuthPort {
     public Optional<String> getCurrentUserId() {
         return getCurrentUserDetails()
                 .map(user -> user.getUser().getEmail());
+    }
+
+    @Transactional
+    public void delete(UUID userId) {
+        userRepo.deleteById(userId);
     }
 
     // -------------------- Helpers --------------------

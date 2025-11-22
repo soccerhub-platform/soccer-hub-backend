@@ -1,15 +1,17 @@
 package kz.edu.soccerhub.common.port;
 
 import kz.edu.soccerhub.common.domain.enums.Role;
-import kz.edu.soccerhub.common.dto.auth.RegisterCommand;
-import kz.edu.soccerhub.common.dto.auth.RegisterCommandOutput;
+import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
+import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
 
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 public interface AuthPort {
-    RegisterCommandOutput register(RegisterCommand registerCommand);
+    AuthRegisterCommandOutput register(AuthRegisterCommand authRegisterCommand);
     Optional<Set<Role>> getCurrentUserRoles();
     Optional<String> getCurrentUserEmail();
     Optional<String> getCurrentUserId();
+    void delete(UUID userId);
 }

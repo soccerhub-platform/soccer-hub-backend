@@ -1,5 +1,6 @@
 package kz.edu.soccerhub.club.application;
 
+import jakarta.validation.constraints.NotNull;
 import kz.edu.soccerhub.club.domain.model.ClubEntity;
 import kz.edu.soccerhub.club.domain.repository.ClubRepository;
 import kz.edu.soccerhub.common.dto.club.ClubDto;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -55,12 +57,29 @@ public class ClubService implements ClubPort {
     public Collection<ClubDto> findAllByIds(Collection<UUID> ids) {
         List<ClubEntity> allById = clubRepository.findAllById(ids);
         return allById.stream()
-                .map(club -> ClubDto.builder()
-                        .id(club.getId())
-                        .name(club.getName())
-                        .slug(club.getSlug())
-                        .active(club.isActive())
-                        .build())
+                .map(this::toDto)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Optional<ClubDto> findById(@NotNull UUID id) {
+        return clubRepository.findById(id)
+                .map(this::toDto);
+    }
+
+    @Override
+    @Transactional
+    public void delete(UUID clubId) {
+        clubRepository.deleteById(clubId);
+    }
+
+
+    private ClubDto toDto(ClubEntity club) {
+        return ClubDto.builder()
+                .id(club.getId())
+                .name(club.getName())
+                .slug(club.getSlug())
+                .active(club.isActive())
+                .build();
     }
 }

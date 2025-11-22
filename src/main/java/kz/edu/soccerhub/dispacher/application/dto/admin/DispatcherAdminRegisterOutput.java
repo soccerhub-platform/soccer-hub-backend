@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.dispacher.application.dto;
+package kz.edu.soccerhub.dispacher.application.dto.admin;
 
 import java.util.UUID;
 

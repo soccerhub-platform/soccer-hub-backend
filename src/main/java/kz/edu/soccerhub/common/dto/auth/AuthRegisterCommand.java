@@ -9,7 +9,7 @@ import lombok.Builder;
 import java.util.Set;
 
 @Builder
-public record RegisterCommand(
+public record AuthRegisterCommand(
         @Email(message = "Invalid email format") String email,
         @NotBlank(message = "Password cannot be empty") String password,
         @NotNull Set<Role> roles

@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.dispacher.application.dto;
+package kz.edu.soccerhub.dispacher.application.dto.branch;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

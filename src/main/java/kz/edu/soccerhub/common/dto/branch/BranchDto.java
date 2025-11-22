@@ -9,6 +9,7 @@ public record BranchDto(
         UUID id,
         String name,
         String address,
+        UUID clubId,
         boolean active
 ) {
 }
