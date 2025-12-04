@@ -2,6 +2,7 @@ package kz.edu.soccerhub.common.dto.admin;
 
 import lombok.Builder;
 
+import java.util.Set;
 import java.util.UUID;
 
 @Builder
@@ -13,7 +14,7 @@ public record AdminDto(
         String email,
         String phone,
         boolean isActive,
-        UUID branchId
-
+        UUID dispatcherId,
+        Set<UUID> branchesId
 ) {
 }

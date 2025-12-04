@@ -53,6 +53,7 @@ public class DispatcherAdminService {
         AdminCreateCommand adminCommand = AdminCreateCommand.builder()
                 .userId(authRegisterCommandOutput.id())
                 .firstName(input.firstName())
+                .email(authRegisterCommandOutput.email())
                 .lastName(input.lastName())
                 .phone(input.phone())
                 .branchId(input.assignedBranch())
@@ -68,32 +69,55 @@ public class DispatcherAdminService {
 
 
     public List<DispatcherAdminsOutput> getAdmins(UUID dispatcherId) {
-        List<DispatcherBranchesOutput> dispatcherBranches = dispatcherBranchService.getDispatcherBranches(dispatcherId);
 
-        Map<UUID, BranchDto> branchMap = branchPort.findAllByIds(
-                dispatcherBranches.stream()
-                        .map(DispatcherBranchesOutput::branchId)
-                        .collect(Collectors.toSet()))
+        // 0. Загружаем всех админов этого диспетчера
+        Collection<AdminDto> dispatcherAdmins = adminPort.findAllByDispatcherId(dispatcherId);
+
+        // 1. Загружаем все ветки этого диспетчера
+        List<DispatcherBranchesOutput> dispatcherBranches =
+                dispatcherBranchService.getDispatcherBranches(dispatcherId);
+
+        Set<UUID> dispatcherBranchIds = dispatcherBranches.stream()
+                .map(DispatcherBranchesOutput::branchId)
+                .collect(Collectors.toSet());
+
+        Set<UUID> dispatcherClubIds = dispatcherBranches.stream()
+                .map(DispatcherBranchesOutput::clubId)
+                .collect(Collectors.toSet());
+
+        // 2. Lookup-таблицы
+        Map<UUID, BranchDto> branchMap = branchPort.findAllByIds(dispatcherBranchIds)
                 .stream()
                 .collect(Collectors.toMap(BranchDto::id, b -> b));
 
-        Map<UUID, ClubDto> clubMap = clubPort.findAllByIds(
-                dispatcherBranches.stream()
-                        .map(DispatcherBranchesOutput::clubId)
-                        .collect(Collectors.toSet()))
+        Map<UUID, ClubDto> clubMap = clubPort.findAllByIds(dispatcherClubIds)
                 .stream()
                 .collect(Collectors.toMap(ClubDto::id, c -> c));
 
-        return dispatcherBranches.stream()
-                .map(DispatcherBranchesOutput::branchId)
-                .flatMap(branchId -> adminPort.findAllByBranchId(branchId).stream())
+        // 3. Собираем финальный результат
+        return dispatcherAdmins.stream()
                 .map(admin -> {
 
-                    BranchDto branchDto = branchMap.get(admin.branchId());
-                    ClubDto clubDto = clubMap.get(branchDto.clubId());
+                    // Берем только ветки админа, которые принадлежат этому диспетчеру
+                    Set<DispatcherAdminsOutput.BranchWithClub> branchWithClubs =
+                            admin.branchesId().stream()
+                                    .filter(dispatcherBranchIds::contains) // ВАЖНО!
+                                    .map(branchMap::get)
+                                    .filter(Objects::nonNull)
+                                    .map(branch -> {
 
+                                        ClubDto club = clubMap.get(branch.clubId());
 
+                                        return DispatcherAdminsOutput.BranchWithClub.builder()
+                                                .branchId(branch.id())
+                                                .branchName(branch.name())
+                                                .clubId(club != null ? club.id() : null)
+                                                .clubName(club != null ? club.name() : null)
+                                                .build();
+                                    })
+                                    .collect(Collectors.toSet());
 
+                    // Возвращаем админа даже если веток нет
                     return DispatcherAdminsOutput.builder()
                             .id(admin.id())
                             .firstName(admin.firstName())
@@ -101,14 +125,7 @@ public class DispatcherAdminService {
                             .email(admin.email())
                             .phone(admin.phone())
                             .isActive(admin.isActive())
-                            .branch(DispatcherAdminsOutput.Branch.builder()
-                                    .id(branchDto.id())
-                                    .name(branchDto.name())
-                                    .build())
-                            .club(DispatcherAdminsOutput.Club.builder()
-                                    .id(clubDto.id())
-                                    .name(clubDto.name())
-                                    .build())
+                            .branches(branchWithClubs)
                             .build();
                 })
                 .toList();
@@ -119,7 +136,7 @@ public class DispatcherAdminService {
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
-        boolean isBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchId());
+        boolean isBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchesId());
         if (!isBranchBelongsToDispatcher) {
             throw new BadRequestException("Dispatcher does not have access to admin", adminId);
         }
@@ -132,7 +149,7 @@ public class DispatcherAdminService {
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
-        boolean isBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchId());
+        boolean isBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchesId());
         if (!isBranchBelongsToDispatcher) {
             throw new BadRequestException("Dispatcher does not have access to admin", adminId);
         }
@@ -145,7 +162,7 @@ public class DispatcherAdminService {
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
-        if (admin.branchId() != null && admin.branchId().equals(input.branchId())) {
+        if (admin.branchesId() != null && admin.branchesId().contains(input.branchId())) {
             return;
         }
 
@@ -158,11 +175,24 @@ public class DispatcherAdminService {
     }
 
     @Transactional
+    public void unassignAdminFromBranch(UUID dispatcherId, UUID adminId, @Valid DispatcherAdminUnAssignBranchInput input) {
+        adminPort.findById(adminId)
+                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+
+        boolean isBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, input.branchId());
+        if (!isBranchBelongsToDispatcher) {
+            throw new BadRequestException("Dispatcher does not have access to branch", input.branchId());
+        }
+
+        adminPort.unassignFromBranch(adminId, input.branchId());
+    }
+
+    @Transactional
     public void updateAdmin(UUID dispatcherId, UUID adminId, @Valid DispatcherAdminUpdateInput input) {
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
-        boolean isBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchId());
+        boolean isBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchesId());
         if (!isBranchBelongsToDispatcher) {
             throw new BadRequestException("Dispatcher does not have access to admin", adminId);
         }

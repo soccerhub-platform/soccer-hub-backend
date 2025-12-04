@@ -9,5 +9,5 @@ import java.util.UUID;
 
 @Repository
 public interface AdminProfileRepository extends JpaRepository<AdminProfileEntity, UUID> {
-    Collection<AdminProfileEntity> findAllByBranchId(UUID branchId);
+    Collection<AdminProfileEntity> findAllByCreatedBy(String createdBy);
 }

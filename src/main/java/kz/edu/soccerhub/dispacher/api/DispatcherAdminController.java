@@ -68,6 +68,15 @@ public class DispatcherAdminController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping(value = "/{adminId}/unassign-branch", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> unassignAdminFromBranch(@AuthenticationPrincipal Jwt jwt,
+                                                        @PathVariable UUID adminId,
+                                                        @Valid @RequestBody DispatcherAdminUnAssignBranchInput input) {
+        UUID dispatcherId = UUID.fromString(jwt.getSubject());
+        dispatcherAdminService.unassignAdminFromBranch(dispatcherId, adminId, input);
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping(value = "/{adminId}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> updateAdmin(@AuthenticationPrincipal Jwt jwt,
                                             @PathVariable UUID adminId,

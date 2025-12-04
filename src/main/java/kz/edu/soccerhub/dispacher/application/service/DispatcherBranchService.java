@@ -79,12 +79,23 @@ public class DispatcherBranchService {
         branchPort.delete(branchId);
     }
 
+    public boolean verifyBranchBelongsToDispatcher(UUID dispatcherId, Collection<UUID> branchesId) {
+        Collection<BranchDto> branches = branchPort.findAllByIds(branchesId);
+        if (branches.isEmpty()) {
+            throw new NotFoundException("Branch not found", branchesId);
+        }
+
+        return dispatcherClubService.getAll(dispatcherId)
+                .stream()
+                .anyMatch(clubId -> branches.stream().anyMatch(branch -> branch.clubId().equals(clubId)));
+    }
+
     public boolean verifyBranchBelongsToDispatcher(UUID dispatcherId, UUID branchId) {
         BranchDto branch = branchPort.findById(branchId)
                 .orElseThrow(() -> new NotFoundException("Branch not found", branchId));
 
         return dispatcherClubService.getAll(dispatcherId)
                 .stream()
-                .anyMatch(id -> id.equals(branch.clubId()));
+                .anyMatch(clubId -> branch.clubId().equals(clubId));
     }
 }

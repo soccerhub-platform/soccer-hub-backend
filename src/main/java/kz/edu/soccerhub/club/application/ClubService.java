@@ -79,7 +79,12 @@ public class ClubService implements ClubPort {
                 .id(club.getId())
                 .name(club.getName())
                 .slug(club.getSlug())
+                .phoneNumber(club.getPhone())
+                .email(club.getEmail())
+                .address(club.getAddress())
                 .active(club.isActive())
+                .logoUrl(club.getLogoUrl())
+                .website(club.getWebsite())
                 .build();
     }
 }

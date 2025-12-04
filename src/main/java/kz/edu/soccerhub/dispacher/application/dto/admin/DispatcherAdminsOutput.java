@@ -2,6 +2,7 @@ package kz.edu.soccerhub.dispacher.application.dto.admin;
 
 import lombok.Builder;
 
+import java.util.Set;
 import java.util.UUID;
 
 @Builder
@@ -12,20 +13,15 @@ public record DispatcherAdminsOutput(
         String email,
         String phone,
         boolean isActive,
-        Club club,
-        Branch branch
+        Set<BranchWithClub> branches
 
 ) {
 
     @Builder
-    public record Club(
-            UUID id,
-            String name
+    public record BranchWithClub(
+            UUID branchId,
+            String branchName,
+            UUID clubId,
+            String clubName
     ) {}
-
-    @Builder
-    public record Branch(
-            UUID id,
-            String name
-    ) { }
 }

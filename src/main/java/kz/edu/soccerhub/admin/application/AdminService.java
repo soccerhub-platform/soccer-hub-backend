@@ -2,7 +2,9 @@ package kz.edu.soccerhub.admin.application;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import kz.edu.soccerhub.admin.domain.model.AdminBranchesEntity;
 import kz.edu.soccerhub.admin.domain.model.AdminProfileEntity;
+import kz.edu.soccerhub.admin.domain.repository.AdminBranchRepository;
 import kz.edu.soccerhub.admin.domain.repository.AdminProfileRepository;
 import kz.edu.soccerhub.common.dto.admin.AdminCreateCommand;
 import kz.edu.soccerhub.common.dto.admin.AdminCreateCommandOutput;
@@ -16,9 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collection;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -27,8 +28,10 @@ public class AdminService implements AdminPort {
 
     private final AdminProfileRepository adminProfileRepository;
     private final BranchPort branchPort;
+    private final AdminBranchRepository adminBranchRepository;
 
     @Override
+    @Transactional
     public AdminCreateCommandOutput create(@Valid AdminCreateCommand command) {
         boolean isBranchExist = branchPort.isExist(command.branchId());
         if (!isBranchExist) {
@@ -41,11 +44,13 @@ public class AdminService implements AdminPort {
                 .lastName(command.lastName())
                 .email(command.email())
                 .phone(command.phone())
-                .branchId(command.branchId())
                 .active(true)
                 .build();
 
         AdminProfileEntity saved = adminProfileRepository.save(entity);
+
+        assignToBranch(saved.getId(), command.branchId());
+
         return new AdminCreateCommandOutput(saved.getId());
     }
 
@@ -60,7 +65,21 @@ public class AdminService implements AdminPort {
     @Override
     @Transactional(readOnly = true)
     public Collection<AdminDto> findAllByBranchId(UUID branchId) {
-        return adminProfileRepository.findAllByBranchId(branchId)
+        Collection<AdminBranchesEntity> allByBranchId = adminBranchRepository.findAllByBranchId(branchId);
+
+        Set<UUID> adminIds = allByBranchId.stream()
+                .map(AdminBranchesEntity::getAdminId)
+                .collect(Collectors.toSet());
+
+        return adminProfileRepository.findAllById(adminIds)
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Override
+    public Collection<AdminDto> findAllByDispatcherId(UUID dispatcherId) {
+        return adminProfileRepository.findAllByCreatedBy(dispatcherId.toString())
                 .stream()
                 .map(this::toDto)
                 .toList();
@@ -80,14 +99,31 @@ public class AdminService implements AdminPort {
 
     @Override
     @Transactional
-    public void assignToBranch(UUID adminId, UUID uuid) {
+    public void assignToBranch(UUID adminId, UUID branchId) {
         adminProfileRepository.findById(adminId)
-                .map(adminProfile -> {
-                    adminProfile.setBranchId(uuid);
-                    return adminProfile;
-                })
-                .map(adminProfileRepository::save)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+
+        if (adminBranchRepository.existsByAdminIdAndBranchId(adminId, branchId)) {
+            return;
+        }
+
+        AdminBranchesEntity adminBranchesEntity = AdminBranchesEntity.builder()
+                .adminId(adminId)
+                .branchId(branchId)
+                .build();
+
+        adminBranchRepository.save(adminBranchesEntity);
+    }
+
+    @Override
+    @Transactional
+    public void unassignFromBranch(UUID adminId, UUID branchId) {
+        AdminProfileEntity admin = adminProfileRepository.findById(adminId)
+                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+
+        admin.getAdminBranches()
+                .removeIf(link -> link.getBranchId().equals(branchId));
+        adminProfileRepository.save(admin);
     }
 
     @Override
@@ -120,7 +156,11 @@ public class AdminService implements AdminPort {
                 .email(adminProfileEntity.getEmail())
                 .phone(adminProfileEntity.getPhone())
                 .isActive(adminProfileEntity.getActive())
-                .branchId(adminProfileEntity.getBranchId())
+                .dispatcherId(UUID.fromString(adminProfileEntity.getCreatedBy()))
+                .branchesId(adminProfileEntity.getAdminBranches()
+                        .stream()
+                        .map(AdminBranchesEntity::getBranchId)
+                        .collect(Collectors.toSet()))
                 .build();
     }
 }

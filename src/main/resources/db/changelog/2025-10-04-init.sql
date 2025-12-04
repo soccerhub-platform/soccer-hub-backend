@@ -139,13 +139,28 @@ CREATE TABLE admin_profiles
     updated_at  TIMESTAMP DEFAULT NOW(),
     created_by  VARCHAR,
     modified_by VARCHAR,
-    branch_id   UUID,
 
-    CONSTRAINT fk_admin_profiles_branch FOREIGN KEY (branch_id)
-        REFERENCES branches (id),
     CONSTRAINT fk_admin_profiles_user FOREIGN KEY (id)
         REFERENCES app_user (id) ON DELETE CASCADE
 );
+
+CREATE TABLE admin_branches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    admin_id  UUID NOT NULL REFERENCES admin_profiles(id) ON DELETE CASCADE,
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_by  VARCHAR(255),
+    modified_by VARCHAR(255),
+
+    -- Каждый админ может быть привязан к филиалу только один раз
+    CONSTRAINT uq_admin_branch UNIQUE (admin_id, branch_id)
+);
+
+CREATE INDEX idx_admin_branches_admin ON admin_branches(admin_id);
+CREATE INDEX idx_admin_branches_branch ON admin_branches(branch_id);
 
 -- ============================================
 -- CLIENT_PROFILES

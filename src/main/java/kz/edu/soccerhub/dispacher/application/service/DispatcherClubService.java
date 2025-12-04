@@ -85,9 +85,11 @@ public class DispatcherClubService {
         return clubs.stream()
                 .map(club ->
                         DispatcherClubsOutput.builder()
-                            .clubId(club.id())
-                            .name(club.name())
-                            .slug(club.slug())
+                                .clubId(club.id())
+                                .name(club.name())
+                                .slug(club.slug())
+                                .phoneNumber(club.phoneNumber())
+                                .address(club.address())
                         .build())
                 .toList();
     }

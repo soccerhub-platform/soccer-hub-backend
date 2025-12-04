@@ -8,5 +8,7 @@ import java.util.UUID;
 public record DispatcherClubsOutput(
         UUID clubId,
         String name,
-        String slug
+        String slug,
+        String phoneNumber,
+        String address
 ) { }
