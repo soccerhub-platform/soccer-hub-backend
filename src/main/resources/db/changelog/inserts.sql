@@ -21,5 +21,5 @@ INSERT INTO app_user (id, email, password_hash, created_by, modified_by) VALUES
 INSERT INTO app_user_role (user_id, role_code) VALUES
     ('b4f7c10d-1ef4-428d-ac06-3cb76d26f10a', 'DISPATCHER');
 
-INSERT INTO dispatcher_profile(id, first_name, last_name, phone) VALUES
+INSERT INTO dispatcher_profiles (id, first_name, last_name, phone) VALUES
     ('b4f7c10d-1ef4-428d-ac06-3cb76d26f10a', 'Arsen', 'Gizatov', '+77001234567');
