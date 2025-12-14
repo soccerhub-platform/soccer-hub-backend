@@ -1,19 +1,12 @@
 package kz.edu.soccerhub.coach.application.service;
 
-import kz.edu.soccerhub.coach.application.dto.CoachBranchDto;
 import kz.edu.soccerhub.coach.domain.model.CoachBranch;
 import kz.edu.soccerhub.coach.domain.repository.CoachBranchRepository;
-import kz.edu.soccerhub.common.dto.branch.BranchDto;
-import kz.edu.soccerhub.common.dto.coach.CoachDto;
-import kz.edu.soccerhub.common.port.BranchPort;
-import kz.edu.soccerhub.common.port.CoachPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collection;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;

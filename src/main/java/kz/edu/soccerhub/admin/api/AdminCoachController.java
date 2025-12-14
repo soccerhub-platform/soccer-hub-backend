@@ -6,7 +6,6 @@ import kz.edu.soccerhub.admin.application.dto.AdminCoachAssignBranchInput;
 import kz.edu.soccerhub.admin.application.dto.AdminCoachUnassignBranchInput;
 import kz.edu.soccerhub.admin.application.dto.AdminCreateCoachInput;
 import kz.edu.soccerhub.admin.application.dto.AdminCreateCoachOutput;
-import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
