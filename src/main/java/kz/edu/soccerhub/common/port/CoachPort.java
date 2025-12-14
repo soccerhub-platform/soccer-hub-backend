@@ -1,0 +1,21 @@
+package kz.edu.soccerhub.common.port;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
+import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+public interface CoachPort {
+    UUID create(@Valid CoachCreateCommand command);
+    void assignToBranch(@NotNull UUID coachId, @NotNull UUID branchId);
+    void unassignFromBranch(@NotNull UUID coachId, @NotNull UUID branchId);
+    Page<CoachDto> getCoaches(Set<UUID> branchId, Pageable pageable);
+
+    Optional<CoachDto> findById(UUID coachId);
+}

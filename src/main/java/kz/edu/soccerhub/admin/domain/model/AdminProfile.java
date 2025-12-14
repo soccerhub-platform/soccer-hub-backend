@@ -16,7 +16,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @DynamicUpdate
-public class AdminProfileEntity extends AbstractAuditableEntity {
+public class AdminProfile extends AbstractAuditableEntity {
 
     @Id
     @Column(name = "id")
@@ -36,6 +36,6 @@ public class AdminProfileEntity extends AbstractAuditableEntity {
             cascade = CascadeType.ALL,
             fetch = FetchType.LAZY,
             orphanRemoval = true)
-    private List<AdminBranchesEntity> adminBranches;
+    private List<AdminBranch> adminBranches;
 
 }

@@ -6,6 +6,8 @@ import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -38,5 +40,8 @@ public class CoachProfile extends AbstractAuditableEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
     private CoachStatus status;
+
+    @OneToMany(mappedBy = "coachProfile", cascade =  CascadeType.ALL, orphanRemoval = true)
+    private Set<CoachBranch> coachBranches = new HashSet<>();
 
 }

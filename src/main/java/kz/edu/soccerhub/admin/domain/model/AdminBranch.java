@@ -16,7 +16,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @DynamicUpdate
-public class AdminBranchesEntity extends AbstractAuditableEntity {
+public class AdminBranch extends AbstractAuditableEntity {
 
     @Id
     @UuidGenerator
@@ -31,6 +31,6 @@ public class AdminBranchesEntity extends AbstractAuditableEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "admin_id", insertable = false, updatable = false)
-    private AdminProfileEntity admin;
+    private AdminProfile admin;
 
 }
