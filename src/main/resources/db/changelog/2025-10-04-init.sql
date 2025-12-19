@@ -250,7 +250,7 @@ CREATE TABLE IF NOT EXISTS coach_profiles
     id          UUID PRIMARY KEY,
     first_name  VARCHAR NOT NULL,
     last_name   VARCHAR NOT NULL,
-    birth_date  DATE NOT NULL,
+    birth_date  DATE,
     phone       VARCHAR NOT NULL,
     email       VARCHAR NOT NULL,
     status      VARCHAR NOT NULL,

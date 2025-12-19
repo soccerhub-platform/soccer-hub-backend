@@ -27,7 +27,7 @@ public class DispatcherCoachController {
 
     @GetMapping("/branch/{branchId}")
     public ResponseEntity<Page<CoachDto>> getCoaches(@AuthenticationPrincipal Jwt jwt,
-                                                     @PathVariable("branchId")UUID branchId,
+                                                     @PathVariable("branchId") UUID branchId,
                                                      @PageableDefault Pageable pageable) {
         final UUID dispatcherId = UUID.fromString(jwt.getSubject());
         Page<CoachDto> coaches = dispatcherCoachService.getCoaches(dispatcherId, branchId, pageable);

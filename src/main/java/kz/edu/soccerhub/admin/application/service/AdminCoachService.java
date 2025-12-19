@@ -1,12 +1,17 @@
-package kz.edu.soccerhub.admin.application;
+package kz.edu.soccerhub.admin.application.service;
 
-import kz.edu.soccerhub.admin.application.dto.AdminCreateCoachInput;
-import kz.edu.soccerhub.admin.application.dto.AdminCreateCoachOutput;
+import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachInput;
+import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachOutput;
+import kz.edu.soccerhub.common.domain.enums.Role;
+import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
+import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
+import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.dispatcher.application.service.PasswordGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -23,12 +28,25 @@ import java.util.UUID;
 public class AdminCoachService {
 
     private final CoachPort coachPort;
+    private final AuthPort authPort;
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
+    private final PasswordGenerator passwordGenerator;
 
     @Transactional
     public AdminCreateCoachOutput createCoach(UUID adminId, AdminCreateCoachInput input) {
+        final String tempPassword = passwordGenerator.generate(6);
+
+        AuthRegisterCommand authRegisterCommand = AuthRegisterCommand.builder()
+                .email(input.email())
+                .password(tempPassword)
+                .roles(Set.of(Role.COACH))
+                .build();
+
+        AuthRegisterCommandOutput output = authPort.register(authRegisterCommand);
+
         CoachCreateCommand command = CoachCreateCommand.builder()
+                .id(output.id())
                 .firstName(input.firstName())
                 .lastName(input.lastName())
                 .email(input.email())

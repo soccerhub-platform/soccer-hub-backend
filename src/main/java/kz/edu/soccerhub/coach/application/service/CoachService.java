@@ -28,7 +28,7 @@ public class CoachService implements CoachPort {
     @Transactional
     public UUID create(CoachCreateCommand command) {
         CoachProfile profile = CoachProfile.builder()
-                .id(UUID.randomUUID())
+                .id(command.id())
                 .firstName(command.firstName())
                 .lastName(command.lastName())
                 .birthDate(command.birthDate())

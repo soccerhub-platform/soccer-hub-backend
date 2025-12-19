@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.admin.application;
+package kz.edu.soccerhub.admin.application.service;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;

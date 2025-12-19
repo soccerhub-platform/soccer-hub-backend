@@ -1,11 +1,11 @@
 package kz.edu.soccerhub.admin.api;
 
 import jakarta.validation.Valid;
-import kz.edu.soccerhub.admin.application.AdminCoachService;
-import kz.edu.soccerhub.admin.application.dto.AdminCoachAssignBranchInput;
-import kz.edu.soccerhub.admin.application.dto.AdminCoachUnassignBranchInput;
-import kz.edu.soccerhub.admin.application.dto.AdminCreateCoachInput;
-import kz.edu.soccerhub.admin.application.dto.AdminCreateCoachOutput;
+import kz.edu.soccerhub.admin.application.service.AdminCoachService;
+import kz.edu.soccerhub.admin.application.dto.coach.AdminCoachAssignBranchInput;
+import kz.edu.soccerhub.admin.application.dto.coach.AdminCoachUnassignBranchInput;
+import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachInput;
+import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

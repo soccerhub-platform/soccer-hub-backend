@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.admin.application.dto;
+package kz.edu.soccerhub.admin.application.dto.coach;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Builder;
