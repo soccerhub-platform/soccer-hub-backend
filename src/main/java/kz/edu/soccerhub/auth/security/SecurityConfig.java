@@ -46,6 +46,7 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**", "/actuator/health").permitAll()
+                        .requestMatchers("/auth/change-password").authenticated()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth -> oauth

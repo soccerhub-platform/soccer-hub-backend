@@ -52,7 +52,7 @@ public class AuthService implements AuthPort {
             throw new BadRequestException("Email is already registered", u.getEmail());
         });
 
-        AppUserEntity user = buildAppUser(normalizedEmail, command.password(), command.roles());
+        AppUserEntity user = buildAppUser(normalizedEmail, command.password(), command.roles(), command.requireToChangePassword());
         userRepo.save(user);
 
         return new AuthRegisterCommandOutput(user.getId(), user.getEmail());
@@ -78,11 +78,12 @@ public class AuthService implements AuthPort {
         }
 
         Tokens tokens = tokenService.issueTokens(user, Set.of(input.role()), userAgent);
-
+        boolean passwordChangeRequired = user.isForcePasswordChange();
         return new TokenOutput(
                 tokens.accessToken(),
                 tokens.refreshToken(),
-                jwtProperties.getAccessTtl().toSeconds()
+                jwtProperties.getAccessTtl().toSeconds(),
+                passwordChangeRequired
         );
     }
 
@@ -98,7 +99,8 @@ public class AuthService implements AuthPort {
         return new TokenOutput(
                 newAccessToken,
                 newRotatedRefreshTokenToken.newRefreshToken(),
-                jwtProperties.getAccessTtl().toSeconds()
+                jwtProperties.getAccessTtl().toSeconds(),
+                false
         );
     }
 
@@ -126,9 +128,34 @@ public class AuthService implements AuthPort {
         userRepo.deleteById(userId);
     }
 
+    @Override
+    @Transactional
+    public void resetPassword(UUID userId, String rawPassword) {
+        AppUserEntity user = userRepo.findById(userId)
+                .orElseThrow(() -> new BadRequestException("User not found", userId.toString()));
+
+        user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setForcePasswordChange(true);
+
+        userRepo.save(user);
+        tokenService.revokeAllRefreshTokens(user.getId());
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(UUID userId, String newPassword) {
+        AppUserEntity user = userRepo.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setForcePasswordChange(false);
+        userRepo.save(user);
+        tokenService.revokeAllRefreshTokens(userId);
+    }
+
     // -------------------- Helpers --------------------
 
-    private AppUserEntity buildAppUser(String email, String rawPassword, Set<Role> roles) {
+    private AppUserEntity buildAppUser(String email, String rawPassword, Set<Role> roles, boolean requireToChangePassword) {
         Set<AppRoleEntity> appRoles = roles.stream()
                 .map(role -> AppRoleEntity.builder().code(role).build())
                 .collect(Collectors.toSet());
@@ -138,6 +165,7 @@ public class AuthService implements AuthPort {
                 .email(email)
                 .passwordHash(passwordEncoder.encode(rawPassword))
                 .enabled(true)
+                .forcePasswordChange(requireToChangePassword)
                 .roles(appRoles)
                 .build();
     }

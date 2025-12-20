@@ -41,6 +41,7 @@ public class AdminCoachService {
                 .email(input.email())
                 .password(tempPassword)
                 .roles(Set.of(Role.COACH))
+                .requireToChangePassword(true)
                 .build();
 
         AuthRegisterCommandOutput output = authPort.register(authRegisterCommand);
@@ -58,6 +59,12 @@ public class AdminCoachService {
                 adminId,
                 coachId
         );
+
+        UUID branchId = input.branchId();
+        if (branchId != null) {
+            assignCoachToBranch(adminId, coachId, branchId);
+            log.info("Admin {} assigned coach {} to the branch {}", adminId, coachId, branchId);
+        }
 
         return AdminCreateCoachOutput.builder()
                 .coachId(coachId)

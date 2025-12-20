@@ -33,6 +33,15 @@ public class DispatcherAdminController {
                 .body(Map.of("tempPassword", output.tempPassword()));
     }
 
+    @PostMapping("/{adminId}/reset-password")
+    public DispatcherAdminResetPasswordOutput resetAdminPassword(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID adminId
+    ) {
+        UUID dispatcherId = UUID.fromString(jwt.getSubject());
+        return dispatcherAdminService.resetAdminPassword(dispatcherId, adminId);
+    }
+
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> getAdmins(@AuthenticationPrincipal Jwt jwt) {
         UUID dispatcherId = UUID.fromString(jwt.getSubject());

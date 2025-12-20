@@ -30,6 +30,9 @@ public class AppUserEntity extends AbstractAuditableEntity {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    @Column(name = "force_password_change", nullable = false)
+    private boolean forcePasswordChange = false;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "app_user_role",
             joinColumns = @JoinColumn(name = "user_id"),

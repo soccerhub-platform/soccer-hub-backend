@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.*;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.*;
@@ -60,6 +61,11 @@ public class TokenService {
         return refreshRepo.findByJti(jti)
                 .filter(token -> isValidRefreshToken(token, secret))
                 .map(oldToken -> rotateRefreshToken(oldToken, userAgent));
+    }
+
+    @Transactional
+    public void revokeAllRefreshTokens(UUID userId) {
+        refreshRepo.revokeAllByUserId(userId);
     }
 
     // ========== Private Helpers ==========

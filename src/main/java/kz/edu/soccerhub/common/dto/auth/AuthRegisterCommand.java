@@ -12,6 +12,7 @@ import java.util.Set;
 public record AuthRegisterCommand(
         @Email(message = "Invalid email format") String email,
         @NotBlank(message = "Password cannot be empty") String password,
-        @NotNull Set<Role> roles
+        @NotNull Set<Role> roles,
+        boolean requireToChangePassword
 ) {
 }

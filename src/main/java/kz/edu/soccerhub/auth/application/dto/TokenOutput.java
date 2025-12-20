@@ -6,5 +6,6 @@ import lombok.Builder;
 public record TokenOutput(
         String accessToken,
         String refreshTokenJti,
-        long expiresIn
+        long expiresIn,
+        boolean passwordChangeRequired
 ) {}

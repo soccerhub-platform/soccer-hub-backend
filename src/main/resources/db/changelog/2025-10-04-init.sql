@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS app_user
     email         VARCHAR(100) NOT NULL UNIQUE,
     password_hash TEXT         NOT NULL,
     enabled       BOOLEAN      NOT NULL DEFAULT TRUE,
+    force_password_change BOOLEAN NOT NULL DEFAULT FALSE,
     created_at    TIMESTAMP DEFAULT NOW(),
     updated_at    TIMESTAMP DEFAULT NOW(),
     created_by    VARCHAR,

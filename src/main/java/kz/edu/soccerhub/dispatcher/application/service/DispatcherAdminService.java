@@ -47,6 +47,7 @@ public class DispatcherAdminService {
                 .email(input.email())
                 .password(tempPassword)
                 .roles(Set.of(Role.ADMIN))
+                .requireToChangePassword(true)
                 .build();
 
         AuthRegisterCommandOutput authRegisterCommandOutput = authPort.register(authRegisterCommand);
@@ -66,6 +67,22 @@ public class DispatcherAdminService {
                 adminResult.adminId(),
                 tempPassword
         );
+    }
+
+    @Transactional
+    public DispatcherAdminResetPasswordOutput resetAdminPassword(UUID dispatcherId, UUID adminId) {
+        AdminDto admin = adminPort.findById(adminId)
+                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+
+        boolean hasAccess = isAdminCreatedByDispatcher(admin, dispatcherId);
+        if (!hasAccess) {
+            throw new BadRequestException("Dispatcher does not have access to admin", adminId);
+        }
+        String tempPassword = passwordGenerator.generate(8);
+        authPort.resetPassword(adminId, tempPassword);
+
+        log.info("Admin password reset: adminId={}, dispatcherId={}", adminId, dispatcherId);
+        return new DispatcherAdminResetPasswordOutput(tempPassword);
     }
 
 

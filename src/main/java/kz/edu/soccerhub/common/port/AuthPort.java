@@ -14,4 +14,6 @@ public interface AuthPort {
     Optional<String> getCurrentUserEmail();
     Optional<String> getCurrentUserId();
     void delete(UUID userId);
+    void resetPassword(UUID userId, String rawPassword);
+    void changePassword(UUID userId, String newPassword);
 }
