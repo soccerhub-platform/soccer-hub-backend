@@ -298,6 +298,7 @@ CREATE TABLE IF NOT EXISTS groups
     branch_id   UUID NOT NULL,
     age_from    INT2 NOT NULL,
     age_to      INT2 NOT NULL,
+    capacity    INT2 NOT NULL,
     level       VARCHAR NOT NULL,
     description TEXT,
     status      VARCHAR NOT NULL,
@@ -324,6 +325,7 @@ CREATE TABLE IF NOT EXISTS location
     branch_id UUID NOT NULL,
     name      VARCHAR(255) NOT NULL,
     address   VARCHAR(255),
+    description TEXT,
     active    BOOLEAN DEFAULT TRUE,
     latitude  DECIMAL(10,8),
     longitude DECIMAL(11,8),
@@ -379,8 +381,9 @@ CREATE TABLE IF NOT EXISTS group_schedules
     id              UUID PRIMARY KEY,
     group_id        UUID NOT NULL,
     coach_id        UUID NOT NULL,
+    location_id     UUID NOT NULL,
 
-    day_off_week    VARCHAR NOT NULL,
+    day_of_week    VARCHAR NOT NULL,
     start_time      TIME NOT NULL,
     end_time        TIME NOT NULL,
     schedule_type   VARCHAR NOT NULL,
@@ -403,13 +406,16 @@ CREATE TABLE IF NOT EXISTS group_schedules
     CONSTRAINT fk_group_schedule_coach FOREIGN KEY (coach_id)
         REFERENCES coach_profiles(id),
 
+    constraint fk_group_schedule_location FOREIGN KEY (location_id)
+        REFERENCES location(id),
+
     CONSTRAINT fk_group_schedule_substitution_coach FOREIGN KEY (substitution_coach_id)
         REFERENCES coach_profiles(id)
 );
 
 CREATE INDEX idx_group_schedules_group ON group_schedules(group_id);
 CREATE INDEX idx_group_schedules_coach ON group_schedules(coach_id);
-CREATE INDEX idx_group_schedules_day_time ON group_schedules(day_off_week, start_time);
+CREATE INDEX idx_group_schedules_day_time ON group_schedules(day_of_week, start_time);
 CREATE INDEX idx_group_schedules_status ON group_schedules(status);
 
 -- ============================================

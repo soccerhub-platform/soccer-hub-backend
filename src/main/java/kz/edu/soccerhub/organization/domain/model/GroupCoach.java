@@ -31,8 +31,9 @@ public class GroupCoach extends AbstractAuditableEntity {
     @Column(name = "role")
     private CoachRole role;
 
+    @Builder.Default
     @Column(name = "active", nullable = false)
-    private boolean active;
+    private boolean active = true;
 
     @Column(name = "assigned_from")
     private LocalDate assignedFrom;

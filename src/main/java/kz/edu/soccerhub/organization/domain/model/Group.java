@@ -37,6 +37,9 @@ public class Group extends AbstractAuditableEntity {
     @Column(name = "level")
     private GroupLevel level;
 
+    @Column(name = "capacity")
+    private Integer capacity;
+
     @Column(name = "description")
     private String description;
 
@@ -46,5 +49,6 @@ public class Group extends AbstractAuditableEntity {
 
     @ManyToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "branch_id", insertable = false, updatable = false)
+    @Setter(AccessLevel.NONE)
     private Branch branch;
 }

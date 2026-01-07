@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.organization.domain.model;
 
 import jakarta.persistence.*;
+import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import kz.edu.soccerhub.organization.domain.model.enums.ScheduleType;
 import lombok.*;
@@ -17,7 +18,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class GroupSchedule {
+public class GroupSchedule extends AbstractAuditableEntity {
 
     @Id
     @Column(name = "id", nullable = false)
@@ -29,8 +30,11 @@ public class GroupSchedule {
     @Column(name = "coach_id", nullable = false)
     private UUID coachId;
 
+    @Column(name = "location_id", nullable = false)
+    private UUID locationId;
+
     @Enumerated(EnumType.STRING)
-    @Column(name = "day_off_week", nullable = false)
+    @Column(name = "day_of_week", nullable = false)
     private DayOfWeek dayOfWeek;
 
     @Column(name = "start_time", nullable = false)
@@ -64,6 +68,12 @@ public class GroupSchedule {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id", insertable = false, updatable = false)
+    @Setter(AccessLevel.NONE)
     private Group group;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "location_id", insertable = false, updatable = false)
+    @Setter(AccessLevel.NONE)
+    private Location location;
 
 }

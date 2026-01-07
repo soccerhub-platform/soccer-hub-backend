@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.organization.application;
+package kz.edu.soccerhub.organization.application.service;
 
 import jakarta.validation.constraints.NotNull;
 import kz.edu.soccerhub.organization.domain.model.Club;

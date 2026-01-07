@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.organization.application;
+package kz.edu.soccerhub.organization.application.service;
 
 import kz.edu.soccerhub.organization.domain.model.Branch;
 import kz.edu.soccerhub.organization.domain.repository.BranchRepository;
