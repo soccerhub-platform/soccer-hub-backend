@@ -59,7 +59,16 @@ public class CoachService implements CoachPort {
         coachBranchService.unassignFromBranch(coachId, branchId);
     }
 
-    @Override
+    @Transactional(readOnly = true)
+    public CoachDto getCoach(UUID coachId) {
+        return findById(coachId)
+                .orElseThrow(() -> new NotFoundException("Coach not found", coachId));
+    }
+
+    public boolean verifyCoach(UUID coachId) {
+        return coachProfileRepository.existsById(coachId);
+    }
+
     @Transactional(readOnly = true)
     public Optional<CoachDto> findById(UUID coachId) {
         return coachProfileRepository.findById(coachId)

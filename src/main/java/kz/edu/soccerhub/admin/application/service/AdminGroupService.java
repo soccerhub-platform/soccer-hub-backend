@@ -157,7 +157,8 @@ public class AdminGroupService {
     }
 
     private void verifyCoach(UUID coachId) {
-        coachPort.findById(coachId)
-                .orElseThrow(() -> new NotFoundException("Coach not found", coachId));
+        if (!coachPort.verifyCoach(coachId)) {
+            throw new NotFoundException("Coach not found", coachId);
+        }
     }
 }

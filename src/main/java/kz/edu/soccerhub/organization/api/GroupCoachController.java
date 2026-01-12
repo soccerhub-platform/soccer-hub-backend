@@ -2,21 +2,31 @@ package kz.edu.soccerhub.organization.api;
 
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
 import kz.edu.soccerhub.organization.application.service.CoachAvailabilityService;
+import kz.edu.soccerhub.organization.application.service.GroupCoachService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/organization/coaches")
+@RequestMapping("/organization/groups")
 @RequiredArgsConstructor
 public class GroupCoachController {
 
     private final CoachAvailabilityService coachAvailabilityService;
+    private final GroupCoachService groupCoachService;
 
-    @GetMapping("/{coachId}/availability")
+
+    @GetMapping("/{groupId}/coaches/active")
+    public Map<String, List<UUID>> getGroupCoaches(@PathVariable UUID groupId) {
+        List<UUID> activeCoaches = groupCoachService.getActiveCoaches(groupId);
+        return Map.of("coaches", activeCoaches);
+    }
+
+    @GetMapping("/coaches/{coachId}/availability")
     public List<CoachBusySlotView> getCoachAvailability(
             @PathVariable UUID coachId,
             @RequestParam LocalDate from,

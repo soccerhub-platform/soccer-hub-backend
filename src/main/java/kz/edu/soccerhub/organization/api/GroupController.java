@@ -1,7 +1,6 @@
 package kz.edu.soccerhub.organization.api;
 
 import kz.edu.soccerhub.common.dto.group.GroupDto;
-import kz.edu.soccerhub.organization.application.service.GroupCoachService;
 import kz.edu.soccerhub.organization.application.service.GroupService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,7 +9,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Collection;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -18,7 +16,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class GroupController {
 
-    private final GroupCoachService groupCoachQueryService;
     private final GroupService groupService;
 
     @GetMapping("/{groupId}")
@@ -29,10 +26,5 @@ public class GroupController {
     @GetMapping("/branches/{branchId}")
     public Collection<GroupDto> getAllBranchGroups(@PathVariable UUID branchId) {
         return groupService.getGroupsByBranch(branchId);
-    }
-
-    @GetMapping("/{groupId}/coaches")
-    public List<UUID> getGroupCoaches(@PathVariable UUID groupId) {
-        return groupCoachQueryService.getActiveCoaches(groupId);
     }
 }

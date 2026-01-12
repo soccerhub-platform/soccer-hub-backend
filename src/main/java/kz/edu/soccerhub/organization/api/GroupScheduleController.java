@@ -37,8 +37,8 @@ public class GroupScheduleController {
                 .groupId(groupId)
                 .coachId(coachId)
                 .branchId(branchId)
-                .fromDate(LocalDate.parse(fromDate))
-                .toDate(LocalDate.parse(toDate))
+                .fromDate(fromDate != null ? LocalDate.parse(fromDate) : null)
+                .toDate(toDate != null ? LocalDate.parse(toDate) : null)
                 .dayOfWeek(dayOfWeek)
                 .status(status)
                 .build();

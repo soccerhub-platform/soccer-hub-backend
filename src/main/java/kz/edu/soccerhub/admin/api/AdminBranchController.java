@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/admin/branch")
+@RequestMapping("/admin/branches")
 @PreAuthorize("hasAuthority('ADMIN')")
 @RequiredArgsConstructor
 public class AdminBranchController {

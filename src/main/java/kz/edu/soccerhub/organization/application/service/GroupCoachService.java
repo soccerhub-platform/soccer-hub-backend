@@ -1,6 +1,5 @@
 package kz.edu.soccerhub.organization.application.service;
 
-import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.organization.domain.model.GroupCoach;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
@@ -12,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 
@@ -85,24 +83,6 @@ public class GroupCoachService implements GroupCoachPort {
                 .stream()
                 .map(GroupCoach::getCoachId)
                 .toList();
-    }
-
-    private void validateCoachAssignedBeforeScheduling(
-            UUID groupId,
-            UUID coachId
-    ) {
-        boolean assigned = groupCoachRepository
-                .existsByGroupIdAndCoachIdAndActiveTrue(groupId, coachId);
-
-        if (!assigned) {
-            throw new BadRequestException(
-                    "Coach is not assigned to group",
-                    Map.of(
-                            "groupId", groupId,
-                            "coachId", coachId
-                    )
-            );
-        }
     }
 
 }

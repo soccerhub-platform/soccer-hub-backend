@@ -4,8 +4,8 @@ import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
+import kz.edu.soccerhub.organization.domain.model.Group;
 import kz.edu.soccerhub.organization.domain.model.GroupSchedule;
-import kz.edu.soccerhub.organization.domain.model.Location;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
@@ -24,8 +24,8 @@ public class GroupScheduleSpecification {
                 predicates.add(cb.equal(root.get("coachId"), criteria.coachId()));
 
             if (criteria.branchId() != null) {
-                Join<GroupSchedule, Location> locationJoin = root.join("locationId", JoinType.INNER);
-                predicates.add(cb.equal(locationJoin.get("branchId"), criteria.branchId()));
+                Join<GroupSchedule, Group> groupJoin = root.join("group", JoinType.INNER);
+                predicates.add(cb.equal(groupJoin.get("branchId"), criteria.branchId()));
             }
 
             if (criteria.dayOfWeek() != null)
