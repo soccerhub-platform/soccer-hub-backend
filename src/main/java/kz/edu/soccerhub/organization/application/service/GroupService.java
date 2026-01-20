@@ -5,15 +5,18 @@ import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.GroupPort;
+import kz.edu.soccerhub.organization.application.dto.GroupSummary;
 import kz.edu.soccerhub.organization.application.mapper.GroupMapper;
 import kz.edu.soccerhub.organization.domain.model.Group;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
+import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import kz.edu.soccerhub.organization.domain.repository.GroupRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Slf4j
@@ -22,6 +25,8 @@ import java.util.*;
 public class GroupService implements GroupPort {
 
     private final GroupRepository groupRepository;
+    private final GroupCoachService groupCoachService;
+    private final GroupScheduleService groupScheduleService;
 
     @Transactional
     public UUID createGroup(CreateGroupCommand command) {
@@ -61,6 +66,16 @@ public class GroupService implements GroupPort {
                 .toList();
     }
 
+    @Override
+    @Transactional
+    public void updateStatus(UUID groupId, GroupStatus status) {
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new NotFoundException("Group not found", Map.of("groupId", groupId)));
+
+        group.setStatus(status);
+        groupRepository.saveAndFlush(group);
+    }
+
     @Transactional
     public void deleteGroup(UUID groupId) {
         groupRepository.deleteById(groupId);
@@ -82,6 +97,30 @@ public class GroupService implements GroupPort {
                     group.setStatus(GroupStatus.PAUSED);
                     groupRepository.saveAndFlush(group);
                 });
+    }
+
+    @Transactional(readOnly = true)
+    public GroupSummary summary(UUID groupId) {
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() ->
+                        new NotFoundException("Group not found", Map.of("groupId", groupId))
+                );
+
+        int coachesCount = groupCoachService.coachCount(groupId);
+        int sessionsPerWeek = groupScheduleService.countSessionsPerWeek(groupId);
+        boolean scheduleActive = groupScheduleService.existsScheduleByStatus(groupId, ScheduleStatus.ACTIVE);
+        LocalDateTime nextSession = groupScheduleService.getNextSession(groupId);
+        int studentsCount = 0; // TODO
+
+        return GroupSummary.builder()
+                .groupId(groupId)
+                .coachesCount(coachesCount)
+                .sessionPerWeek(sessionsPerWeek)
+                .nextSession(nextSession)
+                .studentsCount(studentsCount)
+                .capacity(Optional.ofNullable(group.getCapacity()).orElse(0))
+                .scheduleActive(scheduleActive)
+                .build();
     }
 
     private void validateAgeRange(Integer from, Integer to) {

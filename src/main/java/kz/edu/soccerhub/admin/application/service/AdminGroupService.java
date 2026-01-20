@@ -1,20 +1,26 @@
 package kz.edu.soccerhub.admin.application.service;
 
-import kz.edu.soccerhub.admin.application.dto.AdminGroupCreateInput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCoachOutput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCreateInput;
+import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.group.CreateGroupCommand;
+import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
+import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -57,15 +63,28 @@ public class AdminGroupService {
         return groupId;
     }
 
+    @Transactional
+    public void updateGroupStatus(UUID adminId, UUID groupId, GroupStatus status) {
+        verifyAdmin(adminId);
+        verifyAdminBranchAccess(adminId, groupPort.getGroupById(groupId).branchId());
+
+        groupPort.updateStatus(groupId, status);
+
+        log.info(
+                "Admin {} updated group status {} to {}",
+                adminId, groupId, status
+        );
+    }
+
     /* ================= GROUP COACH ================= */
 
     @Transactional
-    public UUID assignCoachToGroup(UUID adminId, UUID groupId, UUID coachId) {
+    public UUID assignCoachToGroup(UUID adminId, UUID groupId, UUID coachId, CoachRole role) {
         verifyAdmin(adminId);
         verifyAdminBranchAccess(adminId, groupPort.getGroupById(groupId).branchId());
         verifyCoach(coachId);
 
-        UUID assignmentId = groupCoachPort.assignCoach(groupId, coachId);
+        UUID assignmentId = groupCoachPort.assignCoach(groupId, coachId, role);
 
         log.info(
                 "Admin {} assigned coach {} to group {}",
@@ -76,18 +95,66 @@ public class AdminGroupService {
     }
 
     @Transactional
-    public void unassignCoachFromGroup(UUID adminId, UUID groupId, UUID coachId) {
+    public void unassignCoachFromGroup(UUID adminId, UUID groupCoachId) {
 
         verifyAdmin(adminId);
-        verifyAdminBranchAccess(adminId, groupPort.getGroupById(groupId).branchId());
-        verifyCoach(coachId);
 
-        groupCoachPort.unassignCoach(groupId, coachId);
+        groupCoachPort.unassignCoach(groupCoachId);
 
         log.info(
-                "Admin {} unassigned coach {} from group {}",
-                adminId, coachId, groupId
+                "Admin {} unassigned coach from group {}",
+                adminId, groupCoachId
         );
+    }
+
+    @Transactional(readOnly = true)
+    public Collection<AdminGroupCoachOutput> getGroupCoaches(UUID groupId) {
+        log.debug("======= Fetching group -> {} coaches =======", groupId);
+
+        Collection<GroupCoachDto> activeGroupCoaches =
+                groupCoachPort.getActiveCoaches(groupId);
+
+        log.debug("======= Group {} coaches ids {} =======", groupId, activeGroupCoaches);
+
+        Collection<CoachDto> coaches = coachPort.getCoaches(
+                activeGroupCoaches.stream()
+                        .map(GroupCoachDto::coachId)
+                        .collect(Collectors.toSet())
+        );
+
+        log.debug("======= Merge group coach and coach info =======");
+
+        Map<UUID, CoachDto> coachMap = coaches.stream()
+                .collect(Collectors.toMap(CoachDto::id, Function.identity()));
+
+        return activeGroupCoaches.stream()
+                .map(groupCoach -> {
+                    CoachDto coach = coachMap.get(groupCoach.coachId());
+
+                    if (coach == null) {
+                        log.warn("Coach not found for coachId={}", groupCoach.coachId());
+                        return null;
+                    }
+
+                    return AdminGroupCoachOutput.builder()
+                            .groupCoachId(groupCoach.id())
+                            .coachId(coach.id())
+                            .groupId(groupCoach.groupId())
+                            .coachFirstName(coach.firstName())
+                            .coachLastName(coach.lastName())
+                            .birthDate(coach.birthDate())
+                            .phone(coach.phone())
+                            .email(coach.email())
+                            .active(coach.active())
+                            .coachRole(groupCoach.role())
+                            .assignedFrom(groupCoach.assignedFrom())
+                            .assignedTo(groupCoach.assignedTo())
+                            .createdAt(groupCoach.createdAt())
+                            .updatedAt(groupCoach.updateAt())
+                            .build();
+                })
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     /* ================= SCHEDULE ================= */

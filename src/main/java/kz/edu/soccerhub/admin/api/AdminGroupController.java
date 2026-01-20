@@ -1,7 +1,10 @@
 package kz.edu.soccerhub.admin.api;
 
 import jakarta.validation.Valid;
-import kz.edu.soccerhub.admin.application.dto.AdminGroupCreateInput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminAssignCoachToGroupInput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCoachOutput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCreateInput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupStatusChangeInput;
 import kz.edu.soccerhub.admin.application.service.AdminGroupService;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,38 +44,58 @@ public class AdminGroupController {
                 .body(Map.of("groupId", groupId));
     }
 
+
+    @PatchMapping("/{groupId}/status")
+    public ResponseEntity<Void> updateStatusOfGroup(@AuthenticationPrincipal Jwt jwt,
+                                                    @PathVariable("groupId") UUID groupId,
+                                                    @RequestBody AdminGroupStatusChangeInput request) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+
+        adminGroupService.updateGroupStatus(adminId, groupId, request.status());
+
+        return ResponseEntity.noContent().build();
+    }
+
     /* ================= COACH ================= */
 
-    @PostMapping("/{groupId}/coaches/{coachId}")
+    @PostMapping("/{groupId}/coaches")
     public Map<String, UUID> assignCoach(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID groupId,
-            @PathVariable UUID coachId
+            @RequestBody AdminAssignCoachToGroupInput input
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
 
         UUID id = adminGroupService.assignCoachToGroup(
                 adminId,
                 groupId,
-                coachId
+                input.coachId(),
+                input.role()
         );
 
         return Map.of("groupCoachId", id);
     }
 
-    @DeleteMapping("/{groupId}/coaches/{coachId}")
+    @DeleteMapping("/coaches/{groupCoachId}")
     public void unassignCoach(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable UUID groupId,
-            @PathVariable UUID coachId
+            @PathVariable UUID groupCoachId
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
 
         adminGroupService.unassignCoachFromGroup(
                 adminId,
-                groupId,
-                coachId
+                groupCoachId
         );
+    }
+
+    @GetMapping("/{groupId}/coaches")
+    public ResponseEntity<Map<String, Object>> getGroupCoaches(@PathVariable UUID groupId) {
+        Collection<AdminGroupCoachOutput> coaches = adminGroupService.getGroupCoaches(groupId);
+        return ResponseEntity.ok(Map.of(
+                "groupId", groupId,
+                "coaches", coaches
+        ));
     }
 
     /* ================= SCHEDULE ================= */

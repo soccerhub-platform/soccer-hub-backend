@@ -20,10 +20,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -124,6 +126,52 @@ public class GroupScheduleService implements GroupSchedulePort {
                 schedules.size(),
                 groupId
         );
+    }
+
+    @Transactional(readOnly = true)
+    public int countSessionsPerWeek(UUID groupId) {
+        return groupScheduleRepository.countWeeklySessions(groupId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean existsScheduleByStatus(UUID groupId, ScheduleStatus scheduleStatus) {
+        return groupScheduleRepository.existsByGroupIdAndStatus(groupId, scheduleStatus);
+    }
+
+    @Transactional(readOnly = true)
+    public LocalDateTime getNextSession(UUID groupId) {
+        List<GroupSchedule> schedules =
+                groupScheduleRepository.findByGroupIdAndStatus(
+                        groupId,
+                        ScheduleStatus.ACTIVE
+                );
+
+        return calculateNextSession(schedules);
+    }
+
+    private LocalDateTime calculateNextSession(List<GroupSchedule> schedules) {
+        LocalDate today = LocalDate.now();
+
+        return schedules.stream()
+                .flatMap(s -> {
+                    LocalDate date = today;
+
+                    // ищем ближайшую дату, совпадающую с dayOfWeek
+                    while (date.getDayOfWeek() != s.getDayOfWeek()) {
+                        date = date.plusDays(1);
+                    }
+
+                    LocalDateTime dt = LocalDateTime.of(date, s.getStartTime());
+
+                    // если сегодня и уже прошло — берем следующую неделю
+                    if (dt.isBefore(LocalDateTime.now())) {
+                        dt = dt.plusWeeks(1);
+                    }
+
+                    return Stream.of(dt);
+                })
+                .min(LocalDateTime::compareTo)
+                .orElse(null);
     }
 
     private void validateBatchCommand(@NotNull UUID groupId, @Valid GroupScheduleBatchCommand command) {
@@ -237,5 +285,4 @@ public class GroupScheduleService implements GroupSchedulePort {
     ) {
         return s1.isBefore(e2) && s2.isBefore(e1);
     }
-
 }

@@ -1,6 +1,10 @@
 package kz.edu.soccerhub.organization.application.service;
 
+import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
+import kz.edu.soccerhub.common.exception.BadRequestException;
+import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
+import kz.edu.soccerhub.organization.application.mapper.GroupCoachMapper;
 import kz.edu.soccerhub.organization.domain.model.GroupCoach;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.repository.GroupCoachRepository;
@@ -10,8 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 
 @Slf4j
@@ -23,11 +27,16 @@ public class GroupCoachService implements GroupCoachPort {
 
     @Override
     @Transactional
-    public UUID assignCoach(UUID groupId, UUID coachId) {
+    public UUID assignCoach(UUID groupId, UUID coachId, CoachRole role) {
         if (groupCoachRepository.existsByGroupIdAndCoachIdAndActiveTrue(groupId, coachId)) {
-            throw new IllegalStateException(
-                    "Coach already assigned to this group"
-            );
+            throw new BadRequestException(
+                    "Coach already assigned to this group", Map.of("groupId", groupId, "coachId", coachId));
+        }
+
+        role = role == null ? CoachRole.ASSISTANT : role;
+
+        if (role == CoachRole.MAIN && groupCoachRepository.existsByGroupIdAndCoachIdAndRole(groupId, coachId, CoachRole.MAIN)) {
+            throw new BadRequestException("Main coach already exist in this group", groupId);
         }
 
         // 2. Проверяем, был ли раньше
@@ -37,10 +46,10 @@ public class GroupCoachService implements GroupCoachPort {
                         .id(UUID.randomUUID())
                         .groupId(groupId)
                         .coachId(coachId)
-                        .role(CoachRole.MAIN)
                         .build()
                 );
 
+        groupCoach.setRole(role);
         groupCoach.setActive(true);
         groupCoach.setAssignedFrom(LocalDate.now());
         groupCoach.setAssignedTo(null);
@@ -54,12 +63,12 @@ public class GroupCoachService implements GroupCoachPort {
 
     @Override
     @Transactional
-    public boolean unassignCoach(UUID groupId, UUID coachId) {
+    public boolean unassignCoach(UUID groupCoachId) {
 
         GroupCoach groupCoach = groupCoachRepository
-                .findByGroupIdAndCoachId(groupId, coachId)
+                .findById(groupCoachId)
                 .orElseThrow(() ->
-                        new IllegalStateException("Coach is not assigned to this group")
+                        new NotFoundException("Group coach data not found", groupCoachId)
                 );
 
         if (!groupCoach.isActive()) {
@@ -71,18 +80,24 @@ public class GroupCoachService implements GroupCoachPort {
 
         groupCoachRepository.save(groupCoach);
 
-        log.info("Coach {} unassigned from group {}", coachId, groupId);
+        log.info("Coach {} unassigned from group {}", groupCoach.getCoachId(), groupCoach.getGroupId());
 
         return true;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<UUID> getActiveCoaches(UUID groupId) {
+    public Collection<GroupCoachDto> getActiveCoaches(UUID groupId) {
         return groupCoachRepository.findByGroupIdAndActiveTrue(groupId)
                 .stream()
-                .map(GroupCoach::getCoachId)
-                .toList();
+                .map(GroupCoachMapper::toDto)
+                .collect(Collectors.toList());
+
+    }
+
+    @Transactional(readOnly = true)
+    public int coachCount(UUID groupId) {
+        return groupCoachRepository.countByGroupIdAndActiveTrue(groupId);
     }
 
 }

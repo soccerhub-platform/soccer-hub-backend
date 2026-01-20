@@ -7,6 +7,7 @@ import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
 
@@ -16,5 +17,6 @@ public interface CoachPort {
     void unassignFromBranch(@NotNull UUID coachId, @NotNull UUID branchId);
     Page<CoachDto> getCoaches(Set<UUID> branchId, Pageable pageable);
     CoachDto getCoach(UUID coachId);
+    Collection<CoachDto> getCoaches(Set<UUID> coachIds);
     boolean verifyCoach(UUID coachId);
 }

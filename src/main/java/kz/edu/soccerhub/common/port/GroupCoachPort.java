@@ -1,13 +1,16 @@
 package kz.edu.soccerhub.common.port;
 
-import java.util.List;
+import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
+import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
+
+import java.util.Collection;
 import java.util.UUID;
 
 public interface GroupCoachPort {
 
-    UUID assignCoach(UUID groupId, UUID coachId);
+    UUID assignCoach(UUID groupId, UUID coachId, CoachRole role);
 
-    boolean unassignCoach(UUID groupId, UUID coachId);
+    boolean unassignCoach(UUID groupCoachId);
 
-    List<UUID> getActiveCoaches(UUID groupId);
+    Collection<GroupCoachDto> getActiveCoaches(UUID groupId);
 }

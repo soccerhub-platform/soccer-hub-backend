@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.admin.application.dto;
+package kz.edu.soccerhub.admin.application.dto.group;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;

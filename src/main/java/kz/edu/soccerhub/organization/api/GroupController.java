@@ -1,8 +1,10 @@
 package kz.edu.soccerhub.organization.api;
 
 import kz.edu.soccerhub.common.dto.group.GroupDto;
+import kz.edu.soccerhub.organization.application.dto.GroupSummary;
 import kz.edu.soccerhub.organization.application.service.GroupService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,5 +28,10 @@ public class GroupController {
     @GetMapping("/branches/{branchId}")
     public Collection<GroupDto> getAllBranchGroups(@PathVariable UUID branchId) {
         return groupService.getGroupsByBranch(branchId);
+    }
+
+    @GetMapping("/{groupId}/summary")
+    public ResponseEntity<GroupSummary> getGroupSummary(@PathVariable UUID groupId) {
+        return ResponseEntity.ok().body(groupService.summary(groupId));
     }
 }

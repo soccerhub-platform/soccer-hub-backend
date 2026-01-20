@@ -21,8 +21,8 @@ public class GroupCoachController {
 
 
     @GetMapping("/{groupId}/coaches/active")
-    public Map<String, List<UUID>> getGroupCoaches(@PathVariable UUID groupId) {
-        List<UUID> activeCoaches = groupCoachService.getActiveCoaches(groupId);
+    public Map<String, Object> getGroupCoaches(@PathVariable UUID groupId) {
+        var activeCoaches = groupCoachService.getActiveCoaches(groupId);
         return Map.of("coaches", activeCoaches);
     }
 

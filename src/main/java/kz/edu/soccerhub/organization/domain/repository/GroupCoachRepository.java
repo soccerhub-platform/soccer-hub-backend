@@ -2,6 +2,7 @@ package kz.edu.soccerhub.organization.domain.repository;
 
 
 import kz.edu.soccerhub.organization.domain.model.GroupCoach;
+import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -14,4 +15,7 @@ public interface GroupCoachRepository extends JpaRepository<GroupCoach, UUID> {
     Optional<GroupCoach> findByGroupIdAndCoachId(UUID groupId, UUID coachId);
     boolean existsByGroupIdAndCoachIdAndActiveTrue(UUID groupId, UUID coachId);
     List<GroupCoach> findByGroupIdAndActiveTrue(UUID groupId);
+    int countByGroupIdAndActiveTrue(UUID groupId);
+
+    boolean existsByGroupIdAndCoachIdAndRole(UUID groupId, UUID coachId, CoachRole role);
 }

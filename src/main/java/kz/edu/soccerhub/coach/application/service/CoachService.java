@@ -14,9 +14,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -63,6 +62,14 @@ public class CoachService implements CoachPort {
     public CoachDto getCoach(UUID coachId) {
         return findById(coachId)
                 .orElseThrow(() -> new NotFoundException("Coach not found", coachId));
+    }
+
+    @Override
+    public Collection<CoachDto> getCoaches(Set<UUID> coachIds) {
+        return coachProfileRepository.findAllById(coachIds)
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     public boolean verifyCoach(UUID coachId) {

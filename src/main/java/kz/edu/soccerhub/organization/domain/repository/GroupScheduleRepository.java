@@ -51,4 +51,14 @@ public interface GroupScheduleRepository extends
             LocalDate from,
             LocalDate to
     );
+
+    @Query("""
+        select count(distinct gs.dayOfWeek)
+        from GroupSchedule gs
+        where gs.groupId = :groupId
+          and gs.status = 'ACTIVE'
+    """)
+    int countWeeklySessions(UUID groupId);
+
+    boolean existsByGroupIdAndStatus(UUID groupId, ScheduleStatus status);
 }
