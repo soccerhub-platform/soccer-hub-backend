@@ -2,9 +2,7 @@ package kz.edu.soccerhub.organization.application.service;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
-import kz.edu.soccerhub.common.dto.group.DayScheduleSlot;
-import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
-import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
+import kz.edu.soccerhub.common.dto.group.*;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.GroupSchedulePort;
@@ -36,33 +34,37 @@ public class GroupScheduleService implements GroupSchedulePort {
 
     @Override
     @Transactional
-    public void createSchedule(@NotNull UUID groupId, @Valid GroupScheduleBatchCommand command) {
-        validateBatchCommand(groupId, command);
-        validateCoachAvailability(groupId, command);
+    public void createSchedule(@NotNull UUID groupId, @Valid GroupScheduleBatchCommand groupScheduleBatchCommand) {
+        validateScheduleBatch(
+                groupId,
+                groupScheduleBatchCommand.coachId(),
+                groupScheduleBatchCommand.startDate(),
+                groupScheduleBatchCommand.endDate(),
+                groupScheduleBatchCommand.slots(),
+                List.of()
+        );
 
-        List<GroupSchedule> schedules = command.slots().stream()
+        List<GroupSchedule> schedules = groupScheduleBatchCommand.slots().stream()
                 .map(slot -> GroupSchedule.builder()
                         .id(UUID.randomUUID())
                         .groupId(groupId)
-                        .coachId(command.coachId())
+                        .coachId(groupScheduleBatchCommand.coachId())
                         .dayOfWeek(slot.dayOfWeek())
                         .startTime(slot.startTime())
                         .endTime(slot.endTime())
-                        .startDate(command.startDate())
-                        .endDate(command.endDate())
-                        .scheduleType(command.type())
+                        .startDate(groupScheduleBatchCommand.startDate())
+                        .endDate(groupScheduleBatchCommand.endDate())
+                        .scheduleType(groupScheduleBatchCommand.type())
                         .status(ScheduleStatus.ACTIVE)
                         .build())
                 .toList();
 
-        log.info("Creating {} schedule slots for group {}", schedules.size(), groupId);
         groupScheduleRepository.saveAll(schedules);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<GroupScheduleDto> getSchedules(ScheduleSearchCriteria criteria) {
-
         return groupScheduleRepository.findAll(
                         GroupScheduleSpecification.byCriteria(criteria)
                 ).stream()
@@ -81,23 +83,84 @@ public class GroupScheduleService implements GroupSchedulePort {
         }
 
         groupSchedule.setStatus(ScheduleStatus.CANCELLED);
-        log.info("Group Schedule {} cancelled", scheduleId);
     }
 
     @Override
     @Transactional
-    public void cancelScheduleFromDate(
-            @NotNull UUID scheduleId,
-            @NotNull LocalDate cancelFrom
+    public void updateScheduleBatch(
+            UUID groupId,
+            UpdateScheduleBatchCommand command
     ) {
+        // 1. находим ТЕКУЩИЙ batch
+        List<GroupSchedule> currentBatch =
+                groupScheduleRepository
+                        .findBatch(
+                                groupId,
+                                command.coachId(),
+                                command.type(),
+                                command.startDate(),
+                                command.endDate(),
+                                ScheduleStatus.ACTIVE
+                        );
+
+        if (currentBatch.isEmpty()) {
+            throw new NotFoundException(
+                    "Schedule batch not found",
+                    Map.of(
+                            "groupId", groupId,
+                            "coachId", command.coachId(),
+                            "type", command.type(),
+                            "startDate", command.startDate(),
+                            "endDate", command.endDate()
+                    )
+            );
+        }
+
+        // 2. ids текущего batch — их игнорируем при валидации
+        List<UUID> ignoreIds = currentBatch.stream()
+                .map(GroupSchedule::getId)
+                .toList();
+
+        // 3. валидация нового batch
+        validateScheduleBatch(
+                groupId,
+                command.coachId(),
+                command.startDate(),
+                command.endDate(),
+                command.slots(),
+                ignoreIds
+        );
+
+        // 4. закрываем СТАРЫЙ batch
+        currentBatch.forEach(s -> s.setStatus(ScheduleStatus.CANCELLED));
+
+        // 5. создаём НОВЫЙ batch
+        List<GroupSchedule> newBatch = command.slots().stream()
+                .map(slot -> GroupSchedule.builder()
+                        .id(UUID.randomUUID())
+                        .groupId(groupId)
+                        .coachId(command.coachId())
+                        .dayOfWeek(slot.dayOfWeek())
+                        .startTime(slot.startTime())
+                        .endTime(slot.endTime())
+                        .startDate(command.startDate())
+                        .endDate(command.endDate())
+                        .scheduleType(command.type())
+                        .status(ScheduleStatus.ACTIVE)
+                        .build())
+                .toList();
+
+        groupScheduleRepository.saveAll(newBatch);
+    }
+
+    @Override
+    @Transactional
+    public void cancelScheduleFromDate(@NotNull UUID scheduleId, @NotNull LocalDate cancelFrom) {
         GroupSchedule groupSchedule = groupScheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new NotFoundException("Group schedule not found", scheduleId));
 
         if (cancelFrom.isBefore(groupSchedule.getStartDate())) {
-            throw new BadRequestException(
-                    "Cancel date is before schedule start",
-                    cancelFrom
-            );
+            throw new BadRequestException("Cancel date is before schedule start", cancelFrom);
         }
 
         groupSchedule.setEndDate(cancelFrom.minusDays(1));
@@ -105,14 +168,33 @@ public class GroupScheduleService implements GroupSchedulePort {
         if (groupSchedule.getEndDate().isBefore(groupSchedule.getStartDate())) {
             groupSchedule.setStatus(ScheduleStatus.CANCELLED);
         }
+    }
 
-        log.info("Schedule {} cancelled from {}", scheduleId, cancelFrom);
+    @Transactional
+    public void cancelScheduleBatch(
+            UUID groupId,
+            CancelScheduleBatchCommand command
+    ) {
+        List<GroupSchedule> batch =
+                groupScheduleRepository.findBatch(
+                        groupId,
+                        command.coachId(),
+                        command.type(),
+                        command.startDate(),
+                        command.endDate(),
+                        ScheduleStatus.ACTIVE
+                );
+
+        if (batch.isEmpty()) {
+            throw new NotFoundException("Schedule batch not found", command);
+        }
+
+        batch.forEach(s -> s.setStatus(ScheduleStatus.CANCELLED));
     }
 
     @Override
     @Transactional
     public void cancelGroupSchedules(@NotNull UUID groupId) {
-
         List<GroupSchedule> schedules =
                 groupScheduleRepository.findByGroupIdAndStatus(
                         groupId,
@@ -120,12 +202,6 @@ public class GroupScheduleService implements GroupSchedulePort {
                 );
 
         schedules.forEach(s -> s.setStatus(ScheduleStatus.CANCELLED));
-
-        log.info(
-                "Cancelled {} schedules for group {}",
-                schedules.size(),
-                groupId
-        );
     }
 
     @Transactional(readOnly = true)
@@ -155,112 +231,106 @@ public class GroupScheduleService implements GroupSchedulePort {
         return schedules.stream()
                 .flatMap(s -> {
                     LocalDate date = today;
-
-                    // ищем ближайшую дату, совпадающую с dayOfWeek
                     while (date.getDayOfWeek() != s.getDayOfWeek()) {
                         date = date.plusDays(1);
                     }
-
                     LocalDateTime dt = LocalDateTime.of(date, s.getStartTime());
-
-                    // если сегодня и уже прошло — берем следующую неделю
                     if (dt.isBefore(LocalDateTime.now())) {
                         dt = dt.plusWeeks(1);
                     }
-
                     return Stream.of(dt);
                 })
                 .min(LocalDateTime::compareTo)
                 .orElse(null);
     }
 
-    private void validateBatchCommand(@NotNull UUID groupId, @Valid GroupScheduleBatchCommand command) {
-        if (command.slots().isEmpty()) {
+    private void validateScheduleBatch(
+            UUID groupId,
+            UUID coachId,
+            LocalDate startDate,
+            LocalDate endDate,
+            List<DayScheduleSlot> slots,
+            List<UUID> ignoreScheduleIds
+    ) {
+        if (slots == null || slots.isEmpty()) {
             throw new BadRequestException("Schedule slots cannot be empty", groupId);
         }
 
-        if (command.startDate().isAfter(command.endDate())) {
-            throw new BadRequestException("Start date must be before end date", command.startDate(), command.endDate());
+        if (startDate.isAfter(endDate)) {
+            throw new BadRequestException("Start date must be before end date", startDate, endDate);
         }
 
-        for (DayScheduleSlot slot : command.slots()) {
+        for (DayScheduleSlot slot : slots) {
             if (slot.startTime().isAfter(slot.endTime())) {
-                throw new BadRequestException("Invalid time range for slot", slot.dayOfWeek());
+                throw new BadRequestException(
+                        "Invalid time range",
+                        slot.dayOfWeek(),
+                        slot.startTime(),
+                        slot.endTime()
+                );
             }
         }
 
-        validateNoInternalOverlaps(command);
-        validateNoOverlapsWithExisting(groupId, command);
-    }
-
-    private void validateNoInternalOverlaps(GroupScheduleBatchCommand command) {
-        List<DayScheduleSlot> slots = command.slots();
         for (int i = 0; i < slots.size(); i++) {
-            DayScheduleSlot slot1 = slots.get(i);
             for (int j = i + 1; j < slots.size(); j++) {
-                DayScheduleSlot slot2 = slots.get(j);
-                if (slot1.dayOfWeek() == slot2.dayOfWeek() &&
-                        timeOverlaps(slot1.startTime(), slot1.endTime(), slot2.startTime(), slot2.endTime())) {
-                    throw new BadRequestException("Overlapping schedule slots detected", slot1.dayOfWeek());
+                DayScheduleSlot a = slots.get(i);
+                DayScheduleSlot b = slots.get(j);
+                if (a.dayOfWeek() == b.dayOfWeek()
+                        && timeOverlaps(a.startTime(), a.endTime(), b.startTime(), b.endTime())) {
+                    throw new BadRequestException("Overlapping slots in schedule", a.dayOfWeek());
                 }
             }
         }
-    }
 
-    private void validateNoOverlapsWithExisting(
-            UUID groupId,
-            GroupScheduleBatchCommand command
-    ) {
-        for (DayScheduleSlot slot : command.slots()) {
-            List<GroupSchedule> existingSchedules = groupScheduleRepository
-                    .findByGroupIdAndDayOfWeekAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
-                            groupId,
-                            slot.dayOfWeek(),
-                            ScheduleStatus.ACTIVE,
-                            command.endDate(),
-                            command.startDate()
-                    );
+        for (DayScheduleSlot slot : slots) {
+            List<GroupSchedule> existing =
+                    groupScheduleRepository
+                            .findByGroupIdAndDayOfWeekAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                                    groupId,
+                                    slot.dayOfWeek(),
+                                    ScheduleStatus.ACTIVE,
+                                    endDate,
+                                    startDate
+                            );
 
-            for (GroupSchedule existingSchedule : existingSchedules) {
+            for (GroupSchedule ex : existing) {
+                if (ignoreScheduleIds.contains(ex.getId())) {
+                    continue;
+                }
                 if (timeOverlaps(
-                        existingSchedule.getStartTime(), existingSchedule.getEndTime(),
-                        slot.startTime(), slot.endTime()
+                        ex.getStartTime(),
+                        ex.getEndTime(),
+                        slot.startTime(),
+                        slot.endTime()
                 )) {
                     throw new BadRequestException(
-                            "Schedule conflicts with existing schedule",
-                            slot.dayOfWeek(),
-                            existingSchedule.getStartTime(),
-                            existingSchedule.getEndTime()
+                            "Schedule conflicts with existing group schedule",
+                            Map.of(
+                                    "dayOfWeek", slot.dayOfWeek(),
+                                    "existing", ex.getStartTime() + "-" + ex.getEndTime(),
+                                    "requested", slot.startTime() + "-" + slot.endTime()
+                            )
                     );
                 }
             }
         }
-    }
 
-    private void validateCoachAvailability(
-            UUID groupId,
-            GroupScheduleBatchCommand command
-    ) {
-        final UUID coachId = command.coachId();
-
-        for (DayScheduleSlot slot : command.slots()) {
-            List<GroupSchedule> existingSchedules =
+        for (DayScheduleSlot slot : slots) {
+            List<GroupSchedule> conflicts =
                     groupScheduleRepository.findCoachConflicts(
                             coachId,
                             slot.dayOfWeek(),
-                            command.startDate(),
-                            command.endDate()
+                            startDate,
+                            endDate
                     );
 
-            for (GroupSchedule existingSchedule : existingSchedules) {
-                // если обновляем расписание этой же группы — пропускаем
-                if (existingSchedule.getGroupId().equals(groupId)) {
+            for (GroupSchedule ex : conflicts) {
+                if (ignoreScheduleIds.contains(ex.getId())) {
                     continue;
                 }
-
                 if (timeOverlaps(
-                        existingSchedule.getStartTime(),
-                        existingSchedule.getEndTime(),
+                        ex.getStartTime(),
+                        ex.getEndTime(),
                         slot.startTime(),
                         slot.endTime()
                 )) {
@@ -268,10 +338,9 @@ public class GroupScheduleService implements GroupSchedulePort {
                             "Coach has schedule conflict",
                             Map.of(
                                     "coachId", coachId,
+                                    "groupId", ex.getGroupId(),
                                     "dayOfWeek", slot.dayOfWeek(),
-                                    "existingGroupId", existingSchedule.getGroupId(),
-                                    "existingTime", existingSchedule.getStartTime() + " - " + existingSchedule.getEndTime(),
-                                    "requestedTime", slot.startTime() + " - " + slot.endTime()
+                                    "existing", ex.getStartTime() + "-" + ex.getEndTime()
                             )
                     );
                 }
@@ -279,10 +348,7 @@ public class GroupScheduleService implements GroupSchedulePort {
         }
     }
 
-    private boolean timeOverlaps(
-            LocalTime s1, LocalTime e1,
-            LocalTime s2, LocalTime e2
-    ) {
+    private boolean timeOverlaps(LocalTime s1, LocalTime e1, LocalTime s2, LocalTime e2) {
         return s1.isBefore(e2) && s2.isBefore(e1);
     }
 }

@@ -1,12 +1,10 @@
 package kz.edu.soccerhub.admin.api;
 
 import jakarta.validation.Valid;
-import kz.edu.soccerhub.admin.application.dto.group.AdminAssignCoachToGroupInput;
-import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCoachOutput;
-import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCreateInput;
-import kz.edu.soccerhub.admin.application.dto.group.AdminGroupStatusChangeInput;
+import kz.edu.soccerhub.admin.application.dto.group.*;
 import kz.edu.soccerhub.admin.application.service.AdminGroupService;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
+import kz.edu.soccerhub.common.dto.group.UpdateScheduleBatchCommand;
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -123,6 +121,29 @@ public class AdminGroupController {
         UUID adminId = UUID.fromString(jwt.getSubject());
 
         adminGroupService.cancelSchedule(adminId, scheduleId);
+    }
+
+    @DeleteMapping("/{groupId}/schedule")
+    public void cancelGroupScheduleBatch(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @Valid @RequestBody AdminCancelScheduleBatchInput input
+    )  {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+
+        adminGroupService.cancelScheduleBatch(adminId, groupId, input);
+    }
+
+    @PutMapping("/{groupId}/schedule")
+    public ResponseEntity<Void> updateSchedule(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @Valid @RequestBody UpdateScheduleBatchCommand command
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+
+        adminGroupService.updateGroupSchedule(adminId, groupId, command);
+        return ResponseEntity.noContent().build();
     }
 
     /* ================= AVAILABILITY ================= */

@@ -3,6 +3,7 @@ package kz.edu.soccerhub.organization.domain.repository;
 import jakarta.validation.constraints.NotNull;
 import kz.edu.soccerhub.organization.domain.model.GroupSchedule;
 import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
+import kz.edu.soccerhub.organization.domain.model.enums.ScheduleType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -50,6 +51,24 @@ public interface GroupScheduleRepository extends
             ScheduleStatus status,
             LocalDate from,
             LocalDate to
+    );
+
+    @Query("""
+        select s from GroupSchedule s
+        where s.groupId = :groupId
+          and s.coachId = :coachId
+          and s.scheduleType = :type
+          and s.startDate = :startDate
+          and s.endDate = :endDate
+          and s.status = :status
+    """)
+    List<GroupSchedule> findBatch(
+            UUID groupId,
+            UUID coachId,
+            ScheduleType type,
+            LocalDate startDate,
+            LocalDate endDate,
+            ScheduleStatus status
     );
 
     @Query("""

@@ -1,11 +1,10 @@
 package kz.edu.soccerhub.admin.application.service;
 
+import kz.edu.soccerhub.admin.application.dto.group.AdminCancelScheduleBatchInput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCoachOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCreateInput;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
-import kz.edu.soccerhub.common.dto.group.CreateGroupCommand;
-import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
-import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
+import kz.edu.soccerhub.common.dto.group.*;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
@@ -185,6 +184,39 @@ public class AdminGroupService {
         log.info(
                 "Admin {} cancelled schedule {}",
                 adminId, scheduleId
+        );
+    }
+
+    @Transactional
+    public void cancelScheduleBatch(UUID adminId, UUID groupId, AdminCancelScheduleBatchInput input) {
+        verifyAdmin(adminId);
+
+        CancelScheduleBatchCommand command = CancelScheduleBatchCommand.builder()
+                .coachId(input.coachId())
+                .startDate(input.startDate())
+                .endDate(input.endDate())
+                .type(input.type())
+                .build();
+
+        groupSchedulePort.cancelScheduleBatch(groupId, command);
+
+        log.info("Cancelled schedule batch for group {} by admin {}", groupId, adminId);
+    }
+
+    @Transactional
+    public void updateGroupSchedule(
+            UUID adminId,
+            UUID groupId,
+            UpdateScheduleBatchCommand command
+    ) {
+        verifyAdmin(adminId);
+        verifyAdminBranchAccess(adminId, groupPort.getGroupById(groupId).branchId());
+
+        groupSchedulePort.updateScheduleBatch(groupId, command);
+
+        log.info(
+                "Admin {} updated schedule for group {}",
+                adminId, groupId
         );
     }
 
