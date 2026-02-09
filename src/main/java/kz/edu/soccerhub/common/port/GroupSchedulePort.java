@@ -16,6 +16,8 @@ public interface GroupSchedulePort {
 
     void cancelSchedule(UUID scheduleId);
 
+    void activateSchedule(UUID scheduleId);
+
     void updateScheduleBatch(UUID groupId, UpdateScheduleBatchCommand command);
 
     void cancelScheduleFromDate(UUID scheduleId, LocalDate from);

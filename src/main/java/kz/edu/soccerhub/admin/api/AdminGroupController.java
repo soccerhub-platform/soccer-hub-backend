@@ -113,7 +113,7 @@ public class AdminGroupController {
         );
     }
 
-    @DeleteMapping("/schedule/{scheduleId}")
+    @PatchMapping("/schedule/{scheduleId}/cancel")
     public void cancelSchedule(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID scheduleId
@@ -123,12 +123,23 @@ public class AdminGroupController {
         adminGroupService.cancelSchedule(adminId, scheduleId);
     }
 
+    @PatchMapping("/schedule/{scheduleId}/activate")
+    public void activateSchedule(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID scheduleId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+
+        adminGroupService.activateSchedule(adminId, scheduleId);
+    }
+
     @DeleteMapping("/{groupId}/schedule")
     public void cancelGroupScheduleBatch(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID groupId,
             @Valid @RequestBody AdminCancelScheduleBatchInput input
     )  {
+
         UUID adminId = UUID.fromString(jwt.getSubject());
 
         adminGroupService.cancelScheduleBatch(adminId, groupId, input);

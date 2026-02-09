@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.coach.application;
+package kz.edu.soccerhub.coach.api;
 
 import kz.edu.soccerhub.coach.application.service.CoachService;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;

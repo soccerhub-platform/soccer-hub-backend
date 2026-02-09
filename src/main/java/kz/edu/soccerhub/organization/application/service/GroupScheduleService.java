@@ -87,6 +87,22 @@ public class GroupScheduleService implements GroupSchedulePort {
 
     @Override
     @Transactional
+    public void activateSchedule(UUID scheduleId) {
+        GroupSchedule groupSchedule = groupScheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new NotFoundException("Group schedule not found", scheduleId));
+
+        if (groupSchedule.getStatus() == ScheduleStatus.ACTIVE) {
+            return;
+        }
+        if (groupSchedule.getStatus() == ScheduleStatus.DELETED) {
+            throw new BadRequestException("Schedule has been deleted");
+        }
+
+        groupSchedule.setStatus(ScheduleStatus.ACTIVE);
+    }
+
+    @Override
+    @Transactional
     public void updateScheduleBatch(
             UUID groupId,
             UpdateScheduleBatchCommand command
@@ -132,7 +148,7 @@ public class GroupScheduleService implements GroupSchedulePort {
         );
 
         // 4. закрываем СТАРЫЙ batch
-        currentBatch.forEach(s -> s.setStatus(ScheduleStatus.CANCELLED));
+        currentBatch.forEach(s -> s.setStatus(ScheduleStatus.DELETED));
 
         // 5. создаём НОВЫЙ batch
         List<GroupSchedule> newBatch = command.slots().stream()

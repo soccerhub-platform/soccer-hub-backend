@@ -1,11 +1,8 @@
 package kz.edu.soccerhub.admin.api;
 
 import jakarta.validation.Valid;
+import kz.edu.soccerhub.admin.application.dto.coach.*;
 import kz.edu.soccerhub.admin.application.service.AdminCoachService;
-import kz.edu.soccerhub.admin.application.dto.coach.AdminCoachAssignBranchInput;
-import kz.edu.soccerhub.admin.application.dto.coach.AdminCoachUnassignBranchInput;
-import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachInput;
-import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -69,6 +66,15 @@ public class AdminCoachController {
         final UUID adminId = UUID.fromString(jwt.getSubject());
         Page<CoachDto> output = adminCoachService.getCoachByBranchId(adminId, branchId, pageable);
         return ResponseEntity.ok(output);
+    }
+
+    @PatchMapping(value = "/{coachId}/status")
+    public ResponseEntity<Void> updateStatusOfCoach(@AuthenticationPrincipal Jwt jwt,
+                                                    @PathVariable("coachId") UUID coachId,
+                                                    @RequestBody AdminCoachUpdateCoachStatusInput input) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        adminCoachService.updateCoachStatus(adminId, coachId, input);
+        return ResponseEntity.noContent().build();
     }
 
 }

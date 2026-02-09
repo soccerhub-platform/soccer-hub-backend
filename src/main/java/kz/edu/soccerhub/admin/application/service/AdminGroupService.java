@@ -188,6 +188,18 @@ public class AdminGroupService {
     }
 
     @Transactional
+    public void activateSchedule(UUID adminId, UUID scheduleId) {
+        verifyAdmin(adminId);
+
+        groupSchedulePort.activateSchedule(scheduleId);
+
+        log.info(
+                "Admin {} activated schedule {}",
+                adminId, scheduleId
+        );
+    }
+
+    @Transactional
     public void cancelScheduleBatch(UUID adminId, UUID groupId, AdminCancelScheduleBatchInput input) {
         verifyAdmin(adminId);
 

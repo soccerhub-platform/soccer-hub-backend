@@ -153,6 +153,25 @@ public class AuthService implements AuthPort {
         tokenService.revokeAllRefreshTokens(userId);
     }
 
+    @Override
+    public void disableUser(UUID userId) {
+        AppUserEntity user = userRepo.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
+
+        user.setEnabled(false);
+        userRepo.save(user);
+        tokenService.revokeAllRefreshTokens(userId);
+    }
+
+    @Override
+    public void enableUser(UUID userId) {
+        AppUserEntity user = userRepo.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
+
+        user.setEnabled(true);
+        userRepo.save(user);
+    }
+
     // -------------------- Helpers --------------------
 
     private AppUserEntity buildAppUser(String email, String rawPassword, Set<Role> roles, boolean requireToChangePassword) {

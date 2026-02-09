@@ -179,6 +179,12 @@ public class DispatcherAdminService {
         }
 
         adminPort.changeStatus(adminId, input.active());
+
+        if (!input.active()) {
+            authPort.disableUser(adminId);
+        } else {
+            authPort.enableUser(adminId);
+        }
     }
 
     @Transactional

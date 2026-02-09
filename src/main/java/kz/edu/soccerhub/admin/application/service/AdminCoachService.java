@@ -1,5 +1,6 @@
 package kz.edu.soccerhub.admin.application.service;
 
+import kz.edu.soccerhub.admin.application.dto.coach.AdminCoachUpdateCoachStatusInput;
 import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachInput;
 import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachOutput;
 import kz.edu.soccerhub.common.domain.enums.Role;
@@ -105,5 +106,17 @@ public class AdminCoachService {
         }
 
         return coachPort.getCoaches(Set.of(branchId), pageable);
+    }
+
+    @Transactional
+    public void updateCoachStatus(UUID adminId, UUID coachId, AdminCoachUpdateCoachStatusInput input) {
+        adminService.findById(adminId)
+                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+
+        switch (input.status()) {
+            case ACTIVE -> coachPort.enableCoach(coachId);
+            case INACTIVE -> coachPort.disableCoach(coachId);
+            default -> throw new BadRequestException("Invalid coach status", input.status());
+        }
     }
 }

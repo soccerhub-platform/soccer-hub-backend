@@ -42,9 +42,12 @@ public class CoachService implements CoachPort {
 
     @Transactional
     public void assignToBranch(@NotNull UUID coachId, @NotNull UUID branchId) {
-        boolean exists = coachProfileRepository.existsById(coachId);
-        if (!exists) {
+        Optional<CoachProfile> coachProfileOptional = coachProfileRepository.findById(coachId);
+        if (coachProfileOptional.isEmpty()) {
             throw new NotFoundException("Coach not found", coachId);
+        }
+        if (coachProfileOptional.get().getStatus() != CoachStatus.ACTIVE) {
+            throw new NotFoundException("Coach is not active", coachId);
         }
         coachBranchService.assignToBranch(coachId, branchId);
     }
@@ -72,6 +75,7 @@ public class CoachService implements CoachPort {
                 .collect(Collectors.toList());
     }
 
+    @Override
     public boolean verifyCoach(UUID coachId) {
         return coachProfileRepository.existsById(coachId);
     }
@@ -88,6 +92,19 @@ public class CoachService implements CoachPort {
         return coachProfileRepository
                 .findAccessibleCoaches(branchIds, pageable)
                 .map(this::toDto);
+    }
+
+    @Override
+    @Transactional
+    public void enableCoach(UUID coachId) {
+        coachProfileRepository.findById(coachId)
+                .ifPresent(coachProfile -> coachProfile.setStatus(CoachStatus.ACTIVE));
+    }
+
+    @Override
+    public void disableCoach(UUID coachId) {
+        coachProfileRepository.findById(coachId)
+                .ifPresent(coachProfile -> coachProfile.setStatus(CoachStatus.INACTIVE));
     }
 
     private CoachDto toDto(@NotNull CoachProfile coachProfile) {

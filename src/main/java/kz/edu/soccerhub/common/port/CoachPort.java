@@ -19,4 +19,6 @@ public interface CoachPort {
     CoachDto getCoach(UUID coachId);
     Collection<CoachDto> getCoaches(Set<UUID> coachIds);
     boolean verifyCoach(UUID coachId);
+    void enableCoach(UUID coachId);
+    void disableCoach(UUID coachId);
 }
