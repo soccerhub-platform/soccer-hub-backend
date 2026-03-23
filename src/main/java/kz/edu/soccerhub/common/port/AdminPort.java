@@ -20,4 +20,5 @@ public interface AdminPort {
     void assignToBranch(@NotNull UUID adminId, @NotNull(message = "Branch ID cannot be null") UUID branchId);
     void unassignFromBranch(@NotNull UUID adminId, @NotNull(message = "Branch ID cannot be null") UUID branchId);
     void updateAdminInfo(@NotNull UUID adminId, @NotNull AdminUpdateCommand build);
+    boolean verifyAdmin(UUID adminId);
 }

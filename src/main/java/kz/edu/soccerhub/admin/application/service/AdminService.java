@@ -139,6 +139,11 @@ public class AdminService implements AdminPort {
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
     }
 
+    @Override
+    public boolean verifyAdmin(@NotNull UUID adminId) {
+        return adminProfileRepository.existsById(adminId);
+    }
+
     private AdminDto toDto(@NotNull AdminProfile adminProfileEntity) {
         return AdminDto.builder()
                 .id(adminProfileEntity.getId())

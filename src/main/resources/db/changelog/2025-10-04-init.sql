@@ -516,3 +516,71 @@ CREATE INDEX idx_attendance_player ON attendance(player_id);
 CREATE INDEX idx_attendance_section ON attendance(section_id);
 CREATE INDEX idx_attendance_date ON attendance(attended_date);
 CREATE INDEX idx_attendance_status ON attendance(status);
+
+-- ============================================
+-- CRM LEADS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS leads
+(
+    id                UUID PRIMARY KEY,
+    parent_name       VARCHAR(255) NOT NULL,
+    phone             VARCHAR(20)  NOT NULL,
+    email             VARCHAR(255),
+    child_name        VARCHAR(255),
+    child_age         SMALLINT,
+    source            VARCHAR(50)  NOT NULL,
+    status            VARCHAR(50)  NOT NULL,
+    assigned_admin_id UUID,
+    branch_id         UUID         NOT NULL,
+    comment           TEXT,
+    qualification_data TEXT,
+    trial_group_id UUID,
+    trial_coach_id UUID,
+    trial_date TIMESTAMP,
+    created_at        TIMESTAMP DEFAULT NOW(),
+    updated_at        TIMESTAMP DEFAULT NOW(),
+    created_by        VARCHAR,
+    modified_by       VARCHAR,
+
+    CONSTRAINT fk_leads_assigned_admin FOREIGN KEY (assigned_admin_id)
+        REFERENCES admin_profiles (id),
+
+    CONSTRAINT fk_leads_branch FOREIGN KEY (branch_id)
+        REFERENCES branches (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);
+CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
+CREATE INDEX IF NOT EXISTS idx_leads_assigned_admin ON leads(assigned_admin_id);
+CREATE INDEX IF NOT EXISTS idx_leads_branch ON leads(branch_id);
+CREATE INDEX IF NOT EXISTS idx_leads_status_phone ON leads(status, phone);
+
+-- ============================================
+-- CRM LEAD ACTIVITIES
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS lead_activities
+(
+    id                UUID PRIMARY KEY,
+    lead_id           UUID        NOT NULL,
+    activity_type     VARCHAR(64) NOT NULL,
+    event             VARCHAR(64),
+    from_status       VARCHAR(64),
+    to_status         VARCHAR(64),
+    assigned_admin_id UUID,
+    details           TEXT,
+    created_at        TIMESTAMP DEFAULT NOW(),
+    updated_at        TIMESTAMP DEFAULT NOW(),
+    created_by        VARCHAR,
+    modified_by       VARCHAR,
+
+    CONSTRAINT fk_lead_activities_lead FOREIGN KEY (lead_id)
+        REFERENCES leads (id) ON DELETE CASCADE,
+
+    CONSTRAINT fk_lead_activities_admin FOREIGN KEY (assigned_admin_id)
+        REFERENCES admin_profiles (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_activities_lead ON lead_activities(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_activities_type ON lead_activities(activity_type);
