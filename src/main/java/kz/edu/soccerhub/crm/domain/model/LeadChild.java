@@ -6,6 +6,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import lombok.AccessLevel;
@@ -37,6 +38,13 @@ public class LeadChild extends AbstractAuditableEntity {
 
     @Column(name = "child_age", nullable = false)
     private Integer childAge;
+
+    @PrePersist
+    private void ensureId() {
+        if (id == null) {
+            id = UUID.randomUUID();
+        }
+    }
 
 }
 

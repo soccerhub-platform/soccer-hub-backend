@@ -8,11 +8,15 @@ import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupSchedulePort;
 import kz.edu.soccerhub.dispatcher.application.service.PasswordGenerator;
+import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
+import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -20,6 +24,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -33,6 +39,7 @@ public class AdminCoachService {
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
     private final PasswordGenerator passwordGenerator;
+    private final GroupSchedulePort groupSchedulePort;
 
     @Transactional
     public AdminCreateCoachOutput createCoach(UUID adminId, AdminCreateCoachInput input) {
@@ -118,5 +125,28 @@ public class AdminCoachService {
             case INACTIVE -> coachPort.disableCoach(coachId);
             default -> throw new BadRequestException("Invalid coach status", input.status());
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<AvailableSlotOutput> getCoachAvailableSlots(UUID adminId, UUID coachId, LocalDate date) {
+        adminService.findById(adminId)
+                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+
+        if (!coachPort.verifyCoach(coachId)) {
+            throw new NotFoundException("Coach not found", coachId);
+        }
+
+        return groupSchedulePort.getSchedules(
+                        ScheduleSearchCriteria.builder()
+                                .coachId(coachId)
+                                .fromDate(date)
+                                .toDate(date)
+                                .dayOfWeek(date.getDayOfWeek())
+                                .status(ScheduleStatus.ACTIVE)
+                                .build()
+                ).stream()
+                .map(slot -> new AvailableSlotOutput(date, slot.startTime(), slot.endTime()))
+                .distinct()
+                .toList();
     }
 }

@@ -13,6 +13,7 @@ import java.util.UUID;
 public record GroupScheduleBatchCommand(
         @NotNull(message = "Coach identification is mandatory")
         UUID coachId,
+        UUID locationId,
         @NotNull(message = "Start date is mandatory")
         LocalDate startDate,
         @NotNull(message = "End date is mandatory")

@@ -3,7 +3,7 @@ package kz.edu.soccerhub.crm.application.mapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
-import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
+import kz.edu.soccerhub.common.dto.lead.LeadChildOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 
@@ -35,9 +35,9 @@ public final class LeadMapper {
         );
     }
 
-    private static List<LeadChildInput> mapChildren(Lead lead) {
+    private static List<LeadChildOutput> mapChildren(Lead lead) {
         return lead.getChildren().stream()
-                .map(child -> new LeadChildInput(child.getChildName(), child.getChildAge()))
+                .map(child -> new LeadChildOutput(child.getId(), child.getChildName(), child.getChildAge()))
                 .toList();
     }
 

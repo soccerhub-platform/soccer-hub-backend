@@ -8,11 +8,13 @@ import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
+import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupSchedulePort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.application.mapper.LeadMapper;
@@ -21,6 +23,8 @@ import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import kz.edu.soccerhub.crm.infrastructure.LeadSpecification;
+import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
+import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import kz.edu.soccerhub.crm.state.LeadEvent;
 import kz.edu.soccerhub.crm.state.LeadStateMachineService;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +41,7 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -50,6 +55,7 @@ public class LeadService implements LeadPort {
     private final ClientPort clientPort;
     private final GroupPort groupPort;
     private final CoachPort coachPort;
+    private final GroupSchedulePort groupSchedulePort;
     private final LeadActivityService leadActivityService;
     private final ObjectMapper objectMapper;
 
@@ -113,17 +119,39 @@ public class LeadService implements LeadPort {
 
         Lead lead = findById(leadId);
         validateChildBelongsToLead(lead, input.childId());
-        validateGroupAndCoach(lead, input.groupId(), input.coachId());
+
+        List<GroupScheduleDto> groupSlots = input.groupId() == null
+                ? List.of()
+                : findActiveSlotsByGroup(input.groupId(), input.slot().date());
+        List<GroupScheduleDto> coachSlots = input.coachId() == null
+                ? List.of()
+                : findActiveSlotsByCoach(input.coachId(), input.slot().date());
+
+        GroupScheduleDto groupSlot = input.groupId() == null
+                ? null
+                : findMatchingSlot(groupSlots, input.slot().startTime(), "Group slot not found for provided date/start time");
+        GroupScheduleDto coachSlot = input.coachId() == null
+                ? null
+                : findMatchingSlot(coachSlots, input.slot().startTime(), "Coach slot not found for provided date/start time");
+
+        UUID resolvedGroupId = resolveGroupId(lead, input.groupId(), coachSlot);
+        UUID resolvedCoachId = resolveCoachId(input.coachId(), groupSlot);
+
+        validateGroupAndCoach(lead, resolvedGroupId, resolvedCoachId);
+        ensureNoScheduleConflict(groupSlot, coachSlot, resolvedGroupId, resolvedCoachId);
+
+        GroupScheduleDto selectedSlot = groupSlot != null ? groupSlot : coachSlot;
+        int durationMinutes = (int) java.time.Duration.between(selectedSlot.startTime(), selectedSlot.endTime()).toMinutes();
 
         LeadStatus previousStatus = lead.getStatus();
 
-        LocalDateTime trialDateTime = LocalDateTime.of(input.trialDate(), input.startTime());
+        LocalDateTime trialDateTime = LocalDateTime.of(input.slot().date(), input.slot().startTime());
         lead.scheduleTrial(
                 input.childId(),
-                input.groupId(),
-                input.coachId(),
+                resolvedGroupId,
+                resolvedCoachId,
                 trialDateTime,
-                input.durationMinutes(),
+                durationMinutes,
                 trim(input.comment())
         );
         LeadStatus newStatus = stateMachineService.process(leadId, previousStatus, LeadEvent.SCHEDULE_TRIAL);
@@ -369,20 +397,14 @@ public class LeadService implements LeadPort {
         if (input.groupId() == null && input.coachId() == null) {
             throw new BadRequestException("Either group id or coach id is required");
         }
-        if (input.trialDate() == null) {
-            throw new BadRequestException("Trial date is required");
-        }
-        if (input.startTime() == null) {
-            throw new BadRequestException("Start time is required");
-        }
-        if (input.durationMinutes() != null && input.durationMinutes() <= 0) {
-            throw new BadRequestException("Duration minutes must be greater than 0");
+        if (input.slot() == null || input.slot().date() == null || input.slot().startTime() == null) {
+            throw new BadRequestException("Slot date and start time are required");
         }
     }
 
     private void validateChildBelongsToLead(Lead lead, UUID childId) {
         boolean exists = lead.getChildren().stream()
-                .anyMatch(child -> child.getId().equals(childId));
+                .anyMatch(child -> Objects.equals(child.getId(), childId));
 
         if (!exists) {
             throw new BadRequestException("Child does not belong to lead", Map.of("leadId", lead.getId(), "childId", childId));
@@ -399,6 +421,80 @@ public class LeadService implements LeadPort {
 
         if (coachId != null && !coachPort.verifyCoach(coachId)) {
             throw new NotFoundException("Coach not found", Map.of("coachId", coachId));
+        }
+    }
+
+    private List<GroupScheduleDto> findActiveSlotsByGroup(UUID groupId, java.time.LocalDate date) {
+        return groupSchedulePort.getSchedules(
+                ScheduleSearchCriteria.builder()
+                        .groupId(groupId)
+                        .fromDate(date)
+                        .toDate(date)
+                        .dayOfWeek(date.getDayOfWeek())
+                        .status(ScheduleStatus.ACTIVE)
+                        .build()
+        );
+    }
+
+    private List<GroupScheduleDto> findActiveSlotsByCoach(UUID coachId, java.time.LocalDate date) {
+        return groupSchedulePort.getSchedules(
+                ScheduleSearchCriteria.builder()
+                        .coachId(coachId)
+                        .fromDate(date)
+                        .toDate(date)
+                        .dayOfWeek(date.getDayOfWeek())
+                        .status(ScheduleStatus.ACTIVE)
+                        .build()
+        );
+    }
+
+    private GroupScheduleDto findMatchingSlot(List<GroupScheduleDto> slots, java.time.LocalTime startTime, String message) {
+        return slots.stream()
+                .filter(slot -> slot.startTime().equals(startTime))
+                .findFirst()
+                .orElseThrow(() -> new BadRequestException(message));
+    }
+
+    private UUID resolveGroupId(Lead lead, UUID requestedGroupId, GroupScheduleDto coachSlot) {
+        if (requestedGroupId != null) {
+            return requestedGroupId;
+        }
+        if (coachSlot == null) {
+            throw new BadRequestException("Unable to resolve group from slot");
+        }
+        var group = groupPort.getGroupById(coachSlot.groupId());
+        if (!lead.getBranchId().equals(group.branchId())) {
+            throw new BadRequestException("Group does not belong to lead branch", Map.of("branchId", lead.getBranchId(), "groupId", coachSlot.groupId()));
+        }
+        return coachSlot.groupId();
+    }
+
+    private UUID resolveCoachId(UUID requestedCoachId, GroupScheduleDto groupSlot) {
+        if (requestedCoachId != null) {
+            return requestedCoachId;
+        }
+        if (groupSlot == null) {
+            throw new BadRequestException("Unable to resolve coach from slot");
+        }
+        return groupSlot.coachId();
+    }
+
+    private void ensureNoScheduleConflict(
+            GroupScheduleDto groupSlot,
+            GroupScheduleDto coachSlot,
+            UUID resolvedGroupId,
+            UUID resolvedCoachId
+    ) {
+        if (groupSlot == null || coachSlot == null) {
+            return;
+        }
+
+        if (!groupSlot.startTime().equals(coachSlot.startTime()) || !groupSlot.endTime().equals(coachSlot.endTime())) {
+            throw new BadRequestException("Selected group and coach slots conflict");
+        }
+
+        if (!groupSlot.coachId().equals(resolvedCoachId) || !coachSlot.groupId().equals(resolvedGroupId)) {
+            throw new BadRequestException("Coach and group are not available in the same schedule slot");
         }
     }
 

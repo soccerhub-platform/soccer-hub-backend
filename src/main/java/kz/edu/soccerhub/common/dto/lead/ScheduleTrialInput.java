@@ -1,10 +1,7 @@
 package kz.edu.soccerhub.common.dto.lead;
 
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.AssertTrue;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.UUID;
 
 public record ScheduleTrialInput(
@@ -15,19 +12,10 @@ public record ScheduleTrialInput(
 
         UUID coachId,
 
-        @NotNull(message = "Trial date is required")
-        LocalDate trialDate,
-
-        @NotNull(message = "Start time is required")
-        LocalTime startTime,
-
-        Integer durationMinutes,
+        @NotNull(message = "Slot is required")
+        TrialSlotInput slot,
 
         String comment
 ) {
-    @AssertTrue(message = "Either groupId or coachId is required")
-    public boolean hasGroupOrCoach() {
-        return groupId != null || coachId != null;
-    }
 }
 

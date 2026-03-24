@@ -381,7 +381,7 @@ CREATE TABLE IF NOT EXISTS group_schedules
     id              UUID PRIMARY KEY,
     group_id        UUID NOT NULL,
     coach_id        UUID NOT NULL,
-    location_id     UUID NOT NULL,
+    location_id     UUID,
 
     day_of_week    VARCHAR NOT NULL,
     start_time      TIME NOT NULL,

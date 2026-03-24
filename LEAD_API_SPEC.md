@@ -164,16 +164,61 @@
 
 ```json
 {
+  "childId": "44444444-4444-4444-4444-444444444444",
   "groupId": "22222222-2222-2222-2222-222222222222",
   "coachId": "33333333-3333-3333-3333-333333333333",
-  "trialDate": "2026-03-30T18:00:00"
+  "slot": {
+    "date": "2026-03-30",
+    "startTime": "18:00:00"
+  },
+  "comment": "First trial for child"
 }
 ```
 
 - Response: `204 No Content`
 - Behavior:
-  - saves trial details
+  - validates lead exists
+  - validates `childId` belongs to `lead.children[].id`
+  - validates slot exists in schedule
+  - validates coach/group availability and conflicts
+  - attaches trial to existing schedule slot
   - applies state transition event `SCHEDULE_TRIAL`
+
+---
+
+### `GET /admin/groups/{groupId}/available-slots?date=YYYY-MM-DD`
+- Auth: `ADMIN`
+- Query params:
+  - `date` (required, `YYYY-MM-DD`)
+- Response: `200 OK` (`List<AvailableSlotOutput>`)
+
+```json
+[
+  {
+    "date": "2026-03-30",
+    "startTime": "18:00:00",
+    "endTime": "19:00:00"
+  }
+]
+```
+
+---
+
+### `GET /admin/coaches/{coachId}/available-slots?date=YYYY-MM-DD`
+- Auth: `ADMIN`
+- Query params:
+  - `date` (required, `YYYY-MM-DD`)
+- Response: `200 OK` (`List<AvailableSlotOutput>`)
+
+```json
+[
+  {
+    "date": "2026-03-30",
+    "startTime": "18:00:00",
+    "endTime": "19:00:00"
+  }
+]
+```
 
 ---
 
@@ -244,8 +289,8 @@ Allowed values (based on state machine):
 
 ## Status transitions
 
-- Generic transition service method exists (`processEvent`), but **no public Lead event endpoint is currently exposed**.
 - Current transitions are triggered by dedicated endpoints:
+  - `events` -> any allowed transition by state machine event
   - `qualify` -> `QUALIFY`
   - `trial` -> `SCHEDULE_TRIAL`
 
@@ -275,6 +320,7 @@ Current `LeadOutput` fields returned by API:
   "qualificationData": {},
   "children": [
     {
+      "id": "UUID",
       "childName": "string",
       "childAge": 10
     }
@@ -287,6 +333,7 @@ Current `LeadOutput` fields returned by API:
 Requested fields vs current response:
 
 - Present now: `id`, `parentName`, `phone`, `email`, `children`, `status`, `assignedAdminId`, `createdAt`
+- `children` now includes stable `id` for trial scheduling payload `childId`
 - In domain but not exposed in `LeadOutput` yet: `branchId`, `trialDate`, `clientId`, `preferredDays`, `experience`, `notes`
 
 ---
@@ -324,7 +371,12 @@ Current REST-triggered transitions:
 3. Qualification required before trial:
    - enforced by state machine transition rules.
 
-4. Children required before conversion:
+4. Trial slot requirements:
+   - `childId`, `slot.date`, `slot.startTime` are required.
+   - at least one of `groupId` or `coachId` is required.
+   - selected slot must exist and be available.
+
+5. Children required before conversion:
    - `isReadyForConversion()` requires non-empty children with valid `childName` and `childAge`.
    - legacy fallback can populate children from `childName`/`childAge` when needed.
 
@@ -379,6 +431,9 @@ Current REST-triggered transitions:
    - `PATCH /admin/leads/{leadId}/qualify`
 
 4. Schedule trial
+   - load candidate slots:
+     - `GET /admin/groups/{groupId}/available-slots?date=...`
+     - `GET /admin/coaches/{coachId}/available-slots?date=...`
    - `POST /admin/leads/{leadId}/trial`
 
 5. Move lead status via event endpoint
@@ -409,6 +464,7 @@ Current REST-triggered transitions:
 ## 8) Notes for frontend
 
 - Prefer `children` over legacy `childName/childAge`.
+- For trial scheduling, always use `children[].id` from `LeadOutput` as request `childId`.
 - Use `GET /leads/kanban` as default Kanban source for shared role access.
 - Expect validation errors (`400`) for invalid transitions/payloads.
 - Expect `404` for missing leads.

@@ -4,13 +4,16 @@ import kz.edu.soccerhub.admin.application.dto.group.AdminCancelScheduleBatchInpu
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCoachOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCreateInput;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
 import kz.edu.soccerhub.common.dto.group.*;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
+import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
+import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -244,6 +247,29 @@ public class AdminGroupService {
         verifyAdmin(adminId);
 
         return coachAvailabilityPort.getCoachAvailability(coachId, from, to);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AvailableSlotOutput> getGroupAvailableSlots(
+            UUID adminId,
+            UUID groupId,
+            LocalDate date
+    ) {
+        verifyAdmin(adminId);
+        verifyAdminBranchAccess(adminId, groupPort.getGroupById(groupId).branchId());
+
+        return groupSchedulePort.getSchedules(
+                        ScheduleSearchCriteria.builder()
+                                .groupId(groupId)
+                                .fromDate(date)
+                                .toDate(date)
+                                .dayOfWeek(date.getDayOfWeek())
+                                .status(ScheduleStatus.ACTIVE)
+                                .build()
+                ).stream()
+                .map(slot -> new AvailableSlotOutput(date, slot.startTime(), slot.endTime()))
+                .distinct()
+                .toList();
     }
 
     /* ================= INTERNAL ================= */

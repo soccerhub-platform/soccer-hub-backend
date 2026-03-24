@@ -30,7 +30,7 @@ public class GroupSchedule extends AbstractAuditableEntity {
     @Column(name = "coach_id", nullable = false)
     private UUID coachId;
 
-    @Column(name = "location_id", nullable = false)
+    @Column(name = "location_id")
     private UUID locationId;
 
     @Enumerated(EnumType.STRING)

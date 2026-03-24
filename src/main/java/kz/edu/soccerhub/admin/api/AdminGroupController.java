@@ -5,6 +5,7 @@ import kz.edu.soccerhub.admin.application.dto.group.*;
 import kz.edu.soccerhub.admin.application.service.AdminGroupService;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
 import kz.edu.soccerhub.common.dto.group.UpdateScheduleBatchCommand;
+import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -102,7 +103,7 @@ public class AdminGroupController {
     public void createSchedule(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID groupId,
-            @RequestBody GroupScheduleBatchCommand command
+            @RequestBody @Valid GroupScheduleBatchCommand command
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
 
@@ -174,5 +175,15 @@ public class AdminGroupController {
                 from,
                 to
         );
+    }
+
+    @GetMapping("/{groupId}/available-slots")
+    public List<AvailableSlotOutput> getGroupAvailableSlots(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @RequestParam LocalDate date
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return adminGroupService.getGroupAvailableSlots(adminId, groupId, date);
     }
 }

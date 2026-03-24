@@ -20,7 +20,7 @@ public record LeadOutput(
         UUID assignedAdminId,
         String comment,
         JsonNode qualificationData,
-        List<LeadChildInput> children,
+        List<LeadChildOutput> children,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

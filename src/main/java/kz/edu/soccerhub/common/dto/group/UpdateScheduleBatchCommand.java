@@ -12,6 +12,7 @@ import java.util.UUID;
 @Builder
 public record UpdateScheduleBatchCommand(
         @NotNull UUID coachId,
+        UUID locationId,
         @NotNull LocalDate startDate,
         @NotNull LocalDate endDate,
         @NotNull ScheduleType type,
