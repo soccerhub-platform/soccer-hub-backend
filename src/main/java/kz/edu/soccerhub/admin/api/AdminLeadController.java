@@ -4,6 +4,9 @@ import jakarta.validation.Valid;
 import kz.edu.soccerhub.admin.application.dto.lead.AdminLeadCreateInput;
 import kz.edu.soccerhub.admin.application.service.AdminLeadService;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateOutput;
+import kz.edu.soccerhub.common.dto.lead.LeadConvertOutput;
+import kz.edu.soccerhub.common.dto.lead.LeadEventInput;
+import kz.edu.soccerhub.common.dto.lead.LeadEventOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadKanbanOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
@@ -69,15 +72,33 @@ public class AdminLeadController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{leadId}/convert")
+    public ResponseEntity<LeadConvertOutput> convertLead(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID leadId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        UUID clientId = adminLeadService.convertLeadToClient(adminId, leadId);
+        return ResponseEntity.ok(new LeadConvertOutput(clientId));
+    }
+
+        @PostMapping("/{leadId}/events")
+        public ResponseEntity<LeadEventOutput> processEvent(
+                @AuthenticationPrincipal Jwt jwt,
+                @PathVariable UUID leadId,
+                @RequestBody @Valid LeadEventInput input
+        ) {
+            UUID adminId = UUID.fromString(jwt.getSubject());
+            return ResponseEntity.ok(adminLeadService.processEvent(adminId, leadId, input.event()));
+        }
+
     @GetMapping("/kanban")
     public ResponseEntity<LeadKanbanOutput> getKanban(
             @AuthenticationPrincipal Jwt jwt,
-            @RequestParam UUID branchId,
-            @RequestParam(required = false) UUID assignedAdminId,
-            @RequestParam(required = false, defaultValue = "false") Boolean includeUnassigned
+            @RequestParam UUID branchId
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
-        return ResponseEntity.ok(adminLeadService.getKanban(adminId, branchId, assignedAdminId, includeUnassigned));
+        return ResponseEntity.ok(adminLeadService.getKanban(adminId, branchId));
     }
 
 }

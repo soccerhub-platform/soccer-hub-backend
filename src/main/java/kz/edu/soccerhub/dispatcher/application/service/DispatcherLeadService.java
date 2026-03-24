@@ -32,7 +32,8 @@ public class DispatcherLeadService {
                 null,
                 input.branchId(),
                 input.childAge(),
-                trim(input.childName())
+                trim(input.childName()),
+                input.children()
         );
     }
 

@@ -2,7 +2,9 @@ package kz.edu.soccerhub.client.application;
 
 import kz.edu.soccerhub.client.application.dto.ClientDto;
 import kz.edu.soccerhub.client.domain.model.Client;
+import kz.edu.soccerhub.client.domain.model.Player;
 import kz.edu.soccerhub.client.domain.repository.ClientRepository;
+import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
 import kz.edu.soccerhub.client.domain.enums.ClientStatus;
 import kz.edu.soccerhub.common.dto.client.ClientCreateCommand;
 import kz.edu.soccerhub.common.dto.client.ClientCreateCommandOutput;
@@ -14,7 +16,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Collection;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -22,7 +26,44 @@ import java.util.Collection;
 public class ClientService implements ClientPort {
 
     private final ClientRepository clientRepository;
+    private final PlayerRepository playerRepository;
     private final BranchPort branchPort;
+
+    @Override
+    @Transactional
+    public UUID createClient(String parentName, String phone, String email) {
+        String[] names = splitName(parentName);
+
+        Client client = Client.builder()
+                .firstName(names[0])
+                .lastName(names[1])
+                .phone(phone)
+                .comments(email)
+                .status(ClientStatus.NEW)
+                .build();
+
+        return clientRepository.save(client).getId();
+    }
+
+    @Override
+    @Transactional
+    public UUID createPlayer(UUID clientId, String childName, Integer childAge) {
+        Client parent = clientRepository.findById(clientId)
+                .orElseThrow(() -> new NotFoundException("Client not found", clientId));
+
+        String[] names = splitName(childName);
+        int ageYears = childAge == null ? 0 : Math.max(childAge, 0);
+
+        Player player = Player.builder()
+                .id(UUID.randomUUID())
+                .firstName(names[0])
+                .lastName(names[1])
+                .birthDate(LocalDate.now().minusYears(ageYears))
+                .parent(parent)
+                .build();
+
+        return playerRepository.save(player).getId();
+    }
 
     @Transactional
     public ClientCreateCommandOutput create(ClientCreateCommand command) {
@@ -58,6 +99,20 @@ public class ClientService implements ClientPort {
                         .status(client.getStatus().name())
                         .build())
                 .toList();
+    }
+
+    private String[] splitName(String fullName) {
+        String normalized = fullName == null ? "" : fullName.trim();
+        if (normalized.isEmpty()) {
+            return new String[]{"Unknown", "Unknown"};
+        }
+
+        String[] parts = normalized.split("\\s+", 2);
+        if (parts.length == 1) {
+            return new String[]{parts[0], parts[0]};
+        }
+
+        return parts;
     }
 
 }

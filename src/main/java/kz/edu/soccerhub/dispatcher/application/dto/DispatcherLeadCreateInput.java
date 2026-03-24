@@ -1,5 +1,6 @@
 package kz.edu.soccerhub.dispatcher.application.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -8,6 +9,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
+
+import java.util.List;
 import java.util.UUID;
 
 public record DispatcherLeadCreateInput(
@@ -37,7 +41,10 @@ public record DispatcherLeadCreateInput(
         String email,
 
         @Size(max = 1000, message = "Comment is too long")
-        String comment
+        String comment,
+
+        @Valid
+        List<LeadChildInput> children
 ) {
 }
 

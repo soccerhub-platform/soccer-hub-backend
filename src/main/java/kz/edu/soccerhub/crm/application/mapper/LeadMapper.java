@@ -3,8 +3,11 @@ package kz.edu.soccerhub.crm.application.mapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.crm.domain.model.Lead;
+
+import java.util.List;
 
 public final class LeadMapper {
 
@@ -26,9 +29,16 @@ public final class LeadMapper {
                 lead.getAssignedAdminId(),
                 lead.getComment(),
                 parseQualificationData(lead.getQualificationData()),
+                mapChildren(lead),
                 lead.getCreatedAt(),
                 lead.getUpdatedAt()
         );
+    }
+
+    private static List<LeadChildInput> mapChildren(Lead lead) {
+        return lead.getChildren().stream()
+                .map(child -> new LeadChildInput(child.getChildName(), child.getChildAge()))
+                .toList();
     }
 
     private static JsonNode parseQualificationData(String qualificationData) {

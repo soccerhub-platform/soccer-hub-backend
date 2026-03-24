@@ -57,6 +57,19 @@ public class LeadActivityService {
         );
     }
 
+    @Transactional
+    public void logLeadConverted(Lead lead) {
+        save(
+                lead.getId(),
+                LeadActivityType.LEAD_CONVERTED,
+                null,
+                null,
+                lead.getStatus(),
+                lead.getAssignedAdminId(),
+                "Lead converted to client " + lead.getClientId()
+        );
+    }
+
     private void save(
             UUID leadId,
             LeadActivityType activityType,

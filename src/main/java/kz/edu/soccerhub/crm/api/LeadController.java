@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -52,6 +53,13 @@ public class LeadController {
     @GetMapping("/{leadId}")
     public ResponseEntity<LeadOutput> getLeadById(@PathVariable UUID leadId) {
         return ResponseEntity.ok(LeadMapper.toOutput(leadService.getLeadById(leadId)));
+    }
+
+    @GetMapping("/kanban")
+    public ResponseEntity<Map<LeadStatus, List<LeadOutput>>> getKanban(
+            @RequestParam UUID branchId
+    ) {
+        return ResponseEntity.ok(leadService.getKanban(branchId));
     }
 
 }

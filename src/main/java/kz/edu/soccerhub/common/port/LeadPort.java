@@ -6,6 +6,7 @@ import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
+import kz.edu.soccerhub.crm.state.LeadEvent;
 
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,10 @@ public interface LeadPort {
 
     void scheduleTrial(UUID leadId, @Valid ScheduleTrialInput input);
 
-    Map<LeadStatus, List<LeadOutput>> getKanban(UUID branchId, UUID assignedAdminId, Boolean includeUnassigned);
+    LeadStatus processEvent(UUID leadId, LeadEvent event);
+
+    UUID convertLeadToClient(UUID leadId);
+
+    Map<LeadStatus, List<LeadOutput>> getKanban(UUID branchId);
 }
 

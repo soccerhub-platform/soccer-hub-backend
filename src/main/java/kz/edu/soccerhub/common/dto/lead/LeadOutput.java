@@ -5,6 +5,7 @@ import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record LeadOutput(
@@ -19,6 +20,7 @@ public record LeadOutput(
         UUID assignedAdminId,
         String comment,
         JsonNode qualificationData,
+        List<LeadChildInput> children,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

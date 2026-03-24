@@ -5,7 +5,12 @@ import kz.edu.soccerhub.admin.application.dto.branch.AdminBranchesOutput;
 import kz.edu.soccerhub.admin.domain.model.AdminBranch;
 import kz.edu.soccerhub.admin.domain.repository.AdminBranchRepository;
 import kz.edu.soccerhub.common.dto.branch.BranchDto;
+import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.common.dto.group.GroupDto;
+import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.port.BranchPort;
+import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,9 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Pageable;
 
 @Slf4j
 @Service
@@ -24,6 +31,8 @@ public class AdminBranchService {
 
     private final AdminBranchRepository adminBranchRepository;
     private final BranchPort branchPort;
+    private final GroupPort groupPort;
+    private final CoachPort coachPort;
 
     @Transactional
     public void assignToBranch(UUID adminId, UUID branchId) {
@@ -71,5 +80,23 @@ public class AdminBranchService {
     @Transactional(readOnly = true)
     public boolean verifyAdminBelongsToBranch(UUID adminId, UUID branchId) {
         return adminBranchRepository.existsByAdminIdAndBranchId(adminId, branchId);
+    }
+
+    @Transactional(readOnly = true)
+    public Collection<GroupDto> getBranchGroups(UUID adminId, UUID branchId) {
+        ensureAdminHasBranchAccess(adminId, branchId);
+        return groupPort.getGroupsByBranch(branchId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CoachDto> getBranchCoaches(UUID adminId, UUID branchId) {
+        ensureAdminHasBranchAccess(adminId, branchId);
+        return coachPort.getCoaches(Set.of(branchId), Pageable.unpaged()).getContent();
+    }
+
+    private void ensureAdminHasBranchAccess(UUID adminId, UUID branchId) {
+        if (!verifyAdminBelongsToBranch(adminId, branchId)) {
+            throw new BadRequestException("Admin does not have access to branch", branchId);
+        }
     }
 }

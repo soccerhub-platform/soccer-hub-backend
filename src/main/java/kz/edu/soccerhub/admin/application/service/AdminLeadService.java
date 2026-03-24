@@ -3,6 +3,7 @@ package kz.edu.soccerhub.admin.application.service;
 import kz.edu.soccerhub.admin.application.dto.lead.AdminLeadCreateInput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateOutput;
+import kz.edu.soccerhub.common.dto.lead.LeadEventOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadKanbanOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
@@ -11,6 +12,7 @@ import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
+import kz.edu.soccerhub.crm.state.LeadEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +47,7 @@ public class AdminLeadService {
                 adminId,
                 input.branchId(),
                 null,
+                null,
                 null
         );
 
@@ -68,8 +71,25 @@ public class AdminLeadService {
         leadPort.scheduleTrial(leadId, input);
     }
 
+    @Transactional
+    public UUID convertLeadToClient(UUID adminId, UUID leadId) {
+        adminService.findById(adminId)
+                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+
+        return leadPort.convertLeadToClient(leadId);
+    }
+
+    @Transactional
+    public LeadEventOutput processEvent(UUID adminId, UUID leadId, LeadEvent event) {
+        adminService.findById(adminId)
+                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+
+        LeadStatus status = leadPort.processEvent(leadId, event);
+        return new LeadEventOutput(leadId, status);
+    }
+
     @Transactional(readOnly = true)
-    public LeadKanbanOutput getKanban(UUID adminId, UUID branchId, UUID assignedAdminId, Boolean includeUnassigned) {
+    public LeadKanbanOutput getKanban(UUID adminId, UUID branchId) {
         adminService.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
@@ -78,7 +98,7 @@ public class AdminLeadService {
             throw new BadRequestException("Admin does not have access to branch", branchId);
         }
 
-        Map<LeadStatus, List<LeadOutput>> columns = leadPort.getKanban(branchId, assignedAdminId, includeUnassigned);
+        Map<LeadStatus, List<LeadOutput>> columns = leadPort.getKanban(branchId);
         return new LeadKanbanOutput(columns);
     }
 }

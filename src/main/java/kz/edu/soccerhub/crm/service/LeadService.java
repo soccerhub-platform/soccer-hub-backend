@@ -4,12 +4,16 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
+import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AdminPort;
+import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.application.mapper.LeadMapper;
 import kz.edu.soccerhub.crm.domain.model.Lead;
@@ -27,12 +31,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -43,8 +47,10 @@ public class LeadService implements LeadPort {
     private final LeadRepository leadRepository;
     private final LeadStateMachineService stateMachineService;
     private final AdminPort adminPort;
+    private final ClientPort clientPort;
+    private final GroupPort groupPort;
+    private final CoachPort coachPort;
     private final LeadActivityService leadActivityService;
-    private final LeadConversionService leadConversionService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -69,6 +75,8 @@ public class LeadService implements LeadPort {
                 .comment(trim(command.comment()))
                 .build();
 
+        addChildren(lead, command);
+
         leadRepository.save(lead);
         leadActivityService.logLeadCreated(lead);
         return lead.getId();
@@ -84,6 +92,12 @@ public class LeadService implements LeadPort {
         LeadStatus newStatus = stateMachineService.process(leadId, previousStatus, LeadEvent.QUALIFY);
 
         lead.updateQualificationData(qualificationData);
+        lead.updateQualificationFields(
+                trim(input.preferredDays()),
+                trim(input.experience()),
+                trim(input.notes())
+        );
+        replaceChildrenFromQualification(lead, input.children());
         lead.updateStatus(newStatus);
 
         leadRepository.save(lead);
@@ -98,10 +112,20 @@ public class LeadService implements LeadPort {
         validateTrialInput(input);
 
         Lead lead = findById(leadId);
+        validateChildBelongsToLead(lead, input.childId());
+        validateGroupAndCoach(lead, input.groupId(), input.coachId());
 
         LeadStatus previousStatus = lead.getStatus();
 
-        lead.scheduleTrial(input.groupId(), input.coachId(), input.trialDate());
+        LocalDateTime trialDateTime = LocalDateTime.of(input.trialDate(), input.startTime());
+        lead.scheduleTrial(
+                input.childId(),
+                input.groupId(),
+                input.coachId(),
+                trialDateTime,
+                input.durationMinutes(),
+                trim(input.comment())
+        );
         LeadStatus newStatus = stateMachineService.process(leadId, previousStatus, LeadEvent.SCHEDULE_TRIAL);
         lead.updateStatus(newStatus);
 
@@ -135,11 +159,7 @@ public class LeadService implements LeadPort {
 
     @Transactional(readOnly = true)
     @Override
-    public Map<LeadStatus, List<LeadOutput>> getKanban(
-            UUID branchId,
-            UUID assignedAdminId,
-            Boolean includeUnassigned
-    ) {
+    public Map<LeadStatus, List<LeadOutput>> getKanban(UUID branchId) {
         var specification = LeadSpecification.build(
                 null,
                 null,
@@ -151,10 +171,7 @@ public class LeadService implements LeadPort {
         );
 
         List<Lead> branchLeads = leadRepository.findAll(specification);
-
-        List<Lead> filteredLeads = branchLeads.stream()
-                .filter(lead -> includeByAssigneeRule(lead, assignedAdminId, includeUnassigned))
-                .toList();
+        List<Lead> filteredLeads = branchLeads;
 
         Map<LeadStatus, List<Lead>> leadColumns = new EnumMap<>(LeadStatus.class);
         for (LeadStatus status : LeadStatus.values()) {
@@ -195,6 +212,7 @@ public class LeadService implements LeadPort {
     }
 
     @Transactional
+    @Override
     public LeadStatus processEvent(UUID leadId, LeadEvent event) {
         Lead lead = findById(leadId);
         LeadStatus previousStatus = lead.getStatus();
@@ -209,13 +227,101 @@ public class LeadService implements LeadPort {
     }
 
     @Transactional
+    @Override
     public UUID convertLeadToClient(UUID leadId) {
         Lead lead = findById(leadId);
         if (lead.getStatus() != LeadStatus.WON) {
             throw new BadRequestException("Only WON leads can be converted to client", leadId);
         }
+        if (lead.getClientId() != null) {
+            return lead.getClientId();
+        }
 
-        return leadConversionService.convertLeadToClient(leadId);
+        ensureChildrenFromLegacyForConversion(lead);
+        if (!lead.isReadyForConversion()) {
+            throw new BadRequestException("Lead is not ready for conversion", leadId);
+        }
+
+        UUID clientId = clientPort.createClient(
+                lead.getParentName(),
+                lead.getPhone(),
+                lead.getEmail()
+        );
+
+        List<LeadChildInput> children = resolveChildrenForConversion(lead);
+        if (children.isEmpty()) {
+            throw new BadRequestException("At least one child is required to convert lead", leadId);
+        }
+
+        for (LeadChildInput child : children) {
+            clientPort.createPlayer(
+                    clientId,
+                    child.childName(),
+                    child.childAge()
+            );
+        }
+
+        lead.markConverted(clientId);
+        leadRepository.save(lead);
+        leadActivityService.logLeadConverted(lead);
+
+        log.info("Lead {} converted to client {}", leadId, clientId);
+
+        return clientId;
+    }
+
+    private void addChildren(Lead lead, LeadCreateCommand command) {
+        if (command.children() != null && !command.children().isEmpty()) {
+            for (LeadChildInput child : command.children()) {
+                lead.addChild(trim(child.childName()), child.childAge());
+            }
+            return;
+        }
+
+        if (command.childName() != null && !command.childName().isBlank()) {
+            lead.addChild(trim(command.childName()), command.childAge());
+        }
+    }
+
+    private List<LeadChildInput> resolveChildrenForConversion(Lead lead) {
+        List<LeadChildInput> leadChildren = lead.getChildren().stream()
+                .map(child -> new LeadChildInput(trim(child.getChildName()), child.getChildAge()))
+                .toList();
+
+        if (!leadChildren.isEmpty()) {
+            return leadChildren;
+        }
+
+        String legacyChildName = trim(lead.getChildName());
+        if (legacyChildName == null || legacyChildName.isBlank()) {
+            return List.of();
+        }
+
+        return List.of(new LeadChildInput(legacyChildName, lead.getChildAge()));
+    }
+
+    private void replaceChildrenFromQualification(Lead lead, List<LeadChildInput> children) {
+        if (children == null) {
+            return;
+        }
+
+        lead.clearChildren();
+        for (LeadChildInput child : children) {
+            lead.addChild(trim(child.childName()), child.childAge());
+        }
+    }
+
+    private void ensureChildrenFromLegacyForConversion(Lead lead) {
+        if (!lead.getChildren().isEmpty()) {
+            return;
+        }
+
+        String legacyChildName = trim(lead.getChildName());
+        if (legacyChildName == null || legacyChildName.isBlank()) {
+            return;
+        }
+
+        lead.addChild(legacyChildName, lead.getChildAge());
     }
 
     private void ensureNoActiveDuplicate(String normalizedPhone) {
@@ -257,26 +363,43 @@ public class LeadService implements LeadPort {
         if (input == null) {
             throw new BadRequestException("Trial payload is required");
         }
-        if (input.groupId() == null) {
-            throw new BadRequestException("Group id is required");
+        if (input.childId() == null) {
+            throw new BadRequestException("Child id is required");
         }
-        if (input.coachId() == null) {
-            throw new BadRequestException("Coach id is required");
+        if (input.groupId() == null && input.coachId() == null) {
+            throw new BadRequestException("Either group id or coach id is required");
         }
         if (input.trialDate() == null) {
             throw new BadRequestException("Trial date is required");
         }
+        if (input.startTime() == null) {
+            throw new BadRequestException("Start time is required");
+        }
+        if (input.durationMinutes() != null && input.durationMinutes() <= 0) {
+            throw new BadRequestException("Duration minutes must be greater than 0");
+        }
     }
 
-    private boolean includeByAssigneeRule(Lead lead, UUID assignedAdminId, Boolean includeUnassigned) {
-        if (assignedAdminId != null) {
-            return assignedAdminId.equals(lead.getAssignedAdminId());
-        }
+    private void validateChildBelongsToLead(Lead lead, UUID childId) {
+        boolean exists = lead.getChildren().stream()
+                .anyMatch(child -> child.getId().equals(childId));
 
-        if (Boolean.TRUE.equals(includeUnassigned)) {
-            return true;
+        if (!exists) {
+            throw new BadRequestException("Child does not belong to lead", Map.of("leadId", lead.getId(), "childId", childId));
         }
-
-        return Objects.nonNull(lead.getAssignedAdminId());
     }
+
+    private void validateGroupAndCoach(Lead lead, UUID groupId, UUID coachId) {
+        if (groupId != null) {
+            var group = groupPort.getGroupById(groupId);
+            if (!lead.getBranchId().equals(group.branchId())) {
+                throw new BadRequestException("Group does not belong to lead branch", Map.of("branchId", lead.getBranchId(), "groupId", groupId));
+            }
+        }
+
+        if (coachId != null && !coachPort.verifyCoach(coachId)) {
+            throw new NotFoundException("Coach not found", Map.of("coachId", coachId));
+        }
+    }
+
 }
