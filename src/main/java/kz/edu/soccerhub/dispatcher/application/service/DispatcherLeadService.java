@@ -31,8 +31,6 @@ public class DispatcherLeadService {
                 trim(input.comment()),
                 null,
                 input.branchId(),
-                input.childAge(),
-                trim(input.childName()),
                 input.children()
         );
     }

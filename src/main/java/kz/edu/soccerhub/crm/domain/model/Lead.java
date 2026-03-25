@@ -2,11 +2,13 @@ package kz.edu.soccerhub.crm.domain.model;
 
 import jakarta.persistence.*;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
+import kz.edu.soccerhub.crm.domain.model.enums.Gender;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -31,11 +33,6 @@ public class Lead extends AbstractAuditableEntity {
 
     private String email;
 
-    @Column(name = "child_name")
-    private String childName;
-
-    @Column(name = "child_age")
-    private Integer childAge;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -66,23 +63,8 @@ public class Lead extends AbstractAuditableEntity {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
-    @Column(name = "trial_group_id")
-    private UUID trialGroupId;
-
-    @Column(name = "trial_child_id")
-    private UUID trialChildId;
-
-    @Column(name = "trial_coach_id")
-    private UUID trialCoachId;
-
-    @Column(name = "trial_date")
-    private LocalDateTime trialDate;
-
-    @Column(name = "trial_duration_minutes")
-    private Integer trialDurationMinutes;
-
-    @Column(name = "trial_comment", columnDefinition = "TEXT")
-    private String trialComment;
+    @OneToOne(mappedBy = "lead", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    private LeadTrial trial;
 
     @Column(name = "client_id")
     private UUID clientId;
@@ -113,28 +95,41 @@ public class Lead extends AbstractAuditableEntity {
             UUID childId,
             UUID groupId,
             UUID coachId,
-            LocalDateTime trialDate,
-            Integer durationMinutes,
+            LocalDate trialDate,
+            LocalTime startTime,
+            LocalTime endTime,
             String comment
     ) {
-        this.trialChildId = childId;
-        this.trialGroupId = groupId;
-        this.trialCoachId = coachId;
-        this.trialDate = trialDate;
-        this.trialDurationMinutes = durationMinutes;
-        this.trialComment = comment;
+        if (this.trial == null) {
+            this.trial = LeadTrial.builder()
+                    .id(UUID.randomUUID())
+                    .build();
+            this.trial.attachToLead(this);
+        }
+
+        this.trial.schedule(
+                childId,
+                groupId,
+                coachId,
+                trialDate,
+                startTime,
+                endTime,
+                comment
+        );
     }
 
     public void markConverted(UUID clientId) {
         this.clientId = clientId;
     }
 
-    public void addChild(String childName, Integer childAge) {
+    public void addChild(String childName, Integer childAge, Gender gender, String experience) {
         LeadChild leadChild = LeadChild.builder()
                 .id(UUID.randomUUID())
                 .lead(this)
                 .childName(childName)
                 .childAge(childAge)
+                .gender(gender)
+                .experience(experience)
                 .build();
         this.children.add(leadChild);
     }

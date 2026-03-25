@@ -2,9 +2,8 @@ package kz.edu.soccerhub.dispatcher.application.dto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -26,13 +25,6 @@ public record DispatcherLeadCreateInput(
         )
         String phone,
 
-        @Min(value = 3, message = "Child age must be at least 3")
-        @Max(value = 18, message = "Child age must be at most 18")
-        Integer childAge,
-
-        @Size(max = 255, message = "Child name is too long")
-        String childName,
-
         @NotNull(message = "Branch id is required")
         UUID branchId,
 
@@ -44,6 +36,7 @@ public record DispatcherLeadCreateInput(
         String comment,
 
         @Valid
+        @NotEmpty(message = "At least one child is required")
         List<LeadChildInput> children
 ) {
 }

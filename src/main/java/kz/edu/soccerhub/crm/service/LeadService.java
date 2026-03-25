@@ -35,7 +35,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -72,8 +71,6 @@ public class LeadService implements LeadPort {
                 .parentName(trim(command.parentName()))
                 .phone(normalizedPhone)
                 .email(trim(command.email()))
-                .childName(trim(command.childName()))
-                .childAge(command.childAge())
                 .source(LeadSource.OTHER)
                 .status(LeadStatus.NEW)
                 .assignedAdminId(command.assignedAdminId())
@@ -81,7 +78,14 @@ public class LeadService implements LeadPort {
                 .comment(trim(command.comment()))
                 .build();
 
-        addChildren(lead, command);
+        for (LeadChildInput child : command.children()) {
+            lead.addChild(
+                    trim(child.childName()),
+                    child.childAge(),
+                    child.gender(),
+                    trim(child.experience())
+            );
+        }
 
         leadRepository.save(lead);
         leadActivityService.logLeadCreated(lead);
@@ -141,17 +145,16 @@ public class LeadService implements LeadPort {
         ensureNoScheduleConflict(groupSlot, coachSlot, resolvedGroupId, resolvedCoachId);
 
         GroupScheduleDto selectedSlot = groupSlot != null ? groupSlot : coachSlot;
-        int durationMinutes = (int) java.time.Duration.between(selectedSlot.startTime(), selectedSlot.endTime()).toMinutes();
 
         LeadStatus previousStatus = lead.getStatus();
 
-        LocalDateTime trialDateTime = LocalDateTime.of(input.slot().date(), input.slot().startTime());
         lead.scheduleTrial(
                 input.childId(),
                 resolvedGroupId,
                 resolvedCoachId,
-                trialDateTime,
-                durationMinutes,
+                input.slot().date(),
+                selectedSlot.startTime(),
+                selectedSlot.endTime(),
                 trim(input.comment())
         );
         LeadStatus newStatus = stateMachineService.process(leadId, previousStatus, LeadEvent.SCHEDULE_TRIAL);
@@ -265,7 +268,6 @@ public class LeadService implements LeadPort {
             return lead.getClientId();
         }
 
-        ensureChildrenFromLegacyForConversion(lead);
         if (!lead.isReadyForConversion()) {
             throw new BadRequestException("Lead is not ready for conversion", leadId);
         }
@@ -276,7 +278,14 @@ public class LeadService implements LeadPort {
                 lead.getEmail()
         );
 
-        List<LeadChildInput> children = resolveChildrenForConversion(lead);
+        List<LeadChildInput> children = lead.getChildren().stream()
+                .map(child -> new LeadChildInput(
+                        trim(child.getChildName()),
+                        child.getChildAge(),
+                        child.getGender(),
+                        trim(child.getExperience())
+                ))
+                .toList();
         if (children.isEmpty()) {
             throw new BadRequestException("At least one child is required to convert lead", leadId);
         }
@@ -298,36 +307,6 @@ public class LeadService implements LeadPort {
         return clientId;
     }
 
-    private void addChildren(Lead lead, LeadCreateCommand command) {
-        if (command.children() != null && !command.children().isEmpty()) {
-            for (LeadChildInput child : command.children()) {
-                lead.addChild(trim(child.childName()), child.childAge());
-            }
-            return;
-        }
-
-        if (command.childName() != null && !command.childName().isBlank()) {
-            lead.addChild(trim(command.childName()), command.childAge());
-        }
-    }
-
-    private List<LeadChildInput> resolveChildrenForConversion(Lead lead) {
-        List<LeadChildInput> leadChildren = lead.getChildren().stream()
-                .map(child -> new LeadChildInput(trim(child.getChildName()), child.getChildAge()))
-                .toList();
-
-        if (!leadChildren.isEmpty()) {
-            return leadChildren;
-        }
-
-        String legacyChildName = trim(lead.getChildName());
-        if (legacyChildName == null || legacyChildName.isBlank()) {
-            return List.of();
-        }
-
-        return List.of(new LeadChildInput(legacyChildName, lead.getChildAge()));
-    }
-
     private void replaceChildrenFromQualification(Lead lead, List<LeadChildInput> children) {
         if (children == null) {
             return;
@@ -335,22 +314,15 @@ public class LeadService implements LeadPort {
 
         lead.clearChildren();
         for (LeadChildInput child : children) {
-            lead.addChild(trim(child.childName()), child.childAge());
+            lead.addChild(
+                    trim(child.childName()),
+                    child.childAge(),
+                    child.gender(),
+                    trim(child.experience())
+            );
         }
     }
 
-    private void ensureChildrenFromLegacyForConversion(Lead lead) {
-        if (!lead.getChildren().isEmpty()) {
-            return;
-        }
-
-        String legacyChildName = trim(lead.getChildName());
-        if (legacyChildName == null || legacyChildName.isBlank()) {
-            return;
-        }
-
-        lead.addChild(legacyChildName, lead.getChildAge());
-    }
 
     private void ensureNoActiveDuplicate(String normalizedPhone) {
         boolean exists = leadRepository.existsActiveLeadByPhone(normalizedPhone);

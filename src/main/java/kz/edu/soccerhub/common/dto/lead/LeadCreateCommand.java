@@ -31,13 +31,7 @@ public record LeadCreateCommand(
         @NotNull(message = "Branch id is required")
         UUID branchId,
 
-        @Min(value = 3, message = "Child age must be at least 3")
-        @Max(value = 18, message = "Child age must be at most 18")
-        Integer childAge,
-
-        @Size(max = 255, message = "Child name is too long")
-        String childName,
-
         @Valid
+        @NotEmpty(message = "At least one child is required")
         List<LeadChildInput> children
 ) {}

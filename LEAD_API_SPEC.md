@@ -1,6 +1,6 @@
 # CRM Lead API Specification (Frontend)
 
-> Version date: 2026-03-24
+> Version date: 2026-03-25
 > 
 > Scope: endpoints and behavior for Lead flows in current backend implementation.
 
@@ -18,13 +18,16 @@
 {
   "parentName": "John Doe",
   "phone": "+77001234567",
-  "childAge": 10,
-  "childName": "Alex Doe",
   "branchId": "11111111-1111-1111-1111-111111111111",
   "email": "parent@example.com",
   "comment": "Interested in evening group",
   "children": [
-    { "childName": "Alex Doe", "childAge": 10 }
+    {
+      "childName": "Alex Doe",
+      "childAge": 10,
+      "gender": "MALE",
+      "experience": "BEGINNER"
+    }
   ]
 }
 ```
@@ -49,6 +52,14 @@
   "phone": "+77001234567",
   "email": "parent@example.com",
   "comment": "Call tomorrow",
+  "children": [
+    {
+      "childName": "Alex Doe",
+      "childAge": 10,
+      "gender": "MALE",
+      "experience": "BEGINNER"
+    }
+  ],
   "branchId": "11111111-1111-1111-1111-111111111111"
 }
 ```
@@ -139,7 +150,12 @@
 ```json
 {
   "children": [
-    { "childName": "Alex Doe", "childAge": 10 }
+    {
+      "childName": "Alex Doe",
+      "childAge": 10,
+      "gender": "MALE",
+      "experience": "BEGINNER"
+    }
   ],
   "preferredDays": "MON,WED,FRI",
   "experience": "BEGINNER",
@@ -151,7 +167,7 @@
 - Behavior:
   - applies state transition event `QUALIFY`
   - updates structured qualification fields (`preferredDays`, `experience`, `notes`)
-  - replaces `children` when `children != null`
+  - replaces `children` when `children != null` (clear existing + recreate)
   - keeps JSON qualification payload for compatibility
 
 ---
@@ -277,7 +293,7 @@ Allowed values (based on state machine):
   - allowed only for `WON`
   - if already converted, returns existing `clientId`
   - validates readiness via domain rule (`isReadyForConversion()`)
-  - keeps legacy fallback (`childName`/`childAge`) if structured children are empty
+  - uses structured `children` only (no legacy single-child fallback)
 
 ---
 
@@ -311,8 +327,6 @@ Current `LeadOutput` fields returned by API:
   "parentName": "string",
   "phone": "string",
   "email": "string|null",
-  "childName": "string|null",
-  "childAge": 10,
   "source": "OTHER",
   "status": "NEW|CONTACTED|QUALIFIED|TRIAL_SCHEDULED|TRIAL_DONE|WAITING_PAYMENT|WON|LOST",
   "assignedAdminId": "UUID|null",
@@ -322,9 +336,23 @@ Current `LeadOutput` fields returned by API:
     {
       "id": "UUID",
       "childName": "string",
-      "childAge": 10
+      "childAge": 10,
+      "gender": "MALE|FEMALE|OTHER|null",
+      "experience": "string|null"
     }
   ],
+  "trial": {
+    "id": "UUID",
+    "leadId": "UUID",
+    "childId": "UUID",
+    "groupId": "UUID|null",
+    "coachId": "UUID|null",
+    "trialDate": "2026-03-30",
+    "startTime": "18:00:00",
+    "endTime": "19:00:00",
+    "comment": "string|null",
+    "status": "SCHEDULED|COMPLETED|CANCELED"
+  },
   "createdAt": "2026-03-23T10:00:00",
   "updatedAt": "2026-03-23T10:30:00"
 }
@@ -334,7 +362,15 @@ Requested fields vs current response:
 
 - Present now: `id`, `parentName`, `phone`, `email`, `children`, `status`, `assignedAdminId`, `createdAt`
 - `children` now includes stable `id` for trial scheduling payload `childId`
-- In domain but not exposed in `LeadOutput` yet: `branchId`, `trialDate`, `clientId`, `preferredDays`, `experience`, `notes`
+- `trial` is nested and is `null` until trial scheduling is done
+- In domain but not exposed in `LeadOutput` yet: `branchId`, `clientId`, `preferredDays`, `experience`, `notes`
+
+`LeadChildInput` / `children[]` validation:
+
+- `childName` is required
+- `childAge` is required and must be in range `3..18`
+- `gender` is optional (`MALE|FEMALE|OTHER`)
+- `experience` is optional (max 100 chars)
 
 ---
 
@@ -378,7 +414,11 @@ Current REST-triggered transitions:
 
 5. Children required before conversion:
    - `isReadyForConversion()` requires non-empty children with valid `childName` and `childAge`.
-   - legacy fallback can populate children from `childName`/`childAge` when needed.
+   - no legacy fallback from top-level child fields.
+
+6. Full children editing on qualification:
+   - when `children` is provided in qualification payload, backend recreates list from scratch.
+   - child IDs in response can change after such replacement.
 
 ---
 
@@ -423,6 +463,7 @@ Current REST-triggered transitions:
 1. Create lead
    - Dispatcher: `POST /dispatcher/leads`
    - Admin: `POST /admin/leads/create`
+   - both endpoints require non-empty `children[]`
 
 2. Assign lead
    - No endpoint yet (needs backend API)
@@ -457,13 +498,13 @@ Current REST-triggered transitions:
 - Qualification form (`children`, `preferredDays`, `experience`, `notes`)
 - Trial scheduling modal
 - Convert button (`WON` only)
-- Status action menu (future, if generic event endpoint is added)
+- Status action menu (uses `POST /admin/leads/{leadId}/events`)
 
 ---
 
 ## 8) Notes for frontend
 
-- Prefer `children` over legacy `childName/childAge`.
+- `children[]` is the only child source in create/output payloads.
 - For trial scheduling, always use `children[].id` from `LeadOutput` as request `childId`.
 - Use `GET /leads/kanban` as default Kanban source for shared role access.
 - Expect validation errors (`400`) for invalid transitions/payloads.

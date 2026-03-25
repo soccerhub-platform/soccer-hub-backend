@@ -1,12 +1,16 @@
 package kz.edu.soccerhub.admin.application.dto.lead;
 
 import jakarta.validation.constraints.Email;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
 import lombok.Builder;
 
+import java.util.List;
 import java.util.UUID;
 
 @Builder
@@ -28,6 +32,10 @@ public record AdminLeadCreateInput(
 
         @Size(max = 1000, message = "Comment is too long")
         String comment,
+
+        @Valid
+        @NotEmpty(message = "At least one child is required")
+        List<LeadChildInput> children,
 
         @NotNull(message = "Branch id is required")
         UUID branchId

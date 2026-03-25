@@ -46,9 +46,7 @@ public class AdminLeadService {
                 input.comment(),
                 adminId,
                 input.branchId(),
-                null,
-                null,
-                null
+                input.children()
         );
 
         UUID leadId = leadPort.createLead(command);

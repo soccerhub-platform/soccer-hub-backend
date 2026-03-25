@@ -2,6 +2,8 @@ package kz.edu.soccerhub.crm.domain.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -9,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
+import kz.edu.soccerhub.crm.domain.model.enums.Gender;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -38,6 +41,13 @@ public class LeadChild extends AbstractAuditableEntity {
 
     @Column(name = "child_age", nullable = false)
     private Integer childAge;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender")
+    private Gender gender;
+
+    @Column(name = "experience", length = 100)
+    private String experience;
 
     @PrePersist
     private void ensureId() {

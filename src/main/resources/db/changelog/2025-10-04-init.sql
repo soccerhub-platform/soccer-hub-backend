@@ -527,8 +527,6 @@ CREATE TABLE IF NOT EXISTS leads
     parent_name       VARCHAR(255) NOT NULL,
     phone             VARCHAR(20)  NOT NULL,
     email             VARCHAR(255),
-    child_name        VARCHAR(255),
-    child_age         SMALLINT,
     source            VARCHAR(50)  NOT NULL,
     status            VARCHAR(50)  NOT NULL,
     assigned_admin_id UUID,
@@ -538,12 +536,6 @@ CREATE TABLE IF NOT EXISTS leads
     preferred_days    VARCHAR(255),
     experience        VARCHAR(100),
     notes             TEXT,
-    trial_group_id    UUID,
-    trial_child_id    UUID,
-    trial_coach_id    UUID,
-    trial_date        TIMESTAMP,
-    trial_duration_minutes INTEGER,
-    trial_comment     TEXT,
     client_id         UUID,
     created_at        TIMESTAMP DEFAULT NOW(),
     updated_at        TIMESTAMP DEFAULT NOW(),
@@ -563,7 +555,6 @@ CREATE INDEX IF NOT EXISTS idx_leads_assigned_admin ON leads(assigned_admin_id);
 CREATE INDEX IF NOT EXISTS idx_leads_branch ON leads(branch_id);
 CREATE INDEX IF NOT EXISTS idx_leads_status_phone ON leads(status, phone);
 CREATE INDEX IF NOT EXISTS idx_leads_client_id ON leads(client_id);
-CREATE INDEX IF NOT EXISTS idx_leads_trial_child_id ON leads(trial_child_id);
 
 -- ============================================
 -- CRM LEAD CHILDREN
@@ -575,6 +566,8 @@ CREATE TABLE IF NOT EXISTS lead_children
     lead_id     UUID         NOT NULL,
     child_name  VARCHAR(255) NOT NULL,
     child_age   SMALLINT,
+    gender      VARCHAR(20),
+    experience  VARCHAR(100),
     created_at  TIMESTAMP DEFAULT NOW(),
     updated_at  TIMESTAMP DEFAULT NOW(),
     created_by  VARCHAR,
@@ -585,6 +578,36 @@ CREATE TABLE IF NOT EXISTS lead_children
 );
 
 CREATE INDEX IF NOT EXISTS idx_lead_children_lead_id ON lead_children(lead_id);
+
+-- ============================================
+-- CRM LEAD TRIALS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS lead_trials
+(
+    id          UUID PRIMARY KEY,
+    lead_id     UUID         NOT NULL UNIQUE,
+    child_id    UUID         NOT NULL,
+    group_id    UUID,
+    coach_id    UUID,
+    trial_date  DATE         NOT NULL,
+    start_time  TIME         NOT NULL,
+    end_time    TIME         NOT NULL,
+    comment     TEXT,
+    status      VARCHAR(50)  NOT NULL,
+    created_at  TIMESTAMP DEFAULT NOW(),
+    updated_at  TIMESTAMP DEFAULT NOW(),
+    created_by  VARCHAR,
+    modified_by VARCHAR,
+
+    CONSTRAINT fk_lead_trials_lead FOREIGN KEY (lead_id)
+        REFERENCES leads (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_trials_lead_id ON lead_trials(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_trials_child_id ON lead_trials(child_id);
+CREATE INDEX IF NOT EXISTS idx_lead_trials_trial_date ON lead_trials(trial_date);
+CREATE INDEX IF NOT EXISTS idx_lead_trials_status ON lead_trials(status);
 
 -- ============================================
 -- CRM LEAD ACTIVITIES

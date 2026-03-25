@@ -13,14 +13,13 @@ public record LeadOutput(
         String parentName,
         String phone,
         String email,
-        String childName,
-        Integer childAge,
         LeadSource source,
         LeadStatus status,
         UUID assignedAdminId,
         String comment,
         JsonNode qualificationData,
         List<LeadChildOutput> children,
+        LeadTrialOutput trial,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
