@@ -255,6 +255,7 @@ Allowed values (based on state machine):
 - `CONTACT`
 - `QUALIFY`
 - `SCHEDULE_TRIAL`
+- `NO_SHOW`
 - `COMPLETE_TRIAL`
 - `REQUEST_PAYMENT`
 - `CONFIRM_PAYMENT`
@@ -299,7 +300,22 @@ Allowed values (based on state machine):
 
 ## Assignment
 
-- In service layer, assignment exists (`assignLead`), but **no public Lead assignment endpoint is currently exposed**.
+### `PATCH /admin/leads/{leadId}/assign`
+- Auth: `ADMIN`
+- Request body (`LeadAssignInput`):
+
+```json
+{
+  "assignedAdminId": "55555555-5555-5555-5555-555555555555"
+}
+```
+
+- Response: `204 No Content`
+- Behavior:
+  - validates request admin exists (from JWT)
+  - validates target `assignedAdminId` exists
+  - validates lead exists
+  - assigns lead to provided admin
 
 ---
 
@@ -466,7 +482,7 @@ Current REST-triggered transitions:
    - both endpoints require non-empty `children[]`
 
 2. Assign lead
-   - No endpoint yet (needs backend API)
+   - `PATCH /admin/leads/{leadId}/assign`
 
 3. Qualify lead
    - `PATCH /admin/leads/{leadId}/qualify`

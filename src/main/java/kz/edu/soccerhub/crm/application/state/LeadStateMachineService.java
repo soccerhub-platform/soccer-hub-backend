@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.crm.state;
+package kz.edu.soccerhub.crm.application.state;
 
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;

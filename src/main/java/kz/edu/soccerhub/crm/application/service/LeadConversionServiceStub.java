@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.crm.service;
+package kz.edu.soccerhub.crm.application.service;
 
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import org.springframework.stereotype.Service;

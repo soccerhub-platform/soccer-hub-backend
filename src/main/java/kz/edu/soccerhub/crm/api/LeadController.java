@@ -3,13 +3,15 @@ package kz.edu.soccerhub.crm.api;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.crm.application.mapper.LeadMapper;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
-import kz.edu.soccerhub.crm.service.LeadService;
+import kz.edu.soccerhub.crm.application.service.LeadService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -23,9 +25,11 @@ import java.util.UUID;
 public class LeadController {
 
     private final LeadService leadService;
+    private final LeadMapper leadMapper;
 
     @GetMapping
     public ResponseEntity<Page<LeadOutput>> getLeads(
+            @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) List<LeadStatus> statuses,
             @RequestParam(required = false) UUID assignedAdminId,
             @RequestParam(required = false) UUID branchId,
@@ -35,6 +39,7 @@ public class LeadController {
             @RequestParam(required = false) LocalDate createdTo,
             @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
+        UUID currentAdminId = UUID.fromString(jwt.getSubject());
         Page<LeadOutput> leads = leadService.getLeads(
                         statuses,
                         assignedAdminId,
@@ -45,21 +50,27 @@ public class LeadController {
                         createdTo,
                         pageable
                 )
-                .map(LeadMapper::toOutput);
+                .map(lead -> leadMapper.toOutput(lead, currentAdminId));
 
         return ResponseEntity.ok(leads);
     }
 
     @GetMapping("/{leadId}")
-    public ResponseEntity<LeadOutput> getLeadById(@PathVariable UUID leadId) {
-        return ResponseEntity.ok(LeadMapper.toOutput(leadService.getLeadById(leadId)));
+    public ResponseEntity<LeadOutput> getLeadById(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID leadId
+    ) {
+        UUID currentAdminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(leadMapper.toOutput(leadService.getLeadById(leadId), currentAdminId));
     }
 
     @GetMapping("/kanban")
     public ResponseEntity<Map<LeadStatus, List<LeadOutput>>> getKanban(
+            @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID branchId
     ) {
-        return ResponseEntity.ok(leadService.getKanban(branchId));
+        UUID currentAdminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(leadService.getKanban(branchId, currentAdminId));
     }
 
 }

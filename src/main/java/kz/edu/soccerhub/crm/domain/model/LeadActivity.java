@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadActivityType;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
-import kz.edu.soccerhub.crm.state.LeadEvent;
+import kz.edu.soccerhub.crm.application.state.LeadEvent;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

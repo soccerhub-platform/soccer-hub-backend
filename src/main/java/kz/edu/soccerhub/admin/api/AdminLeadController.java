@@ -3,6 +3,8 @@ package kz.edu.soccerhub.admin.api;
 import jakarta.validation.Valid;
 import kz.edu.soccerhub.admin.application.dto.lead.AdminLeadCreateInput;
 import kz.edu.soccerhub.admin.application.service.AdminLeadService;
+import kz.edu.soccerhub.common.dto.lead.LeadAssignInput;
+import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadConvertOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadEventInput;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -58,6 +61,17 @@ public class AdminLeadController {
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         adminLeadService.qualifyLead(adminId, leadId, input);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{leadId}/assign")
+    public ResponseEntity<Void> assignLead(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID leadId,
+            @RequestBody @Valid LeadAssignInput input
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        adminLeadService.assignLead(adminId, leadId, input);
         return ResponseEntity.noContent().build();
     }
 
@@ -99,6 +113,15 @@ public class AdminLeadController {
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(adminLeadService.getKanban(adminId, branchId));
+    }
+
+    @GetMapping("/{leadId}/activities")
+    public ResponseEntity<List<LeadActivityOutput>> getLeadActivities(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID leadId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminLeadService.getLeadActivities(adminId, leadId));
     }
 
 }

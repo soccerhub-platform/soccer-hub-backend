@@ -1,8 +1,9 @@
-package kz.edu.soccerhub.crm.service;
+package kz.edu.soccerhub.crm.application.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
+import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
 import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
@@ -25,8 +26,8 @@ import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import kz.edu.soccerhub.crm.infrastructure.LeadSpecification;
 import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
 import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
-import kz.edu.soccerhub.crm.state.LeadEvent;
-import kz.edu.soccerhub.crm.state.LeadStateMachineService;
+import kz.edu.soccerhub.crm.application.state.LeadEvent;
+import kz.edu.soccerhub.crm.application.state.LeadStateMachineService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -56,6 +57,7 @@ public class LeadService implements LeadPort {
     private final CoachPort coachPort;
     private final GroupSchedulePort groupSchedulePort;
     private final LeadActivityService leadActivityService;
+    private final LeadMapper leadMapper;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -94,8 +96,14 @@ public class LeadService implements LeadPort {
 
     @Override
     @Transactional
-    public void qualifyLead(UUID leadId, @Valid LeadQualificationInput input) {
+    public void qualifyLead(UUID leadId, @Valid LeadQualificationInput input, UUID currentAdminId) {
         Lead lead = findById(leadId);
+
+        if (lead.getAssignedAdminId() == null && currentAdminId != null) {
+            validateAssignedAdmin(currentAdminId);
+            lead.assignAdmin(currentAdminId);
+        }
+
         LeadStatus previousStatus = lead.getStatus();
 
         String qualificationData = serializeQualificationData(input);
@@ -190,7 +198,7 @@ public class LeadService implements LeadPort {
 
     @Transactional(readOnly = true)
     @Override
-    public Map<LeadStatus, List<LeadOutput>> getKanban(UUID branchId) {
+    public Map<LeadStatus, List<LeadOutput>> getKanban(UUID branchId, UUID currentAdminId) {
         var specification = LeadSpecification.build(
                 null,
                 null,
@@ -219,7 +227,12 @@ public class LeadService implements LeadPort {
 
         Map<LeadStatus, List<LeadOutput>> outputColumns = new EnumMap<>(LeadStatus.class);
         for (LeadStatus status : LeadStatus.values()) {
-            outputColumns.put(status, leadColumns.get(status).stream().map(LeadMapper::toOutput).toList());
+            outputColumns.put(
+                    status,
+                    leadColumns.get(status).stream()
+                            .map(lead -> leadMapper.toOutput(lead, currentAdminId))
+                            .toList()
+            );
         }
 
         return outputColumns;
@@ -230,7 +243,15 @@ public class LeadService implements LeadPort {
         return findById(leadId);
     }
 
+    @Transactional(readOnly = true)
+    @Override
+    public List<LeadActivityOutput> getLeadActivities(UUID leadId) {
+        findById(leadId);
+        return leadActivityService.getLeadActivities(leadId);
+    }
+
     @Transactional
+    @Override
     public void assignLead(UUID leadId, UUID assignedAdminId) {
         validateAssignedAdmin(assignedAdminId);
 

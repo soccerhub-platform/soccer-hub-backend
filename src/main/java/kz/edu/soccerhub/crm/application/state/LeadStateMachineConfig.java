@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.crm.state;
+package kz.edu.soccerhub.crm.application.state;
 
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import org.springframework.context.annotation.Bean;
@@ -51,9 +51,19 @@ public class LeadStateMachineConfig extends StateMachineConfigurerAdapter<LeadSt
                     .event(LeadEvent.COMPLETE_TRIAL)
                 .and()
                 .withExternal()
+                    .source(LeadStatus.TRIAL_SCHEDULED)
+                    .target(LeadStatus.LOST)
+                    .event(LeadEvent.NO_SHOW)
+                .and()
+                .withExternal()
                     .source(LeadStatus.TRIAL_DONE)
                     .target(LeadStatus.WAITING_PAYMENT)
                     .event(LeadEvent.REQUEST_PAYMENT)
+                .and()
+                .withExternal()
+                    .source(LeadStatus.TRIAL_DONE)
+                    .target(LeadStatus.LOST)
+                    .event(LeadEvent.POST_TRIAL_REJECT)
                 .and()
                 .withExternal()
                     .source(LeadStatus.WAITING_PAYMENT)

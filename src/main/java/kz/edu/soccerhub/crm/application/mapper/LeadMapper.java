@@ -3,22 +3,30 @@ package kz.edu.soccerhub.crm.application.mapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import kz.edu.soccerhub.common.dto.admin.AdminDto;
+import kz.edu.soccerhub.common.dto.lead.AdminShortOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadChildOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadTrialOutput;
+import kz.edu.soccerhub.common.port.AdminPort;
+import kz.edu.soccerhub.crm.application.resolver.LeadActionResolver;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadTrial;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.UUID;
 
-public final class LeadMapper {
+@Component
+@RequiredArgsConstructor
+public class LeadMapper {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private final AdminPort adminPort;
+    private final LeadActionResolver leadActionResolver;
+    private final ObjectMapper objectMapper;
 
-    private LeadMapper() {
-    }
-
-    public static LeadOutput toOutput(Lead lead) {
+    public LeadOutput toOutput(Lead lead, UUID currentAdminId) {
         return new LeadOutput(
                 lead.getId(),
                 lead.getParentName(),
@@ -26,7 +34,8 @@ public final class LeadMapper {
                 lead.getEmail(),
                 lead.getSource(),
                 lead.getStatus(),
-                lead.getAssignedAdminId(),
+                leadActionResolver.resolve(lead, currentAdminId),
+                mapAssignedAdmin(lead.getAssignedAdminId()),
                 lead.getComment(),
                 parseQualificationData(lead.getQualificationData()),
                 mapChildren(lead),
@@ -36,7 +45,11 @@ public final class LeadMapper {
         );
     }
 
-    private static List<LeadChildOutput> mapChildren(Lead lead) {
+    public LeadOutput toOutput(Lead lead) {
+        return toOutput(lead, null);
+    }
+
+    private List<LeadChildOutput> mapChildren(Lead lead) {
         return lead.getChildren().stream()
                 .map(child -> new LeadChildOutput(
                         child.getId(),
@@ -48,7 +61,7 @@ public final class LeadMapper {
                 .toList();
     }
 
-    private static LeadTrialOutput mapTrial(LeadTrial trial) {
+    private LeadTrialOutput mapTrial(LeadTrial trial) {
         if (trial == null) {
             return null;
         }
@@ -67,15 +80,36 @@ public final class LeadMapper {
         );
     }
 
-    private static JsonNode parseQualificationData(String qualificationData) {
+    private AdminShortOutput mapAssignedAdmin(UUID assignedAdminId) {
+        if (assignedAdminId == null) {
+            return null;
+        }
+
+        return adminPort.findById(assignedAdminId)
+                .map(this::toAdminShortOutput)
+                .orElse(null);
+    }
+
+    private AdminShortOutput toAdminShortOutput(AdminDto adminDto) {
+        String fullName = ((adminDto.firstName() == null ? "" : adminDto.firstName()) + " "
+                + (adminDto.lastName() == null ? "" : adminDto.lastName())).trim();
+
+        return new AdminShortOutput(
+                adminDto.id(),
+                fullName.isBlank() ? null : fullName,
+                adminDto.email()
+        );
+    }
+
+    private JsonNode parseQualificationData(String qualificationData) {
         if (qualificationData == null || qualificationData.isBlank()) {
             return NullNode.instance;
         }
 
         try {
-            return OBJECT_MAPPER.readTree(qualificationData);
+            return objectMapper.readTree(qualificationData);
         } catch (Exception exception) {
-            return OBJECT_MAPPER.valueToTree(qualificationData);
+            return objectMapper.valueToTree(qualificationData);
         }
     }
 }
