@@ -19,16 +19,17 @@ public interface LeadPort {
 
     void qualifyLead(UUID leadId, @Valid LeadQualificationInput input, UUID currentAdminId);
 
-    void scheduleTrial(UUID leadId, @Valid ScheduleTrialInput input);
+    void scheduleTrial(UUID leadId, @Valid ScheduleTrialInput input, UUID currentAdminId);
 
-    void assignLead(UUID leadId, UUID assignedAdminId);
+    void assignLead(UUID leadId, UUID assignedAdminId, UUID currentAdminId);
 
-    LeadStatus processEvent(UUID leadId, LeadEvent event);
+    LeadStatus processEvent(UUID leadId, LeadEvent event, UUID currentAdminId);
 
-    UUID convertLeadToClient(UUID leadId);
+    UUID convertLeadToClient(UUID leadId, UUID currentAdminId);
 
     Map<LeadStatus, List<LeadOutput>> getKanban(UUID branchId, UUID currentAdminId);
 
     List<LeadActivityOutput> getLeadActivities(UUID leadId);
-}
 
+    UUID getLeadBranchId(UUID leadId);
+}

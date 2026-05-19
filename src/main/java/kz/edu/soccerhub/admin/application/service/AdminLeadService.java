@@ -33,13 +33,7 @@ public class AdminLeadService {
 
     @Transactional
     public LeadCreateOutput createLead(UUID adminId, AdminLeadCreateInput input) {
-        adminService.findById(adminId)
-                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
-
-        boolean hasAccess = adminBranchService.verifyAdminBelongsToBranch(adminId, input.branchId());
-        if (!hasAccess) {
-            throw new BadRequestException("Admin does not have access to branch", input.branchId());
-        }
+        verifyAdminAccessToBranch(adminId, input.branchId());
 
         LeadCreateCommand command = new LeadCreateCommand(
                 input.name(),
@@ -57,54 +51,38 @@ public class AdminLeadService {
 
     @Transactional
     public void qualifyLead(UUID adminId, UUID leadId, LeadQualificationInput input) {
-        adminService.findById(adminId)
-                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
-
+        verifyAdminAccessToLead(adminId, leadId);
         leadPort.qualifyLead(leadId, input, adminId);
     }
 
     @Transactional
     public void assignLead(UUID adminId, UUID leadId, LeadAssignInput input) {
-        adminService.findById(adminId)
-                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
-
-        leadPort.assignLead(leadId, input.assignedAdminId());
+        verifyAdminAccessToLead(adminId, leadId);
+        leadPort.assignLead(leadId, input.assignedAdminId(), adminId);
     }
 
     @Transactional
     public void scheduleTrial(UUID adminId, UUID leadId, ScheduleTrialInput input) {
-        adminService.findById(adminId)
-                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
-
-        leadPort.scheduleTrial(leadId, input);
+        verifyAdminAccessToLead(adminId, leadId);
+        leadPort.scheduleTrial(leadId, input, adminId);
     }
 
     @Transactional
     public UUID convertLeadToClient(UUID adminId, UUID leadId) {
-        adminService.findById(adminId)
-                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
-
-        return leadPort.convertLeadToClient(leadId);
+        verifyAdminAccessToLead(adminId, leadId);
+        return leadPort.convertLeadToClient(leadId, adminId);
     }
 
     @Transactional
     public LeadEventOutput processEvent(UUID adminId, UUID leadId, LeadEvent event) {
-        adminService.findById(adminId)
-                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
-
-        LeadStatus status = leadPort.processEvent(leadId, event);
+        verifyAdminAccessToLead(adminId, leadId);
+        LeadStatus status = leadPort.processEvent(leadId, event, adminId);
         return new LeadEventOutput(leadId, status);
     }
 
     @Transactional(readOnly = true)
     public LeadKanbanOutput getKanban(UUID adminId, UUID branchId) {
-        adminService.findById(adminId)
-                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
-
-        boolean hasAccess = adminBranchService.verifyAdminBelongsToBranch(adminId, branchId);
-        if (!hasAccess) {
-            throw new BadRequestException("Admin does not have access to branch", branchId);
-        }
+        verifyAdminAccessToBranch(adminId, branchId);
 
         Map<LeadStatus, List<LeadOutput>> columns = leadPort.getKanban(branchId, adminId);
         return new LeadKanbanOutput(columns);
@@ -112,9 +90,30 @@ public class AdminLeadService {
 
     @Transactional(readOnly = true)
     public List<LeadActivityOutput> getLeadActivities(UUID adminId, UUID leadId) {
+        verifyAdminAccessToLead(adminId, leadId);
+        return leadPort.getLeadActivities(leadId);
+    }
+
+    private void verifyAdminAccessToLead(UUID adminId, UUID leadId) {
+        verifyAdminExists(adminId);
+        UUID branchId = leadPort.getLeadBranchId(leadId);
+        boolean hasAccess = adminBranchService.verifyAdminBelongsToBranch(adminId, branchId);
+        if (!hasAccess) {
+            throw new BadRequestException("Admin does not have access to branch", branchId);
+        }
+    }
+
+    private void verifyAdminAccessToBranch(UUID adminId, UUID branchId) {
+        verifyAdminExists(adminId);
+
+        boolean hasAccess = adminBranchService.verifyAdminBelongsToBranch(adminId, branchId);
+        if (!hasAccess) {
+            throw new BadRequestException("Admin does not have access to branch", branchId);
+        }
+    }
+
+    private void verifyAdminExists(UUID adminId) {
         adminService.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
-
-        return leadPort.getLeadActivities(leadId);
     }
 }

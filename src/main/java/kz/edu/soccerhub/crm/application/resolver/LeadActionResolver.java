@@ -8,7 +8,6 @@ import kz.edu.soccerhub.crm.domain.model.enums.LeadTrialStatus;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 @Component
@@ -16,39 +15,38 @@ public class LeadActionResolver {
 
     public List<LeadActionOutput> resolve(Lead lead, UUID currentAdminId) {
         LeadStatus status = lead.getStatus();
-        boolean isOwner = lead.getAssignedAdminId() == null
-                || Objects.equals(lead.getAssignedAdminId(), currentAdminId);
+        boolean branchAllowed = true;
 
         return switch (status) {
 
             case NEW -> List.of(
-                    primary(LeadEvent.CONTACT, "Связаться", true, isOwner),
-                    secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, isOwner)
+                    primary(LeadEvent.CONTACT, "Связаться", true, branchAllowed),
+                    secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, branchAllowed)
             );
 
             case CONTACTED -> List.of(
-                    primary(LeadEvent.QUALIFY, "Квалифицировать", true, isOwner),
-                    secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, isOwner)
+                    primary(LeadEvent.QUALIFY, "Квалифицировать", true, branchAllowed),
+                    secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, branchAllowed)
             );
 
             case QUALIFIED -> List.of(
-                    primary(LeadEvent.SCHEDULE_TRIAL, "Назначить пробное", hasChildren(lead), isOwner),
-                    secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, isOwner)
+                    primary(LeadEvent.SCHEDULE_TRIAL, "Назначить пробное", hasChildren(lead), branchAllowed),
+                    secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, branchAllowed)
             );
 
             case TRIAL_SCHEDULED -> List.of(
-                    primary(LeadEvent.COMPLETE_TRIAL, "Отметить: пришел", true, isOwner),
-                    secondary(LeadEvent.NO_SHOW, "Не пришел", true, true, isOwner)
+                    primary(LeadEvent.COMPLETE_TRIAL, "Отметить: пришел", true, branchAllowed),
+                    secondary(LeadEvent.NO_SHOW, "Не пришел", true, true, branchAllowed)
             );
 
             case TRIAL_DONE -> List.of(
-                    primary(LeadEvent.REQUEST_PAYMENT, "Отправить на оплату", hasCompletedTrial(lead), isOwner),
-                    secondary(LeadEvent.POST_TRIAL_REJECT, "Отказ после пробного", true, true, isOwner)
+                    primary(LeadEvent.REQUEST_PAYMENT, "Отправить на оплату", hasCompletedTrial(lead), branchAllowed),
+                    secondary(LeadEvent.POST_TRIAL_REJECT, "Отказ после пробного", true, true, branchAllowed)
             );
 
             case WAITING_PAYMENT -> List.of(
-                    primary(LeadEvent.CONFIRM_PAYMENT, "Подтвердить оплату", status == LeadStatus.WAITING_PAYMENT, isOwner),
-                    secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, isOwner)
+                    primary(LeadEvent.CONFIRM_PAYMENT, "Подтвердить оплату", status == LeadStatus.WAITING_PAYMENT, branchAllowed),
+                    secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, branchAllowed)
             );
 
             case WON, LOST -> List.of();

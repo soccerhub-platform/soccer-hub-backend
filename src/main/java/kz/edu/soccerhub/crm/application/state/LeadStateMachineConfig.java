@@ -83,6 +83,11 @@ public class LeadStateMachineConfig extends StateMachineConfigurerAdapter<LeadSt
                 .withExternal()
                     .source(LeadStatus.QUALIFIED)
                     .target(LeadStatus.LOST)
+                    .event(LeadEvent.REJECT)
+                .and()
+                .withExternal()
+                    .source(LeadStatus.WAITING_PAYMENT)
+                    .target(LeadStatus.LOST)
                     .event(LeadEvent.REJECT);
     }
 

@@ -41,12 +41,13 @@ public class LeadActivityService {
                 null,
                 lead.getStatus(),
                 lead.getAssignedAdminId(),
+                lead.getAssignedAdminId(),
                 "Lead created"
         );
     }
 
     @Transactional
-    public void logLeadAssigned(Lead lead, UUID previousAssignedAdminId) {
+    public void logLeadAssigned(Lead lead, UUID previousAssignedAdminId, UUID actorAdminId) {
         save(
                 lead.getId(),
                 LeadActivityType.ASSIGNED_ADMIN_CHANGED,
@@ -54,12 +55,13 @@ public class LeadActivityService {
                 null,
                 null,
                 lead.getAssignedAdminId(),
+                actorAdminId,
                 "Assigned admin changed from " + previousAssignedAdminId + " to " + lead.getAssignedAdminId()
         );
     }
 
     @Transactional
-    public void logStatusChanged(Lead lead, LeadEvent event, LeadStatus fromStatus) {
+    public void logStatusChanged(Lead lead, LeadEvent event, LeadStatus fromStatus, UUID actorAdminId) {
         save(
                 lead.getId(),
                 LeadActivityType.STATUS_CHANGED,
@@ -67,12 +69,13 @@ public class LeadActivityService {
                 fromStatus,
                 lead.getStatus(),
                 lead.getAssignedAdminId(),
+                actorAdminId,
                 "Lead status changed via event " + event
         );
     }
 
     @Transactional
-    public void logLeadConverted(Lead lead) {
+    public void logLeadConverted(Lead lead, UUID actorAdminId) {
         save(
                 lead.getId(),
                 LeadActivityType.LEAD_CONVERTED,
@@ -80,6 +83,7 @@ public class LeadActivityService {
                 null,
                 lead.getStatus(),
                 lead.getAssignedAdminId(),
+                actorAdminId,
                 "Lead converted to client " + lead.getClientId()
         );
     }
@@ -91,6 +95,7 @@ public class LeadActivityService {
             LeadStatus fromStatus,
             LeadStatus toStatus,
             UUID assignedAdminId,
+            UUID actorAdminId,
             String details
     ) {
         leadActivityRepository.save(
@@ -102,6 +107,7 @@ public class LeadActivityService {
                         .fromStatus(fromStatus)
                         .toStatus(toStatus)
                         .assignedAdminId(assignedAdminId)
+                        .actorAdminId(actorAdminId)
                         .details(details)
                         .build()
         );
@@ -112,7 +118,11 @@ public class LeadActivityService {
                 resolveType(activity),
                 resolveDescription(activity),
                 activity.getCreatedAt(),
-                resolveActorName(activity.getAssignedAdminId())
+                resolveActorName(
+                        activity.getActorAdminId() != null
+                                ? activity.getActorAdminId()
+                                : activity.getAssignedAdminId()
+                )
         );
     }
 
@@ -177,4 +187,3 @@ public class LeadActivityService {
         return adminDto.email();
     }
 }
-

@@ -52,7 +52,9 @@ public class LeadActivity extends AbstractAuditableEntity {
     @Column(name = "assigned_admin_id")
     private UUID assignedAdminId;
 
+    @Column(name = "actor_admin_id")
+    private UUID actorAdminId;
+
     @Column(name = "details", columnDefinition = "TEXT")
     private String details;
 }
-

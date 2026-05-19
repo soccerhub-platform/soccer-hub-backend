@@ -86,6 +86,14 @@ public class LeadTrial extends AbstractAuditableEntity {
         this.status = LeadTrialStatus.SCHEDULED;
     }
 
+    public void markCompleted() {
+        this.status = LeadTrialStatus.COMPLETED;
+    }
+
+    public void markCanceled() {
+        this.status = LeadTrialStatus.CANCELED;
+    }
+
     @PrePersist
     private void ensureDefaults() {
         if (id == null) {
@@ -96,4 +104,3 @@ public class LeadTrial extends AbstractAuditableEntity {
         }
     }
 }
-

@@ -119,14 +119,14 @@ public class LeadService implements LeadPort {
         lead.updateStatus(newStatus);
 
         leadRepository.save(lead);
-        leadActivityService.logStatusChanged(lead, LeadEvent.QUALIFY, previousStatus);
+        leadActivityService.logStatusChanged(lead, LeadEvent.QUALIFY, previousStatus, currentAdminId);
 
         log.info("Lead {} qualified. status: {} -> {}", leadId, previousStatus, newStatus);
     }
 
     @Override
     @Transactional
-    public void scheduleTrial(UUID leadId, @Valid ScheduleTrialInput input) {
+    public void scheduleTrial(UUID leadId, @Valid ScheduleTrialInput input, UUID currentAdminId) {
         validateTrialInput(input);
 
         Lead lead = findById(leadId);
@@ -169,7 +169,7 @@ public class LeadService implements LeadPort {
         lead.updateStatus(newStatus);
 
         leadRepository.save(lead);
-        leadActivityService.logStatusChanged(lead, LeadEvent.SCHEDULE_TRIAL, previousStatus);
+        leadActivityService.logStatusChanged(lead, LeadEvent.SCHEDULE_TRIAL, previousStatus, currentAdminId);
         log.info("Trial scheduled for lead {}", leadId);
     }
 
@@ -209,8 +209,7 @@ public class LeadService implements LeadPort {
                 null
         );
 
-        List<Lead> branchLeads = leadRepository.findAll(specification);
-        List<Lead> filteredLeads = branchLeads;
+        List<Lead> filteredLeads = leadRepository.findAll(specification);
 
         Map<LeadStatus, List<Lead>> leadColumns = new EnumMap<>(LeadStatus.class);
         for (LeadStatus status : LeadStatus.values()) {
@@ -250,9 +249,15 @@ public class LeadService implements LeadPort {
         return leadActivityService.getLeadActivities(leadId);
     }
 
+    @Transactional(readOnly = true)
+    @Override
+    public UUID getLeadBranchId(UUID leadId) {
+        return findById(leadId).getBranchId();
+    }
+
     @Transactional
     @Override
-    public void assignLead(UUID leadId, UUID assignedAdminId) {
+    public void assignLead(UUID leadId, UUID assignedAdminId, UUID currentAdminId) {
         validateAssignedAdmin(assignedAdminId);
 
         Lead lead = findById(leadId);
@@ -260,27 +265,45 @@ public class LeadService implements LeadPort {
         lead.assignAdmin(assignedAdminId);
 
         leadRepository.save(lead);
-        leadActivityService.logLeadAssigned(lead, previousAdminId);
+        leadActivityService.logLeadAssigned(lead, previousAdminId, currentAdminId);
     }
 
     @Transactional
     @Override
-    public LeadStatus processEvent(UUID leadId, LeadEvent event) {
+    public LeadStatus processEvent(UUID leadId, LeadEvent event, UUID currentAdminId) {
         Lead lead = findById(leadId);
         LeadStatus previousStatus = lead.getStatus();
 
         LeadStatus newStatus = stateMachineService.process(lead.getId(), previousStatus, event);
+        syncTrialStatusByEvent(lead, event);
         lead.updateStatus(newStatus);
 
         leadRepository.save(lead);
-        leadActivityService.logStatusChanged(lead, event, previousStatus);
+        leadActivityService.logStatusChanged(lead, event, previousStatus, currentAdminId);
 
         return newStatus;
     }
 
+    private void syncTrialStatusByEvent(Lead lead, LeadEvent event) {
+        if (event == LeadEvent.COMPLETE_TRIAL) {
+            if (lead.getTrial() == null) {
+                throw new BadRequestException("Trial is not scheduled", lead.getId());
+            }
+            lead.getTrial().markCompleted();
+            return;
+        }
+
+        if (event == LeadEvent.NO_SHOW) {
+            if (lead.getTrial() == null) {
+                throw new BadRequestException("Trial is not scheduled", lead.getId());
+            }
+            lead.getTrial().markCanceled();
+        }
+    }
+
     @Transactional
     @Override
-    public UUID convertLeadToClient(UUID leadId) {
+    public UUID convertLeadToClient(UUID leadId, UUID currentAdminId) {
         Lead lead = findById(leadId);
         if (lead.getStatus() != LeadStatus.WON) {
             throw new BadRequestException("Only WON leads can be converted to client", leadId);
@@ -321,7 +344,7 @@ public class LeadService implements LeadPort {
 
         lead.markConverted(clientId);
         leadRepository.save(lead);
-        leadActivityService.logLeadConverted(lead);
+        leadActivityService.logLeadConverted(lead, currentAdminId);
 
         log.info("Lead {} converted to client {}", leadId, clientId);
 
