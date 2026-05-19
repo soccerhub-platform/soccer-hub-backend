@@ -54,6 +54,24 @@ public interface GroupScheduleRepository extends
     );
 
     @Query("""
+        select gs
+        from GroupSchedule gs
+        where gs.status = 'ACTIVE'
+          and gs.dayOfWeek = :dayOfWeek
+          and gs.startDate <= :targetDate
+          and gs.endDate >= :targetDate
+          and (
+              gs.coachId = :coachId
+              or (gs.substitution = true and gs.substitutionCoachId = :coachId)
+          )
+    """)
+    List<GroupSchedule> findCoachSchedulesForDate(
+            @Param("coachId") UUID coachId,
+            @Param("targetDate") LocalDate targetDate,
+            @Param("dayOfWeek") DayOfWeek dayOfWeek
+    );
+
+    @Query("""
         select s from GroupSchedule s
         where s.groupId = :groupId
           and s.coachId = :coachId
