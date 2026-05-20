@@ -37,6 +37,12 @@ public class CoachProfile extends AbstractAuditableEntity {
     @Column(name = "email", nullable = false)
     private String email;
 
+    @Column(name = "specialization")
+    private String specialization;
+
+    @Column(name = "bio")
+    private String bio;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
     private CoachStatus status;

@@ -2,6 +2,7 @@ package kz.edu.soccerhub.auth.api;
 
 import jakarta.validation.Valid;
 import kz.edu.soccerhub.auth.application.dto.ChangePasswordInput;
+import kz.edu.soccerhub.auth.application.dto.ChangePasswordOutput;
 import kz.edu.soccerhub.auth.application.dto.LoginInput;
 import kz.edu.soccerhub.auth.application.dto.RefreshInput;
 import kz.edu.soccerhub.auth.application.dto.TokenOutput;
@@ -41,10 +42,10 @@ public class AuthController {
     }
 
     @PostMapping("/change-password")
-    public ResponseEntity<Void> changePassword(@AuthenticationPrincipal Jwt jwt,
-                                               @RequestBody @Valid ChangePasswordInput input) {
+    public ResponseEntity<ChangePasswordOutput> changePassword(@AuthenticationPrincipal Jwt jwt,
+                                                               @RequestBody @Valid ChangePasswordInput input) {
         UUID userId = UUID.fromString(jwt.getSubject());
-        authService.changePassword(userId, input.newPassword());
-        return ResponseEntity.ok().build();
+        authService.changePassword(userId, input.currentPassword(), input.newPassword());
+        return ResponseEntity.ok(new ChangePasswordOutput(true));
     }
 }

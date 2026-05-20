@@ -20,8 +20,7 @@ public class CoachRosterReader {
                 select distinct p.id, p.first_name, p.last_name
                 from players p
                 join contracts c on c.player_id = p.id
-                join sections s on s.id = c.section_id
-                where s.group_id = :groupId
+                where c.group_id = :groupId
                   and c.start_date <= :sessionDate
                   and (c.end_date is null or c.end_date >= :sessionDate)
                 order by p.first_name, p.last_name

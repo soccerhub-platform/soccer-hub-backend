@@ -143,9 +143,13 @@ public class AuthService implements AuthPort {
 
     @Override
     @Transactional
-    public void changePassword(UUID userId, String newPassword) {
+    public void changePassword(UUID userId, String currentPassword, String newPassword) {
         AppUserEntity user = userRepo.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("User not found"));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new BadRequestException("Current password is incorrect");
+        }
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setForcePasswordChange(false);

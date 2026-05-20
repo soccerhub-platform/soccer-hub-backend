@@ -9,6 +9,7 @@ import java.util.UUID;
 
 public interface CoachBranchRepository extends JpaRepository<CoachBranch, UUID> {
     List<CoachBranch> findAllByCoachIdIn(Set<UUID> coachId);
+    List<CoachBranch> findAllByCoachId(UUID coachId);
     boolean existsByCoachIdAndBranchId(UUID coachId, UUID branchId);
     List<CoachBranch> findAllByBranchIdIn(Set<UUID> branchId);
 }
