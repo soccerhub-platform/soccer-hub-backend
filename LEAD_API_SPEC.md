@@ -6,6 +6,107 @@
 
 ---
 
+## 0) Operating Flow (Step 1)
+
+This section defines operational rules for admins in branch CRM flow.
+
+### 0.1 Roles in flow
+
+- **Assignee (`assignedAdminId`)**: accountable owner of lead.
+- **Actor**: admin who actually performs an action now (can be different from assignee, but must have branch access).
+- **Branch scope**: any action is allowed only if admin has access to lead branch.
+
+### 0.2 Stage definition (Done criteria + SLA target)
+
+1. `NEW`
+   - Meaning: lead created, not contacted yet.
+   - Done criteria to exit: first contact attempt logged via `CONTACT`.
+   - SLA target: first attempt in **15 minutes** during working hours.
+
+2. `CONTACTED`
+   - Meaning: parent was reached and initial context collected.
+   - Done criteria to exit: qualification completed via `QUALIFY`.
+   - SLA target: move to `QUALIFIED` in **24 hours**.
+
+3. `QUALIFIED`
+   - Meaning: child/profile requirements captured, ready for trial planning.
+   - Done criteria to exit: trial slot scheduled via `SCHEDULE_TRIAL`.
+   - SLA target: schedule trial in **48 hours**.
+
+4. `TRIAL_SCHEDULED`
+   - Meaning: trial date/time fixed.
+   - Done criteria to exit:
+     - `COMPLETE_TRIAL` -> `TRIAL_DONE`, or
+     - `NO_SHOW` -> `LOST`.
+   - SLA target: status update same day (max **4 hours** after trial start).
+
+5. `TRIAL_DONE`
+   - Meaning: trial completed successfully.
+   - Done criteria to exit:
+     - `REQUEST_PAYMENT` -> `WAITING_PAYMENT`, or
+     - `POST_TRIAL_REJECT` -> `LOST`.
+   - SLA target: payment request in **24 hours**.
+
+6. `WAITING_PAYMENT`
+   - Meaning: offer sent, waiting payment confirmation.
+   - Done criteria to exit:
+     - `CONFIRM_PAYMENT` -> `WON`, or
+     - `REJECT` -> `LOST`.
+   - SLA target: final resolution in **7 calendar days**.
+
+7. `WON` / `LOST`
+   - Final statuses.
+   - `WON`: ready for convert to client flow.
+
+### 0.3 Operational rules
+
+- Any branch admin can progress lead; ownership is not a blocker.
+- `assignedAdminId` remains responsibility marker; actions by other admins must be reflected in activity actor.
+- Reassign lead when owner is unavailable more than one working day.
+- Do not keep leads in intermediate stage without next-step date/plan.
+
+### 0.3.1 Ownership model (Step 2)
+
+Definitions:
+
+- **Owner**: `assignedAdminId` in lead card. Accountable for outcome and next action plan.
+- **Executor**: admin who performed concrete action (status move / trial scheduling / conversion).
+
+Rules:
+
+1. Any admin with branch access may execute lead actions.
+2. Owner is still accountable for SLA, even if action was executed by another admin.
+3. Executor must be visible in lead activity history.
+4. Owner change is explicit only via `PATCH /admin/leads/{leadId}/assign`.
+
+Handoff policy:
+
+1. If owner is absent for >1 working day, lead must be reassigned.
+2. If lead breached SLA and owner is unavailable, nearest available branch admin executes immediate next action and records progress; reassignment should follow in same working day.
+3. High-priority stages (`NEW`, `TRIAL_SCHEDULED`, `TRIAL_DONE`) should not wait for original owner.
+
+UI expectations:
+
+- Lead card shows current owner (`assignedAdmin`).
+- Activity timeline shows executor (`actorName`) for each event.
+- If executor != owner, timeline still shows action as valid (not exception).
+
+### 0.4 Escalation policy
+
+- Breach of `NEW`/`CONTACTED` SLA -> escalate to branch head same day.
+- Repeated no-progress (2+ breaches per admin/week) -> manual review of workload and lead distribution.
+
+### 0.5 Metrics to monitor weekly
+
+- Time to first contact (`NEW -> CONTACTED`)
+- Qualification lead time (`CONTACTED -> QUALIFIED`)
+- Trial scheduling lead time (`QUALIFIED -> TRIAL_SCHEDULED`)
+- Trial show rate (`TRIAL_SCHEDULED -> TRIAL_DONE` vs `NO_SHOW`)
+- Trial-to-payment conversion (`TRIAL_DONE -> WAITING_PAYMENT -> WON`)
+- Share of cross-owner executions (executor != owner) and SLA impact
+
+---
+
 ## 1) Endpoints by feature
 
 ## Creation
@@ -77,7 +178,7 @@
 ## Kanban / listing
 
 ### `GET /leads/kanban`
-- Auth: shared read-only endpoint (intended for all authenticated roles)
+- Auth: `ADMIN`
 - Query params:
   - `branchId` (required, UUID)
 - Response: `200 OK` (`Map<LeadStatus, List<LeadOutput>>`)
@@ -121,7 +222,7 @@
 ---
 
 ### `GET /leads`
-- Auth: depends on global security config (no method-level role annotation in controller)
+- Auth: `ADMIN`
 - Query params:
   - `statuses` (optional, repeated)
   - `assignedAdminId` (optional UUID)
@@ -136,6 +237,7 @@
 ---
 
 ### `GET /leads/{leadId}`
+- Auth: `ADMIN`
 - Response: `200 OK` (`LeadOutput`)
 - Errors: `404 Not Found` if lead does not exist
 
@@ -400,6 +502,7 @@ State machine supports:
 - `TRIAL_SCHEDULED -> TRIAL_DONE` (`COMPLETE_TRIAL`)
 - `TRIAL_DONE -> WAITING_PAYMENT` (`REQUEST_PAYMENT`)
 - `WAITING_PAYMENT -> WON` (`CONFIRM_PAYMENT`)
+- `WAITING_PAYMENT -> LOST` (`REJECT`)
 - `NEW/CONTACTED/QUALIFIED -> LOST` (`REJECT`)
 
 Current REST-triggered transitions:
@@ -526,4 +629,3 @@ Current REST-triggered transitions:
 - Expect validation errors (`400`) for invalid transitions/payloads.
 - Expect `404` for missing leads.
 - For admin operations, send authenticated JWT with role `ADMIN`.
-
