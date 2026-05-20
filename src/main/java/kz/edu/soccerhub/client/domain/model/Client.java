@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import kz.edu.soccerhub.client.domain.enums.ClientStatus;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import lombok.*;
-import org.hibernate.annotations.UuidGenerator;
+import org.springframework.data.domain.Persistable;
 
 import java.util.UUID;
 
@@ -15,10 +15,9 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class Client extends AbstractAuditableEntity {
+public class Client extends AbstractAuditableEntity implements Persistable<UUID> {
 
     @Id
-    @UuidGenerator
     private UUID id;
 
     private String firstName;
@@ -36,4 +35,24 @@ public class Client extends AbstractAuditableEntity {
 
     @Column(name = "branch_id")
     private UUID branchId;
+
+    @Transient
+    @Builder.Default
+    private boolean isNew = true;
+
+    @Override
+    public UUID getId() {
+        return id;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PrePersist
+    void markNotNew() {
+        this.isNew = false;
+    }
 }

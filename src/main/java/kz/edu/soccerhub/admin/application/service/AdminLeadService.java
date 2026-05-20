@@ -11,6 +11,8 @@ import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
+import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
+import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.LeadPort;
@@ -69,9 +71,8 @@ public class AdminLeadService {
     }
 
     @Transactional
-    public UUID convertLeadToClient(UUID adminId, UUID leadId) {
-        verifyAdminAccessToLead(adminId, leadId);
-        return leadPort.convertLeadToClient(leadId, adminId);
+    public ConvertLeadResponse convertLeadToClient(UUID actorUserId, UUID leadId, ConvertLeadRequest request) {
+        return leadPort.convertLeadToClient(leadId, request, actorUserId);
     }
 
     @Transactional

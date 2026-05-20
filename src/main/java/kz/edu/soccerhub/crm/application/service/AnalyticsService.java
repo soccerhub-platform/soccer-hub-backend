@@ -260,8 +260,7 @@ public class AnalyticsService implements AnalyticsPort {
                 select cg.coach_id,
                        count(distinct c.player_id) as active_students
                 from coach_groups cg
-                join sections s on s.group_id = cg.group_id
-                join contracts c on c.section_id = s.id
+                join contracts c on c.group_id = cg.group_id
                 where c.start_date <= :dateTo
                   and (c.end_date is null or c.end_date >= :dateTo)
                 group by cg.coach_id
@@ -348,8 +347,7 @@ public class AnalyticsService implements AnalyticsPort {
         String cohortsSql = """
                 select distinct date_trunc('month', c.start_date) as cohort
                 from contracts c
-                join sections s on s.id = c.section_id
-                join groups g on g.id = s.group_id
+                join groups g on g.id = c.group_id
                 where g.branch_id = :branchId
                   and c.start_date >= :startMonth
                   and c.start_date < (:endMonth + interval '1 month')
@@ -387,8 +385,7 @@ public class AnalyticsService implements AnalyticsPort {
         String sql = """
                 select count(distinct c.player_id) as total
                 from contracts c
-                join sections s on s.id = c.section_id
-                join groups g on g.id = s.group_id
+                join groups g on g.id = c.group_id
                 where g.branch_id = :branchId
                   and date_trunc('month', c.start_date) = :cohortMonth
                 """;
@@ -405,8 +402,7 @@ public class AnalyticsService implements AnalyticsPort {
         String sql = """
                 select count(distinct c.player_id) as total
                 from contracts c
-                join sections s on s.id = c.section_id
-                join groups g on g.id = s.group_id
+                join groups g on g.id = c.group_id
                 where g.branch_id = :branchId
                   and date_trunc('month', c.start_date) = :cohortMonth
                   and c.start_date <= :periodEnd
@@ -686,4 +682,3 @@ public class AnalyticsService implements AnalyticsPort {
         }
     }
 }
-

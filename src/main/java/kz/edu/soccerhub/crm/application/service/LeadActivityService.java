@@ -87,15 +87,20 @@ public class LeadActivityService {
 
     @Transactional
     public void logLeadConverted(Lead lead, UUID actorAdminId) {
+        logLeadConverted(lead, actorAdminId, null, "Lead converted to client " + lead.getClientId());
+    }
+
+    @Transactional
+    public void logLeadConverted(Lead lead, UUID actorAdminId, LeadStatus fromStatus, String details) {
         save(
                 lead.getId(),
                 LeadActivityType.LEAD_CONVERTED,
                 null,
-                null,
+                fromStatus,
                 lead.getStatus(),
                 lead.getAssignedAdminId(),
                 actorAdminId,
-                "Lead converted to client " + lead.getClientId()
+                details
         );
     }
 

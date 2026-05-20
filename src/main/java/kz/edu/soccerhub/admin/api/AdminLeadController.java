@@ -6,7 +6,8 @@ import kz.edu.soccerhub.admin.application.service.AdminLeadService;
 import kz.edu.soccerhub.common.dto.lead.LeadAssignInput;
 import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateOutput;
-import kz.edu.soccerhub.common.dto.lead.LeadConvertOutput;
+import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
+import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadEventInput;
 import kz.edu.soccerhub.common.dto.lead.LeadEventOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadKanbanOutput;
@@ -34,7 +35,6 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/admin/leads")
-@PreAuthorize("hasAuthority('ADMIN')")
 @RequiredArgsConstructor
 @Validated
 public class AdminLeadController {
@@ -42,6 +42,7 @@ public class AdminLeadController {
     private final AdminLeadService adminLeadService;
 
     @PostMapping("/create")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<LeadCreateOutput> createLead(
             @AuthenticationPrincipal Jwt jwt,
             @RequestBody @Valid AdminLeadCreateInput input
@@ -55,6 +56,7 @@ public class AdminLeadController {
     }
 
     @PatchMapping("/{leadId}/qualify")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<Void> qualifyLead(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID leadId,
@@ -66,6 +68,7 @@ public class AdminLeadController {
     }
 
     @PatchMapping("/{leadId}/assign")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<Void> assignLead(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID leadId,
@@ -77,6 +80,7 @@ public class AdminLeadController {
     }
 
     @PostMapping("/{leadId}/trial")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<Void> scheduleTrial(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID leadId,
@@ -88,16 +92,19 @@ public class AdminLeadController {
     }
 
     @PostMapping("/{leadId}/convert")
-    public ResponseEntity<LeadConvertOutput> convertLead(
+    @PreAuthorize("hasAnyAuthority('ADMIN','SUPER_ADMIN','DISPATCHER')")
+    public ResponseEntity<ConvertLeadResponse> convertLead(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable UUID leadId
+            @PathVariable UUID leadId,
+            @RequestBody @Valid ConvertLeadRequest request
     ) {
-        UUID adminId = UUID.fromString(jwt.getSubject());
-        UUID clientId = adminLeadService.convertLeadToClient(adminId, leadId);
-        return ResponseEntity.ok(new LeadConvertOutput(clientId));
+        UUID actorUserId = UUID.fromString(jwt.getSubject());
+        ConvertLeadResponse output = adminLeadService.convertLeadToClient(actorUserId, leadId, request);
+        return ResponseEntity.ok(output);
     }
 
         @PostMapping("/{leadId}/events")
+        @PreAuthorize("hasAuthority('ADMIN')")
         public ResponseEntity<LeadEventOutput> processEvent(
                 @AuthenticationPrincipal Jwt jwt,
                 @PathVariable UUID leadId,
@@ -116,6 +123,7 @@ public class AdminLeadController {
         }
 
     @GetMapping("/loss-reasons")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<List<LeadLossReasonResponse>> getLossReasons(
             @AuthenticationPrincipal Jwt jwt
     ) {
@@ -124,6 +132,7 @@ public class AdminLeadController {
     }
 
     @GetMapping("/kanban")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<LeadKanbanOutput> getKanban(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID branchId
@@ -133,6 +142,7 @@ public class AdminLeadController {
     }
 
     @GetMapping("/{leadId}/activities")
+    @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<List<LeadActivityOutput>> getLeadActivities(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID leadId
@@ -142,4 +152,3 @@ public class AdminLeadController {
     }
 
 }
-

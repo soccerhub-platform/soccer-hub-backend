@@ -15,6 +15,7 @@ public interface GroupCoachRepository extends JpaRepository<GroupCoach, UUID> {
     Optional<GroupCoach> findByGroupIdAndCoachId(UUID groupId, UUID coachId);
     boolean existsByGroupIdAndCoachIdAndActiveTrue(UUID groupId, UUID coachId);
     List<GroupCoach> findByGroupIdAndActiveTrue(UUID groupId);
+    List<GroupCoach> findByCoachIdAndActiveTrue(UUID coachId);
     int countByGroupIdAndActiveTrue(UUID groupId);
 
     boolean existsByGroupIdAndCoachIdAndRole(UUID groupId, UUID coachId, CoachRole role);

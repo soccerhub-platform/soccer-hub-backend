@@ -3,6 +3,20 @@ package kz.edu.soccerhub.crm.application.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
+import kz.edu.soccerhub.auth.domain.model.AppRoleEntity;
+import kz.edu.soccerhub.auth.domain.model.AppUserEntity;
+import kz.edu.soccerhub.auth.domain.repository.AppRoleRepo;
+import kz.edu.soccerhub.auth.domain.repository.AppUserRepo;
+import kz.edu.soccerhub.client.domain.enums.ClientStatus;
+import kz.edu.soccerhub.client.domain.model.Client;
+import kz.edu.soccerhub.client.domain.model.Contract;
+import kz.edu.soccerhub.client.domain.model.Player;
+import kz.edu.soccerhub.client.domain.repository.ClientRepository;
+import kz.edu.soccerhub.client.domain.repository.ContractRepository;
+import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
+import kz.edu.soccerhub.common.domain.enums.Role;
+import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
+import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
 import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
@@ -14,7 +28,6 @@ import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AdminPort;
-import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.common.port.CoachPort;
 import kz.edu.soccerhub.common.port.GroupSchedulePort;
 import kz.edu.soccerhub.common.port.GroupPort;
@@ -31,21 +44,28 @@ import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
 import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import kz.edu.soccerhub.crm.application.state.LeadEvent;
 import kz.edu.soccerhub.crm.application.state.LeadStateMachineService;
+import kz.edu.soccerhub.crm.domain.model.LeadChild;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import kz.edu.soccerhub.organization.domain.model.Group;
+import kz.edu.soccerhub.organization.domain.repository.GroupRepository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -56,13 +76,19 @@ public class LeadService implements LeadPort {
     private final LeadRepository leadRepository;
     private final LeadStateMachineService stateMachineService;
     private final AdminPort adminPort;
-    private final ClientPort clientPort;
     private final GroupPort groupPort;
     private final CoachPort coachPort;
     private final GroupSchedulePort groupSchedulePort;
     private final LeadActivityService leadActivityService;
     private final LeadMapper leadMapper;
     private final LeadLossReasonRepository leadLossReasonRepository;
+    private final ClientRepository clientRepository;
+    private final PlayerRepository playerRepository;
+    private final ContractRepository contractRepository;
+    private final GroupRepository groupRepository;
+    private final AppUserRepo appUserRepo;
+    private final AppRoleRepo appRoleRepo;
+    private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -359,52 +385,219 @@ public class LeadService implements LeadPort {
 
     @Transactional
     @Override
-    public UUID convertLeadToClient(UUID leadId, UUID currentAdminId) {
+    public ConvertLeadResponse convertLeadToClient(UUID leadId, ConvertLeadRequest request, UUID currentAdminId) {
         Lead lead = findById(leadId);
-        if (lead.getStatus() != LeadStatus.WON) {
-            throw new BadRequestException("Only WON leads can be converted to client", leadId);
-        }
-        if (lead.getClientId() != null) {
-            return lead.getClientId();
-        }
+        validateConvertRequest(request);
+        validateLeadStatusForConversion(lead);
 
-        if (!lead.isReadyForConversion()) {
-            throw new BadRequestException("Lead is not ready for conversion", leadId);
-        }
+        LeadChild child = lead.getChildren().stream()
+                .filter(item -> Objects.equals(item.getId(), request.childId()))
+                .findFirst()
+                .orElseThrow(() -> new BadRequestException(
+                        "Child does not belong to lead",
+                        Map.of("leadId", leadId, "childId", request.childId())
+                ));
 
-        UUID clientId = clientPort.createClient(
-                lead.getParentName(),
-                lead.getPhone(),
-                lead.getEmail()
-        );
+        Group group = groupRepository.findById(request.groupId())
+                .orElseThrow(() -> new NotFoundException("Group not found", request.groupId()));
 
-        List<LeadChildInput> children = lead.getChildren().stream()
-                .map(child -> new LeadChildInput(
-                        trim(child.getChildName()),
-                        child.getChildAge(),
-                        child.getGender(),
-                        trim(child.getExperience())
-                ))
-                .toList();
-        if (children.isEmpty()) {
-            throw new BadRequestException("At least one child is required to convert lead", leadId);
-        }
-
-        for (LeadChildInput child : children) {
-            clientPort.createPlayer(
-                    clientId,
-                    child.childName(),
-                    child.childAge()
+        if (!Objects.equals(group.getBranchId(), lead.getBranchId())) {
+            throw new BadRequestException(
+                    "Group does not belong to lead branch",
+                    Map.of("leadBranchId", lead.getBranchId(), "groupBranchId", group.getBranchId())
             );
         }
 
-        lead.markConverted(clientId);
+        Client client = resolveOrCreateClient(lead);
+        Player player = resolveOrCreatePlayer(client, child, request.childBirthDate());
+        Contract contract = resolveOrCreateContract(player, group, request);
+
+        LeadStatus previousStatus = lead.getStatus();
+        if (lead.getStatus() != LeadStatus.WON) {
+            lead.updateStatus(LeadStatus.WON);
+        }
+        lead.markConverted(client.getId());
         leadRepository.save(lead);
-        leadActivityService.logLeadConverted(lead, currentAdminId);
 
-        log.info("Lead {} converted to client {}", leadId, clientId);
+        leadActivityService.logLeadConverted(
+                lead,
+                currentAdminId,
+                previousStatus,
+                buildConversionDetails(request, player.getId(), contract.getId())
+        );
 
-        return clientId;
+        return new ConvertLeadResponse(
+                lead.getId(),
+                client.getId(),
+                player.getId(),
+                contract.getId(),
+                "CONVERTED"
+        );
+    }
+
+    private void validateConvertRequest(ConvertLeadRequest request) {
+        if (request == null) {
+            throw new BadRequestException("Conversion payload is required");
+        }
+        if (request.childId() == null) {
+            throw new BadRequestException("childId is required");
+        }
+        if (request.groupId() == null) {
+            throw new BadRequestException("groupId is required");
+        }
+        if (request.childBirthDate() == null) {
+            throw new BadRequestException("childBirthDate is required");
+        }
+        if (request.contractStartDate() == null) {
+            throw new BadRequestException("contractStartDate is required");
+        }
+        if (request.contractEndDate() != null && request.contractEndDate().isBefore(request.contractStartDate())) {
+            throw new BadRequestException("contractEndDate must be after contractStartDate");
+        }
+        if (request.amount() != null && request.amount().compareTo(BigDecimal.ZERO) < 0) {
+            throw new BadRequestException("amount must be >= 0");
+        }
+    }
+
+    private void validateLeadStatusForConversion(Lead lead) {
+        boolean allowed = lead.getStatus() == LeadStatus.TRIAL_DONE
+                          || lead.getStatus() == LeadStatus.QUALIFIED
+                          || lead.getStatus() == LeadStatus.TRIAL_SCHEDULED
+                          || lead.getStatus() == LeadStatus.WAITING_PAYMENT
+                          || lead.getStatus() == LeadStatus.WON;
+        if (!allowed) {
+            throw new BadRequestException("Lead status is not allowed for conversion", lead.getStatus());
+        }
+    }
+
+    private Client resolveOrCreateClient(Lead lead) {
+        if (lead.getClientId() != null) {
+            return clientRepository.findById(lead.getClientId())
+                    .orElseThrow(() -> new NotFoundException("Client from lead.clientId not found", lead.getClientId()));
+        }
+
+        String[] parentName = splitName(lead.getParentName());
+        String normalizedEmail = resolveClientEmail(lead);
+
+        AppUserEntity user = appUserRepo.findByEmail(normalizedEmail)
+                .orElseGet(() -> createClientAppUser(normalizedEmail));
+
+        Client client = Client.builder()
+                .id(user.getId())
+                .firstName(parentName[0])
+                .lastName(parentName[1])
+                .phone(lead.getPhone())
+                .branchId(lead.getBranchId())
+                .source(lead.getSource() == null ? null : lead.getSource().name())
+                .comments(lead.getComment())
+                .status(ClientStatus.ACTIVE)
+                .build();
+
+        return clientRepository.save(client);
+    }
+
+    private AppUserEntity createClientAppUser(String email) {
+        AppUserEntity user = AppUserEntity.builder()
+                .id(UUID.randomUUID())
+                .email(email)
+                .passwordHash(passwordEncoder.encode("Temp#" + UUID.randomUUID()))
+                .enabled(true)
+                .forcePasswordChange(true)
+                .roles(new HashSet<>())
+                .build();
+
+        appRoleRepo.findById(Role.CLIENT)
+                .ifPresent(role -> user.getRoles().add(AppRoleEntity.builder()
+                        .code(role.getCode())
+                        .description(role.getDescription())
+                        .build()));
+
+        return appUserRepo.save(user);
+    }
+
+    private Player resolveOrCreatePlayer(Client client, LeadChild child, LocalDate birthDate) {
+        String[] childName = splitName(child.getChildName());
+
+        Optional<Player> existingPlayer = playerRepository.findFirstByParent_IdAndFirstNameAndLastNameAndBirthDate(
+                client.getId(),
+                childName[0],
+                childName[1],
+                birthDate
+        );
+        if (existingPlayer.isPresent()) {
+            return existingPlayer.get();
+        }
+
+        Player player = Player.builder()
+                .id(UUID.randomUUID())
+                .firstName(childName[0])
+                .lastName(childName[1])
+                .birthDate(birthDate)
+                .parent(client)
+                .build();
+
+        return playerRepository.save(player);
+    }
+
+    private Contract resolveOrCreateContract(Player player, Group group, ConvertLeadRequest request) {
+        Optional<Contract> existing = contractRepository.findFirstByPlayerIdAndGroupIdAndStartDateAndEndDate(
+                player.getId(),
+                group.getId(),
+                request.contractStartDate(),
+                request.contractEndDate()
+        );
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        Contract contract = Contract.builder()
+                .id(UUID.randomUUID())
+                .playerId(player.getId())
+                .groupId(group.getId())
+                .startDate(request.contractStartDate())
+                .endDate(request.contractEndDate())
+                .amount(request.amount())
+                .build();
+
+        return contractRepository.save(contract);
+    }
+
+    private String resolveClientEmail(Lead lead) {
+        String email = trim(lead.getEmail());
+        if (email != null && !email.isBlank()) {
+            return email.toLowerCase();
+        }
+        String normalizedPhone = lead.getPhone() == null ? UUID.randomUUID().toString().replace("-", "") : lead.getPhone().replaceAll("[^0-9]", "");
+        return "client+" + normalizedPhone + "@soccerhub.local";
+    }
+
+    private String[] splitName(String fullName) {
+        String normalized = trim(fullName);
+        if (normalized == null || normalized.isBlank()) {
+            return new String[]{"Unknown", "Unknown"};
+        }
+
+        String[] parts = normalized.split("\\s+", 2);
+        if (parts.length == 1) {
+            return new String[]{parts[0], parts[0]};
+        }
+        return parts;
+    }
+
+    private String buildConversionDetails(ConvertLeadRequest request, UUID playerId, UUID contractId) {
+        try {
+            Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("childId", request.childId());
+            payload.put("groupId", request.groupId());
+            payload.put("playerId", playerId);
+            payload.put("contractId", contractId);
+            payload.put("amount", request.amount());
+            payload.put("contractStartDate", request.contractStartDate() == null ? null : request.contractStartDate().toString());
+            payload.put("contractEndDate", request.contractEndDate() == null ? null : request.contractEndDate().toString());
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException ex) {
+            return "Lead converted with contract " + contractId;
+        }
     }
 
     private void replaceChildrenFromQualification(Lead lead, List<LeadChildInput> children) {

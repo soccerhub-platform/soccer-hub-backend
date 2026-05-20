@@ -3,6 +3,8 @@ package kz.edu.soccerhub.common.port;
 import jakarta.validation.Valid;
 import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
+import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
+import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
@@ -32,7 +34,7 @@ public interface LeadPort {
             UUID currentAdminId
     );
 
-    UUID convertLeadToClient(UUID leadId, UUID currentAdminId);
+    ConvertLeadResponse convertLeadToClient(UUID leadId, ConvertLeadRequest request, UUID currentAdminId);
 
     Map<LeadStatus, List<LeadOutput>> getKanban(UUID branchId, UUID currentAdminId);
 
