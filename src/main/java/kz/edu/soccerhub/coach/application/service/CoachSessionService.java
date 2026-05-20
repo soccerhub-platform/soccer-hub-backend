@@ -223,7 +223,10 @@ public class CoachSessionService {
     ) {
         ensureCoachProfile(currentUserId);
         TrainingSession session = getCoachSession(sessionId, currentUserId);
-        ensureStatus(session, TrainingSessionStatus.IN_PROGRESS, "Attendance can be updated only for IN_PROGRESS sessions");
+        ZoneId zoneId = validateZone(DEFAULT_TIMEZONE);
+        if (!isInProgressOrOverdue(session, zoneId)) {
+            throw new BadRequestException("Attendance can be updated only for IN_PROGRESS or OVERDUE sessions", sessionId);
+        }
 
         List<CoachRosterReader.ActivePlayerView> activePlayers =
                 coachRosterReader.getActivePlayersByGroupAndDate(session.getGroupId(), session.getSessionDate());
@@ -268,7 +271,10 @@ public class CoachSessionService {
     public CoachAttendanceUpdateResponse markAllPresent(UUID currentUserId, UUID sessionId) {
         ensureCoachProfile(currentUserId);
         TrainingSession session = getCoachSession(sessionId, currentUserId);
-        ensureStatus(session, TrainingSessionStatus.IN_PROGRESS, "Attendance can be updated only for IN_PROGRESS sessions");
+        ZoneId zoneId = validateZone(DEFAULT_TIMEZONE);
+        if (!isInProgressOrOverdue(session, zoneId)) {
+            throw new BadRequestException("Attendance can be updated only for IN_PROGRESS or OVERDUE sessions", sessionId);
+        }
 
         List<CoachRosterReader.ActivePlayerView> activePlayers =
                 coachRosterReader.getActivePlayersByGroupAndDate(session.getGroupId(), session.getSessionDate());
@@ -340,9 +346,12 @@ public class CoachSessionService {
     public CoachSimpleStatusResponse completeSession(UUID currentUserId, UUID sessionId) {
         ensureCoachProfile(currentUserId);
         TrainingSession session = getCoachSession(sessionId, currentUserId);
-        ensureStatus(session, TrainingSessionStatus.IN_PROGRESS, "Transition not allowed");
+        ZoneId zoneId = validateZone(DEFAULT_TIMEZONE);
+        if (!isInProgressOrOverdue(session, zoneId)) {
+            throw new BadRequestException("Transition not allowed", session.getStatus(), "IN_PROGRESS_OR_OVERDUE");
+        }
 
-        if (!session.isReportDone()) {
+        if (!session.isReportDone() || session.getTopic() == null || session.getTopic().isBlank()) {
             throw new BadRequestException("Report is required before completion", sessionId);
         }
 
@@ -373,6 +382,11 @@ public class CoachSessionService {
     public CoachSimpleStatusResponse cancelSession(UUID currentUserId, UUID sessionId, CoachCancelSessionInput input) {
         ensureCoachProfile(currentUserId);
         TrainingSession session = getCoachSession(sessionId, currentUserId);
+        ZoneId zoneId = validateZone(DEFAULT_TIMEZONE);
+
+        if (isOverdue(session, zoneId)) {
+            throw new BadRequestException("Transition not allowed for OVERDUE session", sessionId);
+        }
 
         if (session.getStatus() != TrainingSessionStatus.PLANNED && session.getStatus() != TrainingSessionStatus.IN_PROGRESS) {
             throw new BadRequestException("Transition not allowed", session.getStatus(), TrainingSessionStatus.CANCELLED);
@@ -454,6 +468,10 @@ public class CoachSessionService {
             return false;
         }
         return session.getScheduledEndAt().isBefore(LocalDateTime.now(zoneId));
+    }
+
+    private boolean isInProgressOrOverdue(TrainingSession session, ZoneId zoneId) {
+        return session.getStatus() == TrainingSessionStatus.IN_PROGRESS || isOverdue(session, zoneId);
     }
 
     private String formatPlayerName(String firstName, String lastName) {
