@@ -3,6 +3,7 @@ package kz.edu.soccerhub.common.port;
 import jakarta.validation.Valid;
 import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
+import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
@@ -23,7 +24,13 @@ public interface LeadPort {
 
     void assignLead(UUID leadId, UUID assignedAdminId, UUID currentAdminId);
 
-    LeadStatus processEvent(UUID leadId, LeadEvent event, UUID currentAdminId);
+    LeadStatus processEvent(
+            UUID leadId,
+            LeadEvent event,
+            String lostReasonCode,
+            String lostComment,
+            UUID currentAdminId
+    );
 
     UUID convertLeadToClient(UUID leadId, UUID currentAdminId);
 
@@ -32,4 +39,6 @@ public interface LeadPort {
     List<LeadActivityOutput> getLeadActivities(UUID leadId);
 
     UUID getLeadBranchId(UUID leadId);
+
+    List<LeadLossReasonResponse> getActiveLossReasons();
 }

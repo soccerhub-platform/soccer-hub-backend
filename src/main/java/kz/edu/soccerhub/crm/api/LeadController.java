@@ -22,7 +22,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/leads")
-@PreAuthorize("hasAuthority('ADMIN')")
+@PreAuthorize("hasAuthority('ADMIN') or hasAuthority('DISPATCHER') or hasAuthority('SUPER_ADMIN')")
 @RequiredArgsConstructor
 public class LeadController {
 

@@ -10,6 +10,7 @@ import kz.edu.soccerhub.common.dto.lead.LeadConvertOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadEventInput;
 import kz.edu.soccerhub.common.dto.lead.LeadEventOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadKanbanOutput;
+import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
 import lombok.RequiredArgsConstructor;
@@ -103,8 +104,24 @@ public class AdminLeadController {
                 @RequestBody @Valid LeadEventInput input
         ) {
             UUID adminId = UUID.fromString(jwt.getSubject());
-            return ResponseEntity.ok(adminLeadService.processEvent(adminId, leadId, input.event()));
+            return ResponseEntity.ok(
+                    adminLeadService.processEvent(
+                            adminId,
+                            leadId,
+                            input.event(),
+                            input.lostReasonCode(),
+                            input.lostComment()
+                    )
+            );
         }
+
+    @GetMapping("/loss-reasons")
+    public ResponseEntity<List<LeadLossReasonResponse>> getLossReasons(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminLeadService.getActiveLossReasons(adminId));
+    }
 
     @GetMapping("/kanban")
     public ResponseEntity<LeadKanbanOutput> getKanban(
@@ -125,3 +142,4 @@ public class AdminLeadController {
     }
 
 }
+

@@ -62,6 +62,17 @@ public class LeadActivityService {
 
     @Transactional
     public void logStatusChanged(Lead lead, LeadEvent event, LeadStatus fromStatus, UUID actorAdminId) {
+        logStatusChanged(lead, event, fromStatus, actorAdminId, null);
+    }
+
+    @Transactional
+    public void logStatusChanged(
+            Lead lead,
+            LeadEvent event,
+            LeadStatus fromStatus,
+            UUID actorAdminId,
+            String detailsOverride
+    ) {
         save(
                 lead.getId(),
                 LeadActivityType.STATUS_CHANGED,
@@ -70,7 +81,7 @@ public class LeadActivityService {
                 lead.getStatus(),
                 lead.getAssignedAdminId(),
                 actorAdminId,
-                "Lead status changed via event " + event
+                detailsOverride != null ? detailsOverride : "Lead status changed via event " + event
         );
     }
 

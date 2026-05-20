@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
 import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
+import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
@@ -20,8 +21,10 @@ import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.application.mapper.LeadMapper;
 import kz.edu.soccerhub.crm.domain.model.Lead;
+import kz.edu.soccerhub.crm.domain.model.LeadLossReasonEntity;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
+import kz.edu.soccerhub.crm.domain.repository.LeadLossReasonRepository;
 import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import kz.edu.soccerhub.crm.infrastructure.LeadSpecification;
 import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
@@ -36,6 +39,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -58,6 +62,7 @@ public class LeadService implements LeadPort {
     private final GroupSchedulePort groupSchedulePort;
     private final LeadActivityService leadActivityService;
     private final LeadMapper leadMapper;
+    private final LeadLossReasonRepository leadLossReasonRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -255,6 +260,15 @@ public class LeadService implements LeadPort {
         return findById(leadId).getBranchId();
     }
 
+    @Transactional(readOnly = true)
+    @Override
+    public List<LeadLossReasonResponse> getActiveLossReasons() {
+        return leadLossReasonRepository.findByActiveTrueOrderBySortOrderAscNameAsc()
+                .stream()
+                .map(reason -> new LeadLossReasonResponse(reason.getCode(), reason.getName()))
+                .toList();
+    }
+
     @Transactional
     @Override
     public void assignLead(UUID leadId, UUID assignedAdminId, UUID currentAdminId) {
@@ -270,7 +284,13 @@ public class LeadService implements LeadPort {
 
     @Transactional
     @Override
-    public LeadStatus processEvent(UUID leadId, LeadEvent event, UUID currentAdminId) {
+    public LeadStatus processEvent(
+            UUID leadId,
+            LeadEvent event,
+            String lostReasonCode,
+            String lostComment,
+            UUID currentAdminId
+    ) {
         Lead lead = findById(leadId);
         LeadStatus previousStatus = lead.getStatus();
 
@@ -278,8 +298,17 @@ public class LeadService implements LeadPort {
         syncTrialStatusByEvent(lead, event);
         lead.updateStatus(newStatus);
 
+        String activityDetailsOverride = null;
+        if (newStatus == LeadStatus.LOST) {
+            LeadLossReasonEntity reason = validateAndResolveLossReason(lostReasonCode, lostComment);
+            lead.markLost(reason.getCode(), trim(lostComment), LocalDateTime.now());
+            activityDetailsOverride = buildLostDetails(event, reason.getCode(), trim(lostComment));
+        } else if (previousStatus == LeadStatus.LOST) {
+            lead.clearLostSnapshot();
+        }
+
         leadRepository.save(lead);
-        leadActivityService.logStatusChanged(lead, event, previousStatus, currentAdminId);
+        leadActivityService.logStatusChanged(lead, event, previousStatus, currentAdminId, activityDetailsOverride);
 
         return newStatus;
     }
@@ -298,6 +327,33 @@ public class LeadService implements LeadPort {
                 throw new BadRequestException("Trial is not scheduled", lead.getId());
             }
             lead.getTrial().markCanceled();
+        }
+    }
+
+    private LeadLossReasonEntity validateAndResolveLossReason(String lostReasonCode, String lostComment) {
+        if (lostReasonCode == null || lostReasonCode.isBlank()) {
+            throw new BadRequestException("lostReasonCode is required for LOST transition");
+        }
+
+        LeadLossReasonEntity reason = leadLossReasonRepository.findByCodeAndActiveTrue(lostReasonCode.trim())
+                .orElseThrow(() -> new BadRequestException("Invalid or inactive loss reason", lostReasonCode));
+
+        if ("OTHER".equals(reason.getCode()) && (lostComment == null || lostComment.isBlank())) {
+            throw new BadRequestException("lostComment is required for OTHER loss reason");
+        }
+
+        return reason;
+    }
+
+    private String buildLostDetails(LeadEvent event, String reasonCode, String lostComment) {
+        try {
+            Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("event", event.name());
+            payload.put("lostReasonCode", reasonCode);
+            payload.put("lostComment", lostComment);
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException ex) {
+            return "{\"event\":\"" + event.name() + "\",\"lostReasonCode\":\"" + reasonCode + "\"}";
         }
     }
 

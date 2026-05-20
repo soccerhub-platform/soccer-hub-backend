@@ -8,6 +8,7 @@ import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -69,6 +70,19 @@ public class Lead extends AbstractAuditableEntity {
     @Column(name = "client_id")
     private UUID clientId;
 
+    @Column(name = "lost_reason_code")
+    private String lostReasonCode;
+
+    @Column(name = "lost_comment", columnDefinition = "TEXT")
+    private String lostComment;
+
+    @Column(name = "lost_at")
+    private LocalDateTime lostAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lost_reason_code", referencedColumnName = "code", insertable = false, updatable = false)
+    private LeadLossReasonEntity lostReason;
+
     @Builder.Default
     @OneToMany(mappedBy = "lead", fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LeadChild> children = new ArrayList<>();
@@ -120,6 +134,18 @@ public class Lead extends AbstractAuditableEntity {
 
     public void markConverted(UUID clientId) {
         this.clientId = clientId;
+    }
+
+    public void markLost(String reasonCode, String comment, LocalDateTime at) {
+        this.lostReasonCode = reasonCode;
+        this.lostComment = comment;
+        this.lostAt = at;
+    }
+
+    public void clearLostSnapshot() {
+        this.lostReasonCode = null;
+        this.lostComment = null;
+        this.lostAt = null;
     }
 
     public void addChild(String childName, Integer childAge, Gender gender, String experience) {

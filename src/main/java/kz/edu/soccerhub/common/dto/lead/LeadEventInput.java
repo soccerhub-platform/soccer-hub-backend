@@ -5,7 +5,8 @@ import kz.edu.soccerhub.crm.application.state.LeadEvent;
 
 public record LeadEventInput(
         @NotNull(message = "Event is required")
-        LeadEvent event
+        LeadEvent event,
+        String lostReasonCode,
+        String lostComment
 ) {
 }
-

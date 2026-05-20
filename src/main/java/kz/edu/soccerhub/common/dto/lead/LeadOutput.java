@@ -19,10 +19,13 @@ public record LeadOutput(
         AdminShortOutput assignedAdmin,
         String comment,
         JsonNode qualificationData,
+        String lostReasonCode,
+        String lostReasonName,
+        String lostComment,
+        LocalDateTime lostAt,
         List<LeadChildOutput> children,
         LeadTrialOutput trial,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
 }
-
