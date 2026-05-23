@@ -6,6 +6,7 @@ import java.util.UUID;
 
 @Builder
 public record AdminCreateCoachOutput(
-        UUID coachId
+        UUID coachId,
+        String tempPassword
 ) {
 }

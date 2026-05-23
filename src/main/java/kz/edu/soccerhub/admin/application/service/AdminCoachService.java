@@ -1,9 +1,8 @@
 package kz.edu.soccerhub.admin.application.service;
 
-import kz.edu.soccerhub.admin.application.dto.coach.AdminCoachUpdateCoachStatusInput;
-import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachInput;
-import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachOutput;
+import kz.edu.soccerhub.admin.application.dto.coach.*;
 import kz.edu.soccerhub.common.domain.enums.Role;
+import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
 import kz.edu.soccerhub.common.dto.coach.AdminCoachOverviewOutput;
@@ -11,6 +10,7 @@ import kz.edu.soccerhub.common.dto.coach.AdminCoachProfileOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
+import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
 import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
@@ -22,6 +22,7 @@ import kz.edu.soccerhub.common.port.CoachPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.GroupSchedulePort;
+import kz.edu.soccerhub.dispatcher.application.dto.admin.DispatcherAdminResetPasswordOutput;
 import kz.edu.soccerhub.dispatcher.application.service.PasswordGenerator;
 import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
 import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
@@ -91,7 +92,10 @@ public class AdminCoachService {
             log.info("Admin {} assigned coach {} to the branch {}", adminId, coachId, branchId);
         }
 
-        return AdminCreateCoachOutput.builder().coachId(coachId).build();
+        return AdminCreateCoachOutput.builder()
+                .coachId(coachId)
+                .tempPassword(tempPassword)
+                .build();
     }
 
     @Transactional
@@ -138,6 +142,21 @@ public class AdminCoachService {
         coachPort.recordStatusHistory(coachId, input.status(), adminId);
     }
 
+    @Transactional
+    public void updateCoach(UUID adminId, UUID coachId, AdminCoachUpdateInput input) {
+        adminService.findById(adminId).orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+        ensureAdminHasCoachAccess(adminId, coachId);
+
+        coachPort.update(CoachUpdateCommand.builder()
+                .coachId(coachId)
+                .firstName(input.firstName())
+                .lastName(input.lastName())
+                .email(input.email())
+                .phone(input.phone())
+                .specialization(input.specialization())
+                .build());
+    }
+
     @Transactional(readOnly = true)
     public List<AvailableSlotOutput> getCoachAvailableSlots(UUID adminId, UUID coachId, LocalDate date) {
         adminService.findById(adminId).orElseThrow(() -> new NotFoundException("Admin not found", adminId));
@@ -173,6 +192,17 @@ public class AdminCoachService {
                 .map(kz.edu.soccerhub.admin.application.dto.branch.AdminBranchesOutput::branchId)
                 .collect(Collectors.toSet());
         return buildProfile(coachId, allowedBranchIds);
+    }
+
+    private void ensureAdminHasCoachAccess(UUID adminId, UUID coachId) {
+        Set<UUID> allowedBranchIds = adminBranchService.getAdminBranches(adminId).stream()
+                .map(kz.edu.soccerhub.admin.application.dto.branch.AdminBranchesOutput::branchId)
+                .collect(Collectors.toSet());
+        Set<UUID> coachBranchIds = coachPort.getBranchIds(coachId);
+        boolean hasAccess = coachBranchIds.stream().anyMatch(allowedBranchIds::contains);
+        if (!hasAccess) {
+            throw new BadRequestException("Admin does not have access to coach branches", coachId);
+        }
     }
 
     private AdminCoachOverviewOutput buildOverview(UUID branchId) {
@@ -315,9 +345,20 @@ public class AdminCoachService {
                 .collect(Collectors.toMap(GroupDto::groupId, group -> group));
 
         List<AdminCoachProfileOutput.GroupItem> groups = groupLinks.stream()
-                .map(link -> groupsById.get(link.groupId()))
+                .map(link -> {
+                    GroupDto group = groupsById.get(link.groupId());
+                    if (group == null) {
+                        return null;
+                    }
+                    return new AdminCoachProfileOutput.GroupItem(
+                            group.groupId(),
+                            group.name(),
+                            group.branchId(),
+                            link.id(),
+                            link.role() == null ? null : link.role().name()
+                    );
+                })
                 .filter(java.util.Objects::nonNull)
-                .map(group -> new AdminCoachProfileOutput.GroupItem(group.groupId(), group.name(), group.branchId()))
                 .toList();
 
         LocalDate today = LocalDate.now();
@@ -348,6 +389,13 @@ public class AdminCoachService {
                     );
                 })
                 .toList();
+
+        int maxSlots = 12;
+        long usedSlotsCount = coachPort.getSessions(Set.of(coachId), groupIds, weekStart, weekEnd).stream()
+                .filter(session -> !"CANCELLED".equals(session.status()))
+                .count();
+        int usedSlots = Math.toIntExact(usedSlotsCount);
+        String loadStatus = usedSlots > maxSlots ? "OVERLOADED" : "NORMAL";
 
         List<AdminCoachProfileOutput.UpcomingSessionItem> upcomingSessions = coachPort.getUpcomingSessions(coachId, today)
                 .stream()
@@ -407,7 +455,9 @@ public class AdminCoachService {
                 coach.lastName(),
                 coach.email(),
                 coach.phone(),
+                coach.specialization(),
                 coach.active(),
+                new AdminCoachProfileOutput.Load(usedSlots, maxSlots, loadStatus),
                 groups,
                 weeklySchedule,
                 upcomingSessions,
@@ -418,5 +468,13 @@ public class AdminCoachService {
                 ),
                 statusHistory
         );
+    }
+
+    public AdminCoachResetPasswordOutput resetCoachPassword(UUID adminId, UUID coachId) {
+        String tempPassword = passwordGenerator.generate(8);
+        authPort.resetPassword(coachId, tempPassword);
+
+        log.info("Coach password reset: coachId={}, adminId={}", coachId, adminId);
+        return new AdminCoachResetPasswordOutput(tempPassword);
     }
 }

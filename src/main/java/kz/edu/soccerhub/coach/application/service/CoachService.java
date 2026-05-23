@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.coach.application.service;
 
 import jakarta.validation.constraints.NotNull;
+import kz.edu.soccerhub.auth.domain.repository.AppUserRepo;
 import kz.edu.soccerhub.coach.domain.model.CoachBranch;
 import kz.edu.soccerhub.coach.domain.model.CoachProfile;
 import kz.edu.soccerhub.coach.domain.model.CoachStatusHistory;
@@ -15,6 +16,7 @@ import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
+import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.CoachPort;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +39,7 @@ public class CoachService implements CoachPort {
     private final CoachBranchRepository coachBranchRepository;
     private final TrainingSessionRepository trainingSessionRepository;
     private final CoachStatusHistoryRepository coachStatusHistoryRepository;
+    private final AppUserRepo appUserRepo;
 
     @Transactional
     public UUID create(CoachCreateCommand command) {
@@ -52,6 +55,21 @@ public class CoachService implements CoachPort {
 
         coachProfileRepository.save(profile);
         return profile.getId();
+    }
+
+    @Override
+    @Transactional
+    public void update(CoachUpdateCommand command) {
+        CoachProfile profile = coachProfileRepository.findById(command.coachId())
+                .orElseThrow(() -> new NotFoundException("Coach not found", command.coachId()));
+
+        profile.setFirstName(command.firstName().trim());
+        profile.setLastName(command.lastName().trim());
+        profile.setEmail(command.email().trim().toLowerCase());
+        profile.setPhone(trimToNull(command.phone()));
+        profile.setSpecialization(trimToNull(command.specialization()));
+
+        appUserRepo.findById(command.coachId()).ifPresent(user -> user.setEmail(profile.getEmail()));
     }
 
     @Transactional
@@ -239,6 +257,7 @@ public class CoachService implements CoachPort {
                 .lastName(coachProfile.getLastName())
                 .phone(coachProfile.getPhone())
                 .email(coachProfile.getEmail())
+                .specialization(coachProfile.getSpecialization())
                 .active(coachProfile.getStatus() == CoachStatus.ACTIVE)
                 .build();
     }
@@ -255,5 +274,13 @@ public class CoachService implements CoachPort {
                 session.isReportDone(),
                 session.getUpdatedAt()
         );
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

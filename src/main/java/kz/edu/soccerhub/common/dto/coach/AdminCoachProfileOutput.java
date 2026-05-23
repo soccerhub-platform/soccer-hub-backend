@@ -14,7 +14,9 @@ public record AdminCoachProfileOutput(
         String lastName,
         String email,
         String phone,
+        String specialization,
         boolean active,
+        Load load,
         List<GroupItem> groups,
         List<WeeklyScheduleItem> weeklySchedule,
         List<UpcomingSessionItem> upcomingSessions,
@@ -24,7 +26,15 @@ public record AdminCoachProfileOutput(
     public record GroupItem(
             UUID groupId,
             String groupName,
-            UUID branchId
+            UUID branchId,
+            UUID groupCoachId,
+            String role
+    ) {}
+
+    public record Load(
+            int usedSlots,
+            int maxSlots,
+            String status
     ) {}
 
     public record WeeklyScheduleItem(

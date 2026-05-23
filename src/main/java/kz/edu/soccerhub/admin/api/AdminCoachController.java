@@ -6,6 +6,7 @@ import kz.edu.soccerhub.admin.application.service.AdminCoachService;
 import kz.edu.soccerhub.common.dto.coach.AdminCoachOverviewOutput;
 import kz.edu.soccerhub.common.dto.coach.AdminCoachProfileOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.dispatcher.application.dto.admin.DispatcherAdminResetPasswordOutput;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -37,8 +38,21 @@ public class AdminCoachController {
         final UUID adminId = UUID.fromString(jwt.getSubject());
         AdminCreateCoachOutput output = adminCoachService.createCoach(adminId, input);
         return ResponseEntity.created(URI.create("/coach/" + output.coachId()))
-                .body(Map.of("coachId", output.coachId()));
+                .body(Map.of(
+                        "coachId", output.coachId(),
+                        "tempPassword", output.tempPassword()
+                ));
     }
+
+    @PostMapping("/{coachId}/reset-password")
+    public AdminCoachResetPasswordOutput resetAdminPassword(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID coachId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return adminCoachService.resetCoachPassword(adminId, coachId);
+    }
+
 
     @PostMapping(value = "/{coachId}/assign-branch",
             consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -76,6 +90,17 @@ public class AdminCoachController {
                                                     @RequestBody AdminCoachUpdateCoachStatusInput input) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         adminCoachService.updateCoachStatus(adminId, coachId, input);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping(value = "/{coachId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> updateCoach(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID coachId,
+            @Valid @RequestBody AdminCoachUpdateInput input
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        adminCoachService.updateCoach(adminId, coachId, input);
         return ResponseEntity.noContent().build();
     }
 

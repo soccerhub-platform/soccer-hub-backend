@@ -2,18 +2,15 @@ package kz.edu.soccerhub.common.dto.coach;
 
 import lombok.Builder;
 
-import java.time.LocalDate;
 import java.util.UUID;
 
 @Builder
-public record CoachDto(
-        UUID id,
+public record CoachUpdateCommand(
+        UUID coachId,
         String firstName,
         String lastName,
-        LocalDate birthDate,
-        String phone,
         String email,
-        String specialization,
-        boolean active
+        String phone,
+        String specialization
 ) {
 }

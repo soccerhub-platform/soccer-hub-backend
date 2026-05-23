@@ -6,6 +6,7 @@ import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
+import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
 import kz.edu.soccerhub.coach.domain.model.enums.CoachStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -18,6 +19,7 @@ import java.util.UUID;
 
 public interface CoachPort {
     UUID create(@Valid CoachCreateCommand command);
+    void update(@Valid CoachUpdateCommand command);
     void assignToBranch(@NotNull UUID coachId, @NotNull UUID branchId);
     void unassignFromBranch(@NotNull UUID coachId, @NotNull UUID branchId);
     Page<CoachDto> getCoaches(Set<UUID> branchId, Pageable pageable);
