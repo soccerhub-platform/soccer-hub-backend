@@ -123,6 +123,29 @@ public class AuthService implements AuthPort {
                 .map(user -> user.getUser().getEmail());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public String getEmail(UUID userId) {
+        return userRepo.findById(userId)
+                .map(AppUserEntity::getEmail)
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
+    }
+
+    @Override
+    @Transactional
+    public void updateEmail(UUID userId, String email) {
+        String normalizedEmail = normalizeEmail(email);
+        userRepo.findByEmail(normalizedEmail)
+                .filter(existing -> !existing.getId().equals(userId))
+                .ifPresent(existing -> {
+                    throw new BadRequestException("Email is already registered", normalizedEmail);
+                });
+
+        AppUserEntity user = userRepo.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
+        user.setEmail(normalizedEmail);
+    }
+
     @Transactional
     public void delete(UUID userId) {
         userRepo.deleteById(userId);

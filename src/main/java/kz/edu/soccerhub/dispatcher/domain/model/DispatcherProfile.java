@@ -31,4 +31,13 @@ public class DispatcherProfile extends AbstractAuditableEntity {
     @Column(name = "phone", unique = true)
     private String phone;
 
+    @Column(name = "email")
+    private String email;
+
+    @Column(name = "specialization")
+    private String specialization;
+
+    @Column(name = "active")
+    private Boolean active;
+
 }

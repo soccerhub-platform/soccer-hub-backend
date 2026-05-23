@@ -30,6 +30,8 @@ public class AdminProfile extends AbstractAuditableEntity {
 
     private String email;
 
+    private String specialization;
+
     private Boolean active;
 
     @OneToMany(mappedBy = "admin",

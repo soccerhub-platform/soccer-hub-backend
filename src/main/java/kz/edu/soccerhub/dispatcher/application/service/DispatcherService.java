@@ -47,7 +47,9 @@ public class DispatcherService {
                 .id(registrationResult.id())
                 .firstName(input.firstName())
                 .lastName(input.lastName())
+                .email(input.email())
                 .phone(input.phone())
+                .active(true)
                 .build());
 
         return new DispatcherRegisterOutput(
