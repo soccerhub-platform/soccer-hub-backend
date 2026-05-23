@@ -1,16 +1,17 @@
 package kz.edu.soccerhub.crm.application.service;
 
 import kz.edu.soccerhub.common.dto.analytics.*;
+import kz.edu.soccerhub.common.exception.AnalyticsRangeTooLargeException;
 import kz.edu.soccerhub.common.port.AnalyticsPort;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -20,94 +21,185 @@ import java.util.*;
 public class AnalyticsService implements AnalyticsPort {
 
     private static final String DEFAULT_TIMEZONE = "Asia/Almaty";
+    private static final int MAX_RANGE_DAYS = 180;
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
     @Override
-    public FunnelAnalyticsOutput getFunnelAnalytics(
+    @Cacheable(cacheNames = "analyticsFunnel", key = "T(java.util.Objects).hash(#branchId,#dateFrom,#dateTo,#groupBy,#timezone,#coachId,#groupId)")
+    public AnalyticsResponseOutput getFunnelAnalytics(
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     ) {
+        validateRange(dateFrom, dateTo);
         AnalyticsGroupBy resolvedGroupBy = normalizeGroupBy(groupBy);
         String resolvedTimezone = normalizeTimezone(timezone);
 
-        Map<LeadStatus, Long> totals = loadFunnelTotals(branchId, dateFrom, dateTo, resolvedTimezone);
-        List<FunnelSeriesOutput> series = loadFunnelSeries(branchId, dateFrom, dateTo, resolvedGroupBy, resolvedTimezone);
+        Map<LeadStatus, Long> totals = loadFunnelTotals(branchId, dateFrom, dateTo, resolvedTimezone, coachId, groupId);
+        List<FunnelSeriesOutput> series = loadFunnelSeries(branchId, dateFrom, dateTo, resolvedGroupBy, resolvedTimezone, coachId, groupId);
 
         FunnelRatesOutput rates = buildFunnelRates(totals);
-        AnalyticsPeriodOutput period = new AnalyticsPeriodOutput(dateFrom, dateTo, resolvedGroupBy, resolvedTimezone);
-
-        return new FunnelAnalyticsOutput(period, totals, rates, series);
+        Map<String, Object> summary = Map.of(
+                "qualifiedFromNewRate", rates.newToQualified(),
+                "trialFromQualifiedRate", rates.qualifiedToTrialScheduled(),
+                "wonFromTrialRate", rates.trialScheduledToWon(),
+                "closeWonRate", rates.winRateOnClosed()
+        );
+        return buildResponse(branchId, dateFrom, dateTo, resolvedTimezone, resolvedGroupBy, coachId, groupId, summary, series, totals);
     }
 
     @Override
-    public CoachLoadAnalyticsOutput getCoachLoadAnalytics(
+    @Cacheable(cacheNames = "analyticsCoachLoad", key = "T(java.util.Objects).hash(#branchId,#dateFrom,#dateTo,#groupBy,#timezone,#coachId,#groupId)")
+    public AnalyticsResponseOutput getCoachLoadAnalytics(
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     ) {
-        AnalyticsPeriodOutput period = new AnalyticsPeriodOutput(
-                dateFrom,
-                dateTo,
-                normalizeGroupBy(groupBy),
-                normalizeTimezone(timezone)
-        );
-
-        List<CoachLoadRowOutput> rows = loadCoachLoad(branchId, dateFrom, dateTo);
-        return new CoachLoadAnalyticsOutput(period, rows);
-    }
-
-    @Override
-    public RetentionAnalyticsOutput getRetentionAnalytics(
-            UUID branchId,
-            AnalyticsCohortBy cohortBy,
-            int periods,
-            String timezone
-    ) {
+        validateRange(dateFrom, dateTo);
         String resolvedTimezone = normalizeTimezone(timezone);
-        List<RetentionCohortOutput> cohorts = loadRetentionCohorts(branchId, periods, resolvedTimezone);
-        List<RetentionGroupOutput> groups = loadRetentionGroups(branchId, periods, resolvedTimezone);
-
-        return new RetentionAnalyticsOutput(resolvedTimezone, cohorts, groups);
+        List<CoachLoadRowOutput> rows = loadCoachLoad(branchId, dateFrom, dateTo, coachId, groupId);
+        Map<String, Object> totals = Map.of(
+                "coaches", rows.size(),
+                "scheduledSlots", rows.stream().mapToInt(CoachLoadRowOutput::scheduledSlots).sum(),
+                "activeStudents", rows.stream().mapToInt(CoachLoadRowOutput::activeStudents).sum()
+        );
+        return buildResponse(branchId, dateFrom, dateTo, resolvedTimezone, normalizeGroupBy(groupBy), coachId, groupId, totals, rows, totals);
     }
 
     @Override
-    public SlaAnalyticsOutput getSlaAnalytics(
+    @Cacheable(cacheNames = "analyticsRetention", key = "T(java.util.Objects).hash(#branchId,#dateFrom,#dateTo,#groupBy,#timezone,#coachId,#groupId)")
+    public AnalyticsResponseOutput getRetentionAnalytics(
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     ) {
-        AnalyticsPeriodOutput period = new AnalyticsPeriodOutput(
+        validateRange(dateFrom, dateTo);
+        String resolvedTimezone = normalizeTimezone(timezone);
+        int periods = Math.max(1, (int) ChronoUnit.MONTHS.between(
+                dateFrom.withDayOfMonth(1),
+                dateTo.withDayOfMonth(1).plusMonths(1)
+        ));
+        List<RetentionCohortOutput> cohorts = loadRetentionCohorts(branchId, dateFrom, dateTo, periods, coachId, groupId);
+        List<RetentionGroupOutput> groups = loadRetentionGroups(branchId, dateFrom, dateTo, coachId, groupId);
+        Map<String, Object> summary = Map.of("cohorts", cohorts.size(), "groups", groups.size());
+        Map<String, Object> series = Map.of("cohorts", cohorts, "groups", groups);
+        return buildResponse(branchId, dateFrom, dateTo, resolvedTimezone, normalizeGroupBy(groupBy), coachId, groupId, summary, series, summary);
+    }
+
+    @Override
+    @Cacheable(cacheNames = "analyticsSla", key = "T(java.util.Objects).hash(#branchId,#dateFrom,#dateTo,#groupBy,#timezone,#coachId,#groupId)")
+    public AnalyticsResponseOutput getSlaAnalytics(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            AnalyticsGroupBy groupBy,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    ) {
+        validateRange(dateFrom, dateTo);
+        String resolvedTimezone = normalizeTimezone(timezone);
+        LeadTimingOutput leadTiming = loadLeadTiming(branchId, dateFrom, dateTo, resolvedTimezone, coachId, groupId);
+        SlaBreachesOutput breaches = loadLeadBreaches(branchId, dateFrom, dateTo, resolvedTimezone, coachId, groupId);
+        Map<String, Object> summary = Map.of(
+                "firstContactP50Minutes", leadTiming.firstContactMinutes().p50(),
+                "firstContactOver2hShare", breaches.firstContactOver2hRate()
+        );
+        Map<String, Object> series = Map.of("leadTiming", leadTiming, "breaches", breaches);
+        return buildResponse(branchId, dateFrom, dateTo, resolvedTimezone, normalizeGroupBy(groupBy), coachId, groupId, summary, series, summary);
+    }
+
+    @Override
+    @Cacheable(cacheNames = "analyticsLossReasons", key = "T(java.util.Objects).hash(#branchId,#dateFrom,#dateTo,#groupBy,#timezone,#coachId,#groupId)")
+    public AnalyticsResponseOutput getLossReasonsAnalytics(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            AnalyticsGroupBy groupBy,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    ) {
+        validateRange(dateFrom, dateTo);
+        String resolvedTimezone = normalizeTimezone(timezone);
+        List<LossReasonPointOutput> rows = loadLossReasons(branchId, dateFrom, dateTo, resolvedTimezone, coachId, groupId);
+        Map<String, Object> totals = Map.of("totalLost", rows.stream().mapToLong(LossReasonPointOutput::count).sum());
+        return buildResponse(branchId, dateFrom, dateTo, resolvedTimezone, normalizeGroupBy(groupBy), coachId, groupId, totals, rows, totals);
+    }
+
+    @Override
+    @Cacheable(cacheNames = "analyticsKpi", key = "T(java.util.Objects).hash(#branchId,#dateFrom,#dateTo,#groupBy,#timezone,#coachId,#groupId)")
+    public AnalyticsResponseOutput getKpiAnalytics(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            AnalyticsGroupBy groupBy,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    ) {
+        validateRange(dateFrom, dateTo);
+        String resolvedTimezone = normalizeTimezone(timezone);
+        Map<LeadStatus, Long> totals = loadFunnelTotals(branchId, dateFrom, dateTo, resolvedTimezone, coachId, groupId);
+        LeadTimingOutput leadTiming = loadLeadTiming(branchId, dateFrom, dateTo, resolvedTimezone, coachId, groupId);
+        long newCount = totals.getOrDefault(LeadStatus.NEW, 0L);
+        long qualified = totals.getOrDefault(LeadStatus.QUALIFIED, 0L);
+        long won = totals.getOrDefault(LeadStatus.WON, 0L);
+        long lost = totals.getOrDefault(LeadStatus.LOST, 0L);
+        AnalyticsKpiSummaryOutput summary = new AnalyticsKpiSummaryOutput(
+                newCount,
+                qualified,
+                won,
+                lost,
+                percent(won, won + lost),
+                leadTiming.firstContactMinutes().p50()
+        );
+        return buildResponse(
+                branchId,
                 dateFrom,
                 dateTo,
+                resolvedTimezone,
                 normalizeGroupBy(groupBy),
-                normalizeTimezone(timezone)
+                coachId,
+                groupId,
+                summary,
+                Map.of("kpi", summary),
+                totals
         );
-
-        LeadTimingOutput leadTiming = loadLeadTiming(branchId, dateFrom, dateTo, period.timezone());
-        SlaBreachesOutput breaches = loadLeadBreaches(branchId, dateFrom, dateTo, period.timezone());
-
-        return new SlaAnalyticsOutput(period, leadTiming, breaches);
     }
 
     private Map<LeadStatus, Long> loadFunnelTotals(
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     ) {
         String sql = """
                 select status, count(*) as total
-                from leads
-                where branch_id = :branchId
-                  and (created_at at time zone :tz)::date between :dateFrom and :dateTo
+                from leads l
+                where l.branch_id = :branchId
+                  and (l.created_at at time zone :tz)::date between :dateFrom and :dateTo
+                  and (cast(:coachId as uuid) is null or exists (
+                        select 1 from lead_trials lt where lt.lead_id = l.id and lt.coach_id = :coachId
+                  ))
+                  and (cast(:groupId as uuid) is null or exists (
+                        select 1 from lead_trials lt where lt.lead_id = l.id and lt.group_id = :groupId
+                  ))
                 group by status
                 """;
 
@@ -120,7 +212,9 @@ public class AnalyticsService implements AnalyticsPort {
                 .addValue("branchId", branchId)
                 .addValue("dateFrom", dateFrom)
                 .addValue("dateTo", dateTo)
-                .addValue("tz", timezone);
+                .addValue("tz", timezone)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
 
         jdbcTemplate.query(sql, params, rs -> {
             LeadStatus status = LeadStatus.valueOf(rs.getString("status"));
@@ -135,7 +229,9 @@ public class AnalyticsService implements AnalyticsPort {
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     ) {
         String bucketExpression = switch (groupBy) {
             case WEEK -> "to_char(date_trunc('week', created_at at time zone :tz), 'IYYY-\"W\"IW')";
@@ -147,9 +243,15 @@ public class AnalyticsService implements AnalyticsPort {
                 select %s as bucket,
                        status,
                        count(*) as total
-                from leads
-                where branch_id = :branchId
-                  and (created_at at time zone :tz)::date between :dateFrom and :dateTo
+                from leads l
+                where l.branch_id = :branchId
+                  and (l.created_at at time zone :tz)::date between :dateFrom and :dateTo
+                  and (cast(:coachId as uuid) is null or exists (
+                        select 1 from lead_trials lt where lt.lead_id = l.id and lt.coach_id = :coachId
+                  ))
+                  and (cast(:groupId as uuid) is null or exists (
+                        select 1 from lead_trials lt where lt.lead_id = l.id and lt.group_id = :groupId
+                  ))
                 group by bucket, status
                 order by bucket
                 """.formatted(bucketExpression);
@@ -158,7 +260,9 @@ public class AnalyticsService implements AnalyticsPort {
                 .addValue("branchId", branchId)
                 .addValue("dateFrom", dateFrom)
                 .addValue("dateTo", dateTo)
-                .addValue("tz", timezone);
+                .addValue("tz", timezone)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
 
         Map<String, Map<LeadStatus, Long>> bucketMap = new HashMap<>();
 
@@ -199,7 +303,13 @@ public class AnalyticsService implements AnalyticsPort {
         );
     }
 
-    private List<CoachLoadRowOutput> loadCoachLoad(UUID branchId, LocalDate dateFrom, LocalDate dateTo) {
+    private List<CoachLoadRowOutput> loadCoachLoad(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            UUID coachId,
+            UUID groupId
+    ) {
         String slotsSql = """
                 with schedules as (
                     select gs.coach_id,
@@ -213,6 +323,8 @@ public class AnalyticsService implements AnalyticsPort {
                     where g.branch_id = :branchId
                       and gs.start_date <= :dateTo
                       and gs.end_date >= :dateFrom
+                      and (cast(:coachId as uuid) is null or gs.coach_id = :coachId)
+                      and (cast(:groupId as uuid) is null or gs.group_id = :groupId)
                 ),
                 dates as (
                     select d::date as day
@@ -244,6 +356,8 @@ public class AnalyticsService implements AnalyticsPort {
                   and gs.start_date <= :dateTo
                   and gs.end_date >= :dateFrom
                   and gs.status <> 'DELETED'
+                  and (cast(:coachId as uuid) is null or gs.coach_id = :coachId)
+                  and (cast(:groupId as uuid) is null or gs.group_id = :groupId)
                 group by gs.coach_id
                 """;
 
@@ -256,6 +370,8 @@ public class AnalyticsService implements AnalyticsPort {
                       and gs.start_date <= :dateTo
                       and gs.end_date >= :dateFrom
                       and gs.status <> 'DELETED'
+                      and (cast(:coachId as uuid) is null or gs.coach_id = :coachId)
+                      and (cast(:groupId as uuid) is null or gs.group_id = :groupId)
                 )
                 select cg.coach_id,
                        count(distinct c.player_id) as active_students
@@ -275,6 +391,8 @@ public class AnalyticsService implements AnalyticsPort {
                       and gs.start_date <= :dateTo
                       and gs.end_date >= :dateFrom
                       and gs.status <> 'DELETED'
+                      and (cast(:coachId as uuid) is null or gs.coach_id = :coachId)
+                      and (cast(:groupId as uuid) is null or gs.group_id = :groupId)
                 )
                 select cg.coach_id,
                        coalesce(sum(g.capacity), 0) as target_load
@@ -290,45 +408,48 @@ public class AnalyticsService implements AnalyticsPort {
                 from coach_profiles cp
                 join coach_branches cb on cb.coach_id = cp.id
                 where cb.branch_id = :branchId
+                  and (cast(:coachId as uuid) is null or cp.id = :coachId)
                 """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("branchId", branchId)
                 .addValue("dateFrom", dateFrom)
-                .addValue("dateTo", dateTo);
+                .addValue("dateTo", dateTo)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
 
         Map<UUID, CoachLoadRowBuilder> builders = new HashMap<>();
 
         jdbcTemplate.query(coachesSql, params, rs -> {
-            UUID coachId = UUID.fromString(rs.getString("coach_id"));
+            UUID rowCoachId = UUID.fromString(rs.getString("coach_id"));
             String firstName = rs.getString("first_name");
             String lastName = rs.getString("last_name");
             String coachName = ((firstName == null ? "" : firstName) + " " + (lastName == null ? "" : lastName)).trim();
-            builders.put(coachId, new CoachLoadRowBuilder(coachId, coachName.isBlank() ? null : coachName));
+            builders.put(rowCoachId, new CoachLoadRowBuilder(rowCoachId, coachName.isBlank() ? null : coachName));
         });
 
         jdbcTemplate.query(groupsSql, params, rs -> {
-            UUID coachId = UUID.fromString(rs.getString("coach_id"));
-            CoachLoadRowBuilder builder = builders.computeIfAbsent(coachId, CoachLoadRowBuilder::new);
+            UUID rowCoachId = UUID.fromString(rs.getString("coach_id"));
+            CoachLoadRowBuilder builder = builders.computeIfAbsent(rowCoachId, CoachLoadRowBuilder::new);
             builder.groups = rs.getInt("groups_count");
         });
 
         jdbcTemplate.query(slotsSql, params, rs -> {
-            UUID coachId = UUID.fromString(rs.getString("coach_id"));
-            CoachLoadRowBuilder builder = builders.computeIfAbsent(coachId, CoachLoadRowBuilder::new);
+            UUID rowCoachId = UUID.fromString(rs.getString("coach_id"));
+            CoachLoadRowBuilder builder = builders.computeIfAbsent(rowCoachId, CoachLoadRowBuilder::new);
             builder.scheduledSlots = rs.getInt("scheduled_slots");
             builder.cancelledSessions = rs.getInt("cancelled_slots");
         });
 
         jdbcTemplate.query(studentsSql, params, rs -> {
-            UUID coachId = UUID.fromString(rs.getString("coach_id"));
-            CoachLoadRowBuilder builder = builders.computeIfAbsent(coachId, CoachLoadRowBuilder::new);
+            UUID rowCoachId = UUID.fromString(rs.getString("coach_id"));
+            CoachLoadRowBuilder builder = builders.computeIfAbsent(rowCoachId, CoachLoadRowBuilder::new);
             builder.activeStudents = rs.getInt("active_students");
         });
 
         jdbcTemplate.query(capacitySql, params, rs -> {
-            UUID coachId = UUID.fromString(rs.getString("coach_id"));
-            CoachLoadRowBuilder builder = builders.computeIfAbsent(coachId, CoachLoadRowBuilder::new);
+            UUID rowCoachId = UUID.fromString(rs.getString("coach_id"));
+            CoachLoadRowBuilder builder = builders.computeIfAbsent(rowCoachId, CoachLoadRowBuilder::new);
             builder.targetLoad = rs.getInt("target_load");
         });
 
@@ -338,11 +459,17 @@ public class AnalyticsService implements AnalyticsPort {
                 .toList();
     }
 
-    private List<RetentionCohortOutput> loadRetentionCohorts(UUID branchId, int periods, String timezone) {
+    private List<RetentionCohortOutput> loadRetentionCohorts(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            int periods,
+            UUID coachId,
+            UUID groupId
+    ) {
         int effectivePeriods = Math.max(periods, 1);
-        ZonedDateTime now = ZonedDateTime.now(ZoneId.of(timezone));
-        LocalDate endMonth = now.toLocalDate().withDayOfMonth(1);
-        LocalDate startMonth = endMonth.minusMonths(effectivePeriods - 1L);
+        LocalDate startMonth = dateFrom.withDayOfMonth(1);
+        LocalDate endMonth = dateTo.withDayOfMonth(1);
 
         String cohortsSql = """
                 select distinct date_trunc('month', c.start_date) as cohort
@@ -351,13 +478,26 @@ public class AnalyticsService implements AnalyticsPort {
                 where g.branch_id = :branchId
                   and c.start_date >= :startMonth
                   and c.start_date < (:endMonth + interval '1 month')
+                  and (cast(:groupId as uuid) is null or c.group_id = :groupId)
+                  and (cast(:coachId as uuid) is null or exists (
+                    select 1
+                    from group_schedules gs
+                    where gs.group_id = c.group_id
+                      and gs.coach_id = :coachId
+                      and gs.start_date <= :dateTo
+                      and gs.end_date >= :dateFrom
+                  ))
                 order by cohort
                 """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("branchId", branchId)
                 .addValue("startMonth", startMonth)
-                .addValue("endMonth", endMonth);
+                .addValue("endMonth", endMonth)
+                .addValue("dateFrom", dateFrom)
+                .addValue("dateTo", dateTo)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
 
         List<LocalDate> cohorts = jdbcTemplate.query(cohortsSql, params,
                 (rs, rowNum) -> rs.getDate("cohort").toLocalDate());
@@ -365,12 +505,12 @@ public class AnalyticsService implements AnalyticsPort {
         List<RetentionCohortOutput> outputs = new ArrayList<>();
         for (LocalDate cohortMonth : cohorts) {
             List<RetentionPointOutput> points = new ArrayList<>();
-            int baseCount = countCohortBase(branchId, cohortMonth);
+            int baseCount = countCohortBase(branchId, cohortMonth, dateFrom, dateTo, coachId, groupId);
 
             for (int index = 0; index < effectivePeriods; index++) {
                 LocalDate periodStart = cohortMonth.plusMonths(index);
                 LocalDate periodEnd = periodStart.plusMonths(1).minusDays(1);
-                int retained = countActiveInCohort(branchId, cohortMonth, periodStart, periodEnd);
+                int retained = countActiveInCohort(branchId, cohortMonth, periodStart, periodEnd, dateFrom, dateTo, coachId, groupId);
                 double rate = baseCount == 0 ? 0.0 : (retained * 100.0) / baseCount;
                 points.add(new RetentionPointOutput(index, retained, round(rate)));
             }
@@ -381,24 +521,53 @@ public class AnalyticsService implements AnalyticsPort {
         return outputs;
     }
 
-    private int countCohortBase(UUID branchId, LocalDate cohortMonth) {
+    private int countCohortBase(
+            UUID branchId,
+            LocalDate cohortMonth,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            UUID coachId,
+            UUID groupId
+    ) {
         String sql = """
                 select count(distinct c.player_id) as total
                 from contracts c
                 join groups g on g.id = c.group_id
                 where g.branch_id = :branchId
                   and date_trunc('month', c.start_date) = :cohortMonth
+                  and (cast(:groupId as uuid) is null or c.group_id = :groupId)
+                  and (cast(:coachId as uuid) is null or exists (
+                    select 1
+                    from group_schedules gs
+                    where gs.group_id = c.group_id
+                      and gs.coach_id = :coachId
+                      and gs.start_date <= :dateTo
+                      and gs.end_date >= :dateFrom
+                  ))
                 """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("branchId", branchId)
-                .addValue("cohortMonth", cohortMonth);
+                .addValue("cohortMonth", cohortMonth)
+                .addValue("dateFrom", dateFrom)
+                .addValue("dateTo", dateTo)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
 
         Integer total = jdbcTemplate.queryForObject(sql, params, Integer.class);
         return total == null ? 0 : total;
     }
 
-    private int countActiveInCohort(UUID branchId, LocalDate cohortMonth, LocalDate periodStart, LocalDate periodEnd) {
+    private int countActiveInCohort(
+            UUID branchId,
+            LocalDate cohortMonth,
+            LocalDate periodStart,
+            LocalDate periodEnd,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            UUID coachId,
+            UUID groupId
+    ) {
         String sql = """
                 select count(distinct c.player_id) as total
                 from contracts c
@@ -407,24 +576,38 @@ public class AnalyticsService implements AnalyticsPort {
                   and date_trunc('month', c.start_date) = :cohortMonth
                   and c.start_date <= :periodEnd
                   and (c.end_date is null or c.end_date >= :periodStart)
+                  and (cast(:groupId as uuid) is null or c.group_id = :groupId)
+                  and (cast(:coachId as uuid) is null or exists (
+                    select 1
+                    from group_schedules gs
+                    where gs.group_id = c.group_id
+                      and gs.coach_id = :coachId
+                      and gs.start_date <= :dateTo
+                      and gs.end_date >= :dateFrom
+                  ))
                 """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("branchId", branchId)
                 .addValue("cohortMonth", cohortMonth)
                 .addValue("periodStart", periodStart)
-                .addValue("periodEnd", periodEnd);
+                .addValue("periodEnd", periodEnd)
+                .addValue("dateFrom", dateFrom)
+                .addValue("dateTo", dateTo)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
 
         Integer total = jdbcTemplate.queryForObject(sql, params, Integer.class);
         return total == null ? 0 : total;
     }
 
-    private List<RetentionGroupOutput> loadRetentionGroups(UUID branchId, int periods, String timezone) {
-        int effectivePeriods = Math.max(periods, 1);
-        ZonedDateTime now = ZonedDateTime.now(ZoneId.of(timezone));
-        LocalDate endDate = now.toLocalDate();
-        LocalDate startDate = endDate.minusMonths(effectivePeriods).withDayOfMonth(1);
-
+    private List<RetentionGroupOutput> loadRetentionGroups(
+            UUID branchId,
+            LocalDate startDate,
+            LocalDate endDate,
+            UUID coachId,
+            UUID groupId
+    ) {
         String sql = """
                 with schedules as (
                     select gs.group_id,
@@ -437,6 +620,8 @@ public class AnalyticsService implements AnalyticsPort {
                     where g.branch_id = :branchId
                       and gs.start_date <= :dateTo
                       and gs.end_date >= :dateFrom
+                      and (cast(:coachId as uuid) is null or gs.coach_id = :coachId)
+                      and (cast(:groupId as uuid) is null or gs.group_id = :groupId)
                 ),
                 dates as (
                     select d::date as day
@@ -462,16 +647,18 @@ public class AnalyticsService implements AnalyticsPort {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("branchId", branchId)
                 .addValue("dateFrom", startDate)
-                .addValue("dateTo", endDate);
+                .addValue("dateTo", endDate)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
 
         Map<UUID, RetentionGroupOutput> groups = new HashMap<>();
 
         jdbcTemplate.query(sql, params, rs -> {
-            UUID groupId = UUID.fromString(rs.getString("group_id"));
+            UUID rowGroupId = UUID.fromString(rs.getString("group_id"));
             int total = rs.getInt("total_slots");
             int cancelled = rs.getInt("cancelled_slots");
             double retentionIndex = total == 0 ? 0.0 : round(100.0 - (cancelled * 100.0) / total);
-            groups.put(groupId, new RetentionGroupOutput(groupId, null, total, cancelled, retentionIndex));
+            groups.put(rowGroupId, new RetentionGroupOutput(rowGroupId, null, total, cancelled, retentionIndex));
         });
 
         if (groups.isEmpty()) {
@@ -488,10 +675,10 @@ public class AnalyticsService implements AnalyticsPort {
                 .addValue("groupIds", new ArrayList<>(groups.keySet()));
 
         jdbcTemplate.query(nameSql, nameParams, rs -> {
-            UUID groupId = UUID.fromString(rs.getString("id"));
-            RetentionGroupOutput existing = groups.get(groupId);
+            UUID rowGroupId = UUID.fromString(rs.getString("id"));
+            RetentionGroupOutput existing = groups.get(rowGroupId);
             if (existing != null) {
-                groups.put(groupId, new RetentionGroupOutput(
+                groups.put(rowGroupId, new RetentionGroupOutput(
                         existing.groupId(),
                         rs.getString("name"),
                         existing.totalSchedules(),
@@ -504,14 +691,23 @@ public class AnalyticsService implements AnalyticsPort {
         return new ArrayList<>(groups.values());
     }
 
-    private LeadTimingOutput loadLeadTiming(UUID branchId, LocalDate dateFrom, LocalDate dateTo, String timezone) {
+    private LeadTimingOutput loadLeadTiming(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    ) {
         SlaPercentileOutput firstContact = loadPercentiles(
                 branchId,
                 dateFrom,
                 dateTo,
                 timezone,
                 "CONTACTED",
-                ChronoUnit.MINUTES
+                ChronoUnit.MINUTES,
+                coachId,
+                groupId
         );
 
         SlaPercentileOutput qualification = loadPercentiles(
@@ -520,7 +716,9 @@ public class AnalyticsService implements AnalyticsPort {
                 dateTo,
                 timezone,
                 "QUALIFIED",
-                ChronoUnit.HOURS
+                ChronoUnit.HOURS,
+                coachId,
+                groupId
         );
 
         SlaPercentileOutput trialScheduled = loadPercentiles(
@@ -529,13 +727,22 @@ public class AnalyticsService implements AnalyticsPort {
                 dateTo,
                 timezone,
                 "TRIAL_SCHEDULED",
-                ChronoUnit.HOURS
+                ChronoUnit.HOURS,
+                coachId,
+                groupId
         );
 
         return new LeadTimingOutput(firstContact, qualification, trialScheduled);
     }
 
-    private SlaBreachesOutput loadLeadBreaches(UUID branchId, LocalDate dateFrom, LocalDate dateTo, String timezone) {
+    private SlaBreachesOutput loadLeadBreaches(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    ) {
         String firstContactSql = leadDurationSql("CONTACTED");
         String qualificationSql = leadDurationSql("QUALIFIED");
 
@@ -543,7 +750,9 @@ public class AnalyticsService implements AnalyticsPort {
                 .addValue("branchId", branchId)
                 .addValue("dateFrom", dateFrom)
                 .addValue("dateTo", dateTo)
-                .addValue("tz", timezone);
+                .addValue("tz", timezone)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
 
         Double firstContactOver2h = jdbcTemplate.queryForObject(
                 """
@@ -577,7 +786,9 @@ public class AnalyticsService implements AnalyticsPort {
             LocalDate dateTo,
             String timezone,
             String status,
-            ChronoUnit unit
+            ChronoUnit unit,
+            UUID coachId,
+            UUID groupId
     ) {
         String sql = """
                 select
@@ -591,7 +802,9 @@ public class AnalyticsService implements AnalyticsPort {
                 .addValue("branchId", branchId)
                 .addValue("dateFrom", dateFrom)
                 .addValue("dateTo", dateTo)
-                .addValue("tz", timezone);
+                .addValue("tz", timezone)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
 
         return jdbcTemplate.query(sql, params, rs -> {
             if (!rs.next()) {
@@ -616,8 +829,155 @@ public class AnalyticsService implements AnalyticsPort {
                   and a.activity_type = 'STATUS_CHANGED'
                   and a.to_status = '%s'
                   and (l.created_at at time zone :tz)::date between :dateFrom and :dateTo
+                  and (cast(:coachId as uuid) is null or exists (
+                        select 1 from lead_trials lt where lt.lead_id = l.id and lt.coach_id = :coachId
+                  ))
+                  and (cast(:groupId as uuid) is null or exists (
+                        select 1 from lead_trials lt where lt.lead_id = l.id and lt.group_id = :groupId
+                  ))
                 group by l.id
                 """.formatted(targetStatus);
+    }
+
+    private List<LossReasonPointOutput> loadLossReasons(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    ) {
+        long rangeDays = ChronoUnit.DAYS.between(dateFrom, dateTo) + 1;
+        LocalDate prevDateTo = dateFrom.minusDays(1);
+        LocalDate prevDateFrom = prevDateTo.minusDays(rangeDays - 1);
+
+        String sql = """
+                with current_totals as (
+                    select count(*) as total
+                    from leads l
+                    where l.branch_id = :branchId
+                      and l.status = 'LOST'
+                      and (l.created_at at time zone :tz)::date between :currentDateFrom and :currentDateTo
+                      and (cast(:coachId as uuid) is null or exists (
+                            select 1 from lead_trials lt where lt.lead_id = l.id and lt.coach_id = :coachId
+                      ))
+                      and (cast(:groupId as uuid) is null or exists (
+                            select 1 from lead_trials lt where lt.lead_id = l.id and lt.group_id = :groupId
+                      ))
+                ),
+                previous as (
+                    select coalesce(l.lost_reason_code, 'UNKNOWN') as code,
+                           count(*) as total
+                    from leads l
+                    where l.branch_id = :branchId
+                      and l.status = 'LOST'
+                      and (l.created_at at time zone :tz)::date between :previousDateFrom and :previousDateTo
+                      and (cast(:coachId as uuid) is null or exists (
+                            select 1 from lead_trials lt where lt.lead_id = l.id and lt.coach_id = :coachId
+                      ))
+                      and (cast(:groupId as uuid) is null or exists (
+                            select 1 from lead_trials lt where lt.lead_id = l.id and lt.group_id = :groupId
+                      ))
+                    group by coalesce(l.lost_reason_code, 'UNKNOWN')
+                )
+                select coalesce(l.lost_reason_code, 'UNKNOWN') as code,
+                       coalesce(lrr.name, 'Unknown') as name,
+                       count(*) as total,
+                       case when (select total from current_totals) = 0 then 0
+                            else (count(*) * 100.0) / (select total from current_totals) end as share,
+                       coalesce(p.total, 0) as previous_total
+                from leads l
+                left join lead_loss_reasons lrr on lrr.code = l.lost_reason_code
+                left join previous p on p.code = coalesce(l.lost_reason_code, 'UNKNOWN')
+                where l.branch_id = :branchId
+                  and l.status = 'LOST'
+                  and (l.created_at at time zone :tz)::date between :currentDateFrom and :currentDateTo
+                  and (cast(:coachId as uuid) is null or exists (
+                        select 1 from lead_trials lt where lt.lead_id = l.id and lt.coach_id = :coachId
+                  ))
+                  and (cast(:groupId as uuid) is null or exists (
+                        select 1 from lead_trials lt where lt.lead_id = l.id and lt.group_id = :groupId
+                  ))
+                group by coalesce(l.lost_reason_code, 'UNKNOWN'),
+                         coalesce(lrr.name, 'Unknown'),
+                         p.total
+                order by count(*) desc,
+                         coalesce(l.lost_reason_code, 'UNKNOWN') asc
+                """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("branchId", branchId)
+                .addValue("currentDateFrom", dateFrom)
+                .addValue("currentDateTo", dateTo)
+                .addValue("previousDateFrom", prevDateFrom)
+                .addValue("previousDateTo", prevDateTo)
+                .addValue("tz", timezone)
+                .addValue("coachId", coachId)
+                .addValue("groupId", groupId);
+
+        return jdbcTemplate.query(sql, params, (rs, rowNum) -> new LossReasonPointOutput(
+                rs.getString("code"),
+                rs.getString("name"),
+                rs.getLong("total"),
+                round(rs.getDouble("share")),
+                trendRate(rs.getLong("total"), rs.getLong("previous_total"))
+        ));
+    }
+
+    private AnalyticsResponseOutput buildResponse(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            String timezone,
+            AnalyticsGroupBy groupBy,
+            UUID coachId,
+            UUID groupId,
+            Object summary,
+            Object series,
+            Object totals
+    ) {
+        Map<String, Object> filters = new LinkedHashMap<>();
+        filters.put("groupBy", groupBy);
+        if (coachId != null) {
+            filters.put("coachId", coachId);
+        }
+        if (groupId != null) {
+            filters.put("groupId", groupId);
+        }
+        AnalyticsMetaOutput meta = new AnalyticsMetaOutput(
+                dateFrom,
+                dateTo,
+                timezone,
+                Instant.now(),
+                branchId,
+                filters
+        );
+        boolean isEmpty = isSeriesEmpty(series);
+        AnalyticsEmptyOutput empty = new AnalyticsEmptyOutput(isEmpty, isEmpty ? "NO_DATA" : null);
+        return new AnalyticsResponseOutput(meta, summary, series, totals, empty);
+    }
+
+    private boolean isSeriesEmpty(Object series) {
+        if (series == null) {
+            return true;
+        }
+        if (series instanceof Collection<?> c) {
+            return c.isEmpty();
+        }
+        if (series instanceof Map<?, ?> m) {
+            return m.isEmpty();
+        }
+        return false;
+    }
+
+    private void validateRange(LocalDate dateFrom, LocalDate dateTo) {
+        if (dateFrom == null || dateTo == null) {
+            return;
+        }
+        long days = ChronoUnit.DAYS.between(dateFrom, dateTo) + 1;
+        if (days < 1 || days > MAX_RANGE_DAYS) {
+            throw new AnalyticsRangeTooLargeException(MAX_RANGE_DAYS, days);
+        }
     }
 
     private String formatCohort(LocalDate cohortMonth) {
@@ -640,6 +1000,13 @@ public class AnalyticsService implements AnalyticsPort {
             return 0.0;
         }
         return round((numerator * 100.0) / denominator);
+    }
+
+    private double trendRate(long current, long previous) {
+        if (previous == 0) {
+            return current == 0 ? 0.0 : 100.0;
+        }
+        return round(((current - previous) * 100.0) / previous);
     }
 
     private static double round(double value) {

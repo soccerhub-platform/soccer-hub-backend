@@ -59,6 +59,17 @@ public class GroupService implements GroupPort {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Collection<GroupDto> getGroupsByIds(Set<UUID> groupIds) {
+        if (groupIds == null || groupIds.isEmpty()) {
+            return List.of();
+        }
+        return groupRepository.findAllById(groupIds).stream()
+                .map(GroupMapper::toDto)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public Collection<GroupDto> getGroupsByBranch(UUID branchId) {
         return groupRepository.findByBranchId(branchId).stream()

@@ -42,15 +42,14 @@ public class LeadMapper {
                 lead.getLostReason() == null ? null : lead.getLostReason().getName(),
                 lead.getLostComment(),
                 lead.getLostAt(),
+                lead.getClientId(),
+                lead.getPlayerId(),
+                lead.getContractId(),
                 mapChildren(lead),
                 mapTrial(lead.getTrial()),
                 lead.getCreatedAt(),
                 lead.getUpdatedAt()
         );
-    }
-
-    public LeadOutput toOutput(Lead lead) {
-        return toOutput(lead, null);
     }
 
     private List<LeadChildOutput> mapChildren(Lead lead) {
@@ -117,4 +116,3 @@ public class LeadMapper {
         }
     }
 }
-

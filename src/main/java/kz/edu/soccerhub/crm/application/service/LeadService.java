@@ -416,7 +416,7 @@ public class LeadService implements LeadPort {
         if (lead.getStatus() != LeadStatus.WON) {
             lead.updateStatus(LeadStatus.WON);
         }
-        lead.markConverted(client.getId());
+        lead.markConverted(client.getId(), player.getId(), contract.getId());
         leadRepository.save(lead);
 
         leadActivityService.logLeadConverted(

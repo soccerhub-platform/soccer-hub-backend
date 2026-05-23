@@ -5,11 +5,13 @@ import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 
 import java.util.Collection;
+import java.util.Set;
 import java.util.UUID;
 
 public interface GroupPort {
     UUID createGroup(CreateGroupCommand command);
     GroupDto getGroupById(UUID groupId);
+    Collection<GroupDto> getGroupsByIds(Set<UUID> groupIds);
     void deleteGroup(UUID groupId);
     void stopGroup(UUID groupId);
     void pauseGroup(UUID groupId);

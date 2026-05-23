@@ -1,11 +1,20 @@
 package kz.edu.soccerhub.coach.application.service;
 
 import jakarta.validation.constraints.NotNull;
+import kz.edu.soccerhub.coach.domain.model.CoachBranch;
 import kz.edu.soccerhub.coach.domain.model.CoachProfile;
+import kz.edu.soccerhub.coach.domain.model.CoachStatusHistory;
+import kz.edu.soccerhub.coach.domain.model.TrainingSession;
 import kz.edu.soccerhub.coach.domain.model.enums.CoachStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
+import kz.edu.soccerhub.coach.domain.repository.CoachBranchRepository;
 import kz.edu.soccerhub.coach.domain.repository.CoachProfileRepository;
+import kz.edu.soccerhub.coach.domain.repository.CoachStatusHistoryRepository;
+import kz.edu.soccerhub.coach.domain.repository.TrainingSessionRepository;
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
+import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.CoachPort;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +23,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -23,6 +34,9 @@ public class CoachService implements CoachPort {
 
     private final CoachProfileRepository coachProfileRepository;
     private final CoachBranchService coachBranchService;
+    private final CoachBranchRepository coachBranchRepository;
+    private final TrainingSessionRepository trainingSessionRepository;
+    private final CoachStatusHistoryRepository coachStatusHistoryRepository;
 
     @Transactional
     public UUID create(CoachCreateCommand command) {
@@ -107,6 +121,117 @@ public class CoachService implements CoachPort {
                 .ifPresent(coachProfile -> coachProfile.setStatus(CoachStatus.INACTIVE));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Set<UUID> getBranchIds(UUID coachId) {
+        return coachBranchRepository.findAllByCoachId(coachId).stream()
+                .map(CoachBranch::getBranchId)
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CoachSessionAdminView> getSessions(
+            Set<UUID> coachIds,
+            Set<UUID> groupIds,
+            LocalDate dateFrom,
+            LocalDate dateTo
+    ) {
+        if (coachIds.isEmpty() || groupIds.isEmpty()) {
+            return List.of();
+        }
+        return trainingSessionRepository
+                .findByCoachIdInAndGroupIdInAndSessionDateBetween(coachIds, groupIds, dateFrom, dateTo)
+                .stream()
+                .map(this::toSessionAdminView)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CoachSessionAdminView> getOverdueReportSessions(
+            Set<UUID> coachIds,
+            Set<UUID> groupIds,
+            LocalDate beforeDate
+    ) {
+        if (coachIds.isEmpty() || groupIds.isEmpty()) {
+            return List.of();
+        }
+        return trainingSessionRepository
+                .findByCoachIdInAndGroupIdInAndSessionDateBeforeAndReportDoneFalse(coachIds, groupIds, beforeDate)
+                .stream()
+                .filter(session -> session.getStatus() != TrainingSessionStatus.CANCELLED)
+                .map(this::toSessionAdminView)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CoachSessionAdminView> getReportedSessions(Set<UUID> coachIds, Set<UUID> groupIds) {
+        if (coachIds.isEmpty() || groupIds.isEmpty()) {
+            return List.of();
+        }
+        return trainingSessionRepository.findByCoachIdInAndGroupIdInAndReportDoneTrue(coachIds, groupIds)
+                .stream()
+                .map(this::toSessionAdminView)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CoachSessionAdminView> getUpcomingSessions(UUID coachId, LocalDate fromDate) {
+        return trainingSessionRepository
+                .findByCoachIdAndSessionDateGreaterThanEqualOrderBySessionDateAscScheduledStartAtAsc(coachId, fromDate)
+                .stream()
+                .filter(session -> session.getStatus() != TrainingSessionStatus.CANCELLED)
+                .map(this::toSessionAdminView)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public int countOverdueReports(UUID coachId, LocalDate beforeDate) {
+        return trainingSessionRepository.countByCoachIdAndSessionDateBeforeAndReportDoneFalseAndStatusNot(
+                coachId,
+                beforeDate,
+                TrainingSessionStatus.CANCELLED
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CoachSessionAdminView> getReportedSessions(UUID coachId) {
+        return trainingSessionRepository.findByCoachIdAndReportDoneTrueOrderByUpdatedAtDesc(coachId)
+                .stream()
+                .map(this::toSessionAdminView)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CoachStatusHistoryDto> getStatusHistory(UUID coachId) {
+        return coachStatusHistoryRepository.findByCoachIdOrderByChangedAtDesc(coachId)
+                .stream()
+                .map(item -> new CoachStatusHistoryDto(
+                        item.getStatus().name(),
+                        item.getChangedAt(),
+                        item.getChangedBy()
+                ))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void recordStatusHistory(UUID coachId, CoachStatus status, UUID changedBy) {
+        coachStatusHistoryRepository.save(CoachStatusHistory.builder()
+                .id(UUID.randomUUID())
+                .coachId(coachId)
+                .status(status)
+                .changedAt(LocalDateTime.now())
+                .changedBy(changedBy)
+                .build());
+    }
+
     private CoachDto toDto(@NotNull CoachProfile coachProfile) {
         return CoachDto.builder()
                 .id(coachProfile.getId())
@@ -116,5 +241,19 @@ public class CoachService implements CoachPort {
                 .email(coachProfile.getEmail())
                 .active(coachProfile.getStatus() == CoachStatus.ACTIVE)
                 .build();
+    }
+
+    private CoachSessionAdminView toSessionAdminView(TrainingSession session) {
+        return new CoachSessionAdminView(
+                session.getId(),
+                session.getCoachId(),
+                session.getGroupId(),
+                session.getSessionDate(),
+                session.getScheduledStartAt(),
+                session.getScheduledEndAt(),
+                session.getStatus().name(),
+                session.isReportDone(),
+                session.getUpdatedAt()
+        );
     }
 }

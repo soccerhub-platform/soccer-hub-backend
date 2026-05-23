@@ -3,6 +3,8 @@ package kz.edu.soccerhub.admin.api;
 import jakarta.validation.Valid;
 import kz.edu.soccerhub.admin.application.dto.coach.*;
 import kz.edu.soccerhub.admin.application.service.AdminCoachService;
+import kz.edu.soccerhub.common.dto.coach.AdminCoachOverviewOutput;
+import kz.edu.soccerhub.common.dto.coach.AdminCoachProfileOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -75,6 +77,24 @@ public class AdminCoachController {
         UUID adminId = UUID.fromString(jwt.getSubject());
         adminCoachService.updateCoachStatus(adminId, coachId, input);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/overview")
+    public ResponseEntity<AdminCoachOverviewOutput> getOverview(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam("branchId") UUID branchId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminCoachService.getCoachesOverview(adminId, branchId));
+    }
+
+    @GetMapping("/{coachId}/profile")
+    public ResponseEntity<AdminCoachProfileOutput> getCoachProfile(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID coachId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminCoachService.getCoachProfile(adminId, coachId));
     }
 
 }

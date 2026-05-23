@@ -12,5 +12,7 @@
     <include file="/db/changelog/2026-05-20-contracts-group-id.sql"/>
     <include file="/db/changelog/2026-05-20-remove-sections.sql"/>
     <include file="/db/changelog/2026-05-20-coach-profile-settings.sql"/>
+    <include file="/db/changelog/2026-05-22-leads-conversion-refs.sql"/>
+    <include file="/db/changelog/2026-05-23-coach-status-history.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>

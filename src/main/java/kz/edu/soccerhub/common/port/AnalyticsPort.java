@@ -1,46 +1,70 @@
 package kz.edu.soccerhub.common.port;
 
-import kz.edu.soccerhub.common.dto.analytics.AnalyticsCohortBy;
 import kz.edu.soccerhub.common.dto.analytics.AnalyticsGroupBy;
-import kz.edu.soccerhub.common.dto.analytics.CoachLoadAnalyticsOutput;
-import kz.edu.soccerhub.common.dto.analytics.FunnelAnalyticsOutput;
-import kz.edu.soccerhub.common.dto.analytics.RetentionAnalyticsOutput;
-import kz.edu.soccerhub.common.dto.analytics.SlaAnalyticsOutput;
+import kz.edu.soccerhub.common.dto.analytics.AnalyticsResponseOutput;
 
 import java.time.LocalDate;
 import java.util.UUID;
 
 public interface AnalyticsPort {
 
-    FunnelAnalyticsOutput getFunnelAnalytics(
+    AnalyticsResponseOutput getFunnelAnalytics(
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     );
 
-    CoachLoadAnalyticsOutput getCoachLoadAnalytics(
+    AnalyticsResponseOutput getCoachLoadAnalytics(
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     );
 
-    RetentionAnalyticsOutput getRetentionAnalytics(
-            UUID branchId,
-            AnalyticsCohortBy cohortBy,
-            int periods,
-            String timezone
-    );
-
-    SlaAnalyticsOutput getSlaAnalytics(
+    AnalyticsResponseOutput getRetentionAnalytics(
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    );
+
+    AnalyticsResponseOutput getSlaAnalytics(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            AnalyticsGroupBy groupBy,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    );
+
+    AnalyticsResponseOutput getLossReasonsAnalytics(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            AnalyticsGroupBy groupBy,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    );
+
+    AnalyticsResponseOutput getKpiAnalytics(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            AnalyticsGroupBy groupBy,
+            String timezone,
+            UUID coachId,
+            UUID groupId
     );
 }
-

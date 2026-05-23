@@ -95,6 +95,27 @@ public class GroupCoachService implements GroupCoachPort {
 
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Collection<GroupCoachDto> getActiveAssignmentsByCoachId(UUID coachId) {
+        return groupCoachRepository.findByCoachIdAndActiveTrue(coachId)
+                .stream()
+                .map(GroupCoachMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Collection<GroupCoachDto> getActiveAssignmentsByCoachIdsAndGroupIds(Set<UUID> coachIds, Set<UUID> groupIds) {
+        if (coachIds == null || coachIds.isEmpty() || groupIds == null || groupIds.isEmpty()) {
+            return List.of();
+        }
+        return groupCoachRepository.findByCoachIdInAndGroupIdInAndActiveTrue(coachIds, groupIds)
+                .stream()
+                .map(GroupCoachMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
     @Transactional(readOnly = true)
     public int coachCount(UUID groupId) {
         return groupCoachRepository.countByGroupIdAndActiveTrue(groupId);

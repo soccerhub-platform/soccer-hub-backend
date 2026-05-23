@@ -1,12 +1,8 @@
 package kz.edu.soccerhub.admin.application.service;
 
-import kz.edu.soccerhub.common.dto.analytics.AnalyticsCohortBy;
 import kz.edu.soccerhub.common.dto.analytics.AnalyticsGroupBy;
-import kz.edu.soccerhub.common.dto.analytics.CoachLoadAnalyticsOutput;
-import kz.edu.soccerhub.common.dto.analytics.FunnelAnalyticsOutput;
-import kz.edu.soccerhub.common.dto.analytics.RetentionAnalyticsOutput;
-import kz.edu.soccerhub.common.dto.analytics.SlaAnalyticsOutput;
-import kz.edu.soccerhub.common.exception.BadRequestException;
+import kz.edu.soccerhub.common.dto.analytics.AnalyticsResponseOutput;
+import kz.edu.soccerhub.common.exception.AnalyticsForbiddenBranchException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AnalyticsPort;
 import lombok.RequiredArgsConstructor;
@@ -25,54 +21,93 @@ public class AdminAnalyticsService {
     private final AdminBranchService adminBranchService;
 
     @Transactional(readOnly = true)
-    public FunnelAnalyticsOutput getFunnelAnalytics(
+    public AnalyticsResponseOutput getFunnelAnalytics(
             UUID adminId,
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     ) {
         verifyAdminAccess(adminId, branchId);
-        return analyticsPort.getFunnelAnalytics(branchId, dateFrom, dateTo, groupBy, timezone);
+        return analyticsPort.getFunnelAnalytics(branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId);
     }
 
     @Transactional(readOnly = true)
-    public CoachLoadAnalyticsOutput getCoachLoadAnalytics(
+    public AnalyticsResponseOutput getCoachLoadAnalytics(
             UUID adminId,
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     ) {
         verifyAdminAccess(adminId, branchId);
-        return analyticsPort.getCoachLoadAnalytics(branchId, dateFrom, dateTo, groupBy, timezone);
+        return analyticsPort.getCoachLoadAnalytics(branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId);
     }
 
     @Transactional(readOnly = true)
-    public RetentionAnalyticsOutput getRetentionAnalytics(
-            UUID adminId,
-            UUID branchId,
-            AnalyticsCohortBy cohortBy,
-            int periods,
-            String timezone
-    ) {
-        verifyAdminAccess(adminId, branchId);
-        return analyticsPort.getRetentionAnalytics(branchId, cohortBy, periods, timezone);
-    }
-
-    @Transactional(readOnly = true)
-    public SlaAnalyticsOutput getSlaAnalytics(
+    public AnalyticsResponseOutput getRetentionAnalytics(
             UUID adminId,
             UUID branchId,
             LocalDate dateFrom,
             LocalDate dateTo,
             AnalyticsGroupBy groupBy,
-            String timezone
+            String timezone,
+            UUID coachId,
+            UUID groupId
     ) {
         verifyAdminAccess(adminId, branchId);
-        return analyticsPort.getSlaAnalytics(branchId, dateFrom, dateTo, groupBy, timezone);
+        return analyticsPort.getRetentionAnalytics(branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId);
+    }
+
+    @Transactional(readOnly = true)
+    public AnalyticsResponseOutput getSlaAnalytics(
+            UUID adminId,
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            AnalyticsGroupBy groupBy,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    ) {
+        verifyAdminAccess(adminId, branchId);
+        return analyticsPort.getSlaAnalytics(branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId);
+    }
+
+    @Transactional(readOnly = true)
+    public AnalyticsResponseOutput getLossReasonsAnalytics(
+            UUID adminId,
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            AnalyticsGroupBy groupBy,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    ) {
+        verifyAdminAccess(adminId, branchId);
+        return analyticsPort.getLossReasonsAnalytics(branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId);
+    }
+
+    @Transactional(readOnly = true)
+    public AnalyticsResponseOutput getKpiAnalytics(
+            UUID adminId,
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            AnalyticsGroupBy groupBy,
+            String timezone,
+            UUID coachId,
+            UUID groupId
+    ) {
+        verifyAdminAccess(adminId, branchId);
+        return analyticsPort.getKpiAnalytics(branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId);
     }
 
     private void verifyAdminAccess(UUID adminId, UUID branchId) {
@@ -81,8 +116,7 @@ public class AdminAnalyticsService {
 
         boolean hasAccess = adminBranchService.verifyAdminBelongsToBranch(adminId, branchId);
         if (!hasAccess) {
-            throw new BadRequestException("Admin does not have access to branch", branchId);
+            throw new AnalyticsForbiddenBranchException(branchId);
         }
     }
 }
-

@@ -1,12 +1,8 @@
 package kz.edu.soccerhub.admin.api;
 
 import kz.edu.soccerhub.admin.application.service.AdminAnalyticsService;
-import kz.edu.soccerhub.common.dto.analytics.AnalyticsCohortBy;
 import kz.edu.soccerhub.common.dto.analytics.AnalyticsGroupBy;
-import kz.edu.soccerhub.common.dto.analytics.CoachLoadAnalyticsOutput;
-import kz.edu.soccerhub.common.dto.analytics.FunnelAnalyticsOutput;
-import kz.edu.soccerhub.common.dto.analytics.RetentionAnalyticsOutput;
-import kz.edu.soccerhub.common.dto.analytics.SlaAnalyticsOutput;
+import kz.edu.soccerhub.common.dto.analytics.AnalyticsResponseOutput;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,62 +25,110 @@ public class AdminAnalyticsController {
     private final AdminAnalyticsService adminAnalyticsService;
 
     @GetMapping("/funnel")
-    public ResponseEntity<FunnelAnalyticsOutput> getFunnelAnalytics(
+    public ResponseEntity<AnalyticsResponseOutput> getFunnelAnalytics(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID branchId,
             @RequestParam LocalDate dateFrom,
             @RequestParam LocalDate dateTo,
-            @RequestParam AnalyticsGroupBy groupBy,
-            @RequestParam(required = false) String timezone
+            @RequestParam(required = false) AnalyticsGroupBy groupBy,
+            @RequestParam(required = false) String timezone,
+            @RequestParam(required = false) UUID coachId,
+            @RequestParam(required = false) UUID groupId
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(
-                adminAnalyticsService.getFunnelAnalytics(adminId, branchId, dateFrom, dateTo, groupBy, timezone)
+                adminAnalyticsService.getFunnelAnalytics(
+                        adminId, branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId
+                )
         );
     }
 
     @GetMapping("/coach-load")
-    public ResponseEntity<CoachLoadAnalyticsOutput> getCoachLoad(
+    public ResponseEntity<AnalyticsResponseOutput> getCoachLoad(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID branchId,
             @RequestParam LocalDate dateFrom,
             @RequestParam LocalDate dateTo,
             @RequestParam(required = false) AnalyticsGroupBy groupBy,
-            @RequestParam(required = false) String timezone
+            @RequestParam(required = false) String timezone,
+            @RequestParam(required = false) UUID coachId,
+            @RequestParam(required = false) UUID groupId
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(
-                adminAnalyticsService.getCoachLoadAnalytics(adminId, branchId, dateFrom, dateTo, groupBy, timezone)
+                adminAnalyticsService.getCoachLoadAnalytics(
+                        adminId, branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId
+                )
         );
     }
 
     @GetMapping("/retention")
-    public ResponseEntity<RetentionAnalyticsOutput> getRetention(
-            @AuthenticationPrincipal Jwt jwt,
-            @RequestParam UUID branchId,
-            @RequestParam AnalyticsCohortBy cohortBy,
-            @RequestParam int periods,
-            @RequestParam(required = false) String timezone
-    ) {
-        UUID adminId = UUID.fromString(jwt.getSubject());
-        return ResponseEntity.ok(
-                adminAnalyticsService.getRetentionAnalytics(adminId, branchId, cohortBy, periods, timezone)
-        );
-    }
-
-    @GetMapping("/sla")
-    public ResponseEntity<SlaAnalyticsOutput> getSla(
+    public ResponseEntity<AnalyticsResponseOutput> getRetention(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID branchId,
             @RequestParam LocalDate dateFrom,
             @RequestParam LocalDate dateTo,
             @RequestParam(required = false) AnalyticsGroupBy groupBy,
-            @RequestParam(required = false) String timezone
+            @RequestParam(required = false) String timezone,
+            @RequestParam(required = false) UUID coachId,
+            @RequestParam(required = false) UUID groupId
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(
-                adminAnalyticsService.getSlaAnalytics(adminId, branchId, dateFrom, dateTo, groupBy, timezone)
+                adminAnalyticsService.getRetentionAnalytics(adminId, branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId)
+        );
+    }
+
+    @GetMapping("/sla")
+    public ResponseEntity<AnalyticsResponseOutput> getSla(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam UUID branchId,
+            @RequestParam LocalDate dateFrom,
+            @RequestParam LocalDate dateTo,
+            @RequestParam(required = false) AnalyticsGroupBy groupBy,
+            @RequestParam(required = false) String timezone,
+            @RequestParam(required = false) UUID coachId,
+            @RequestParam(required = false) UUID groupId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(
+                adminAnalyticsService.getSlaAnalytics(adminId, branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId)
+        );
+    }
+
+    @GetMapping("/loss-reasons")
+    public ResponseEntity<AnalyticsResponseOutput> getLossReasons(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam UUID branchId,
+            @RequestParam LocalDate dateFrom,
+            @RequestParam LocalDate dateTo,
+            @RequestParam(required = false) AnalyticsGroupBy groupBy,
+            @RequestParam(required = false) String timezone,
+            @RequestParam(required = false) UUID coachId,
+            @RequestParam(required = false) UUID groupId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(
+                adminAnalyticsService.getLossReasonsAnalytics(
+                        adminId, branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId
+                )
+        );
+    }
+
+    @GetMapping("/kpi")
+    public ResponseEntity<AnalyticsResponseOutput> getKpi(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam UUID branchId,
+            @RequestParam LocalDate dateFrom,
+            @RequestParam LocalDate dateTo,
+            @RequestParam(required = false) AnalyticsGroupBy groupBy,
+            @RequestParam(required = false) String timezone,
+            @RequestParam(required = false) UUID coachId,
+            @RequestParam(required = false) UUID groupId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(
+                adminAnalyticsService.getKpiAnalytics(adminId, branchId, dateFrom, dateTo, groupBy, timezone, coachId, groupId)
         );
     }
 }
-
