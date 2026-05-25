@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:soccer_hub_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+  liquibase:
+    enabled: false
+
+app:
+  jwt:
+    issuer: soccer-hub-test
+    access-ttl: 1h
+    refresh-ttl: 30d
+    kid: test
+    private-cert: classpath:keys/private.pem
+    public-cert: classpath:keys/public.pem

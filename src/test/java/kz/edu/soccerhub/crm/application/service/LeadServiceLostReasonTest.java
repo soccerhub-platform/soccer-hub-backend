@@ -1,11 +1,6 @@
 package kz.edu.soccerhub.crm.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import kz.edu.soccerhub.auth.domain.repository.AppRoleRepo;
-import kz.edu.soccerhub.auth.domain.repository.AppUserRepo;
-import kz.edu.soccerhub.client.domain.repository.ClientRepository;
-import kz.edu.soccerhub.client.domain.repository.ContractRepository;
-import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
 import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.port.AdminPort;
@@ -21,13 +16,11 @@ import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.crm.domain.repository.LeadLossReasonRepository;
 import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
-import kz.edu.soccerhub.organization.domain.repository.GroupRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.Optional;
@@ -53,25 +46,13 @@ class LeadServiceLostReasonTest {
     @Mock
     private GroupSchedulePort groupSchedulePort;
     @Mock
+    private LeadConversionService leadConversionService;
+    @Mock
     private LeadActivityService leadActivityService;
     @Mock
     private LeadMapper leadMapper;
     @Mock
     private LeadLossReasonRepository leadLossReasonRepository;
-    @Mock
-    private ClientRepository clientRepository;
-    @Mock
-    private PlayerRepository playerRepository;
-    @Mock
-    private ContractRepository contractRepository;
-    @Mock
-    private GroupRepository groupRepository;
-    @Mock
-    private AppUserRepo appUserRepo;
-    @Mock
-    private AppRoleRepo appRoleRepo;
-    @Mock
-    private PasswordEncoder passwordEncoder;
 
     private LeadService leadService;
 
@@ -84,16 +65,10 @@ class LeadServiceLostReasonTest {
                 groupPort,
                 coachPort,
                 groupSchedulePort,
+                leadConversionService,
                 leadActivityService,
                 leadMapper,
                 leadLossReasonRepository,
-                clientRepository,
-                playerRepository,
-                contractRepository,
-                groupRepository,
-                appUserRepo,
-                appRoleRepo,
-                passwordEncoder,
                 new ObjectMapper()
         );
     }
