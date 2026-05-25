@@ -1,0 +1,31 @@
+services:
+  app:
+    image: ${IMAGE}
+    container_name: soccerhub-app
+    restart: unless-stopped
+
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+      SPRING_LIQUIBASE_ENABLED: "true"
+
+      APP_JWT_PRIVATE_CERT: file:/run/secrets/private.pem
+      APP_JWT_PUBLIC_CERT: file:/run/secrets/public.pem
+
+      JAVA_OPTS: ${JAVA_OPTS:-}
+
+    volumes:
+      - ./secrets/private.pem:/run/secrets/private.pem:ro
+      - ./secrets/public.pem:/run/secrets/public.pem:ro
+
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+    networks:
+      - infrastructure_default
+
+networks:
+  infrastructure_default:
+    external: true

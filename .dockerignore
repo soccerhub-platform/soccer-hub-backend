@@ -1,0 +1,12 @@
+.git
+.gitignore
+.idea
+*.iml
+target
+HELP.md
+LEAD_API_SPEC.md
+Dockerfile
+docker-compose.yaml
+docker-compose.prod.yml
+src/main/resources/keys
+*.log
