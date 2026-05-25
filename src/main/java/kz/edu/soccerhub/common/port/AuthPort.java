@@ -13,6 +13,7 @@ public interface AuthPort {
     Optional<Set<Role>> getCurrentUserRoles();
     Optional<String> getCurrentUserEmail();
     Optional<String> getCurrentUserId();
+    Optional<UUID> findUserIdByEmail(String email);
     String getEmail(UUID userId);
     void updateEmail(UUID userId, String email);
     void delete(UUID userId);

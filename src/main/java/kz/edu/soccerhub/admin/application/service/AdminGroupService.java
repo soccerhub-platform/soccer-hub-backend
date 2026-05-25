@@ -1,25 +1,38 @@
 package kz.edu.soccerhub.admin.application.service;
 
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupHealthOutput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupMemberOutput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupOverviewOutput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupScheduleRiskOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminCancelScheduleBatchInput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCoachOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCreateInput;
+import kz.edu.soccerhub.admin.application.dto.group.GroupHealth;
+import kz.edu.soccerhub.admin.application.dto.group.GroupIssueCode;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
+import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
 import kz.edu.soccerhub.common.dto.group.*;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
-import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
-import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -34,6 +47,7 @@ public class AdminGroupService {
     private final GroupCoachPort groupCoachPort;
     private final GroupSchedulePort groupSchedulePort;
     private final CoachAvailabilityPort coachAvailabilityPort;
+    private final ClientPort clientPort;
 
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
@@ -63,6 +77,105 @@ public class AdminGroupService {
         );
 
         return groupId;
+    }
+
+    @Transactional(readOnly = true)
+    public AdminGroupOverviewOutput getGroupsOverview(UUID adminId, UUID branchId) {
+        verifyAdmin(adminId);
+        verifyAdminBranchAccess(adminId, branchId);
+
+        List<GroupDto> groups = new ArrayList<>(groupPort.getGroupsByBranch(branchId));
+        List<GroupView> views = groups.stream()
+                .map(this::buildGroupView)
+                .toList();
+
+        return new AdminGroupOverviewOutput(
+                new AdminGroupOverviewOutput.Summary(
+                        views.size(),
+                        countByStatus(views, GroupStatus.ACTIVE),
+                        countByStatus(views, GroupStatus.PAUSED),
+                        countByStatus(views, GroupStatus.STOPPED),
+                        (int) views.stream().filter(view -> view.coachesCount() == 0).count(),
+                        (int) views.stream().filter(view -> !view.scheduleActive()).count(),
+                        (int) views.stream().filter(GroupView::overCapacity).count()
+                ),
+                views.stream()
+                        .map(GroupView::toOverviewItem)
+                        .toList()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public AdminGroupHealthOutput getGroupHealth(UUID adminId, UUID groupId) {
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        GroupView view = buildGroupView(group);
+
+        return new AdminGroupHealthOutput(
+                groupId,
+                view.health(),
+                view.issues(),
+                buildRecommendedActions(view)
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AdminGroupMemberOutput> getGroupMembers(UUID adminId, UUID groupId, Pageable pageable) {
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        List<GroupMemberDto> groupMembers = clientPort.getGroupMembers(groupId);
+        if (groupMembers.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        Set<UUID> playerIds = groupMembers.stream()
+                .map(GroupMemberDto::playerId)
+                .collect(Collectors.toSet());
+        Map<UUID, Integer> attendanceRateByPlayer = coachPort.getAttendanceRates(groupId, playerIds).stream()
+                .collect(Collectors.toMap(PlayerAttendanceRateDto::playerId, PlayerAttendanceRateDto::attendanceRate));
+
+        List<AdminGroupMemberOutput> members = groupMembers.stream()
+                .map(member -> new AdminGroupMemberOutput(
+                        member.clientId(),
+                        member.playerId(),
+                        member.childName(),
+                        member.birthDate(),
+                        attendanceRateByPlayer.getOrDefault(member.playerId(), 0),
+                        member.contractStatus(),
+                        member.joinedAt()
+                ))
+                .toList();
+
+        int start = (int) pageable.getOffset();
+        if (start >= members.size()) {
+            return new PageImpl<>(List.of(), pageable, members.size());
+        }
+
+        int end = Math.min(start + pageable.getPageSize(), members.size());
+        return new PageImpl<>(members.subList(start, end), pageable, members.size());
+    }
+
+    @Transactional(readOnly = true)
+    public AdminGroupScheduleRiskOutput getScheduleRisks(UUID adminId, UUID groupId) {
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        List<GroupScheduleDto> schedules = groupSchedulePort.getActiveSchedulesByGroup(groupId);
+
+        int conflictsCount = countScheduleConflicts(groupId, schedules);
+        int emptyDaysCount = Math.max(0, DayOfWeek.values().length - distinctScheduleDays(schedules));
+
+        return new AdminGroupScheduleRiskOutput(
+                conflictsCount > 0,
+                conflictsCount,
+                emptyDaysCount,
+                toOffsetDateTime(calculateNextSession(schedules))
+        );
     }
 
     @Transactional
@@ -258,15 +371,7 @@ public class AdminGroupService {
         verifyAdmin(adminId);
         verifyAdminBranchAccess(adminId, groupPort.getGroupById(groupId).branchId());
 
-        return groupSchedulePort.getSchedules(
-                        ScheduleSearchCriteria.builder()
-                                .groupId(groupId)
-                                .fromDate(date)
-                                .toDate(date)
-                                .dayOfWeek(date.getDayOfWeek())
-                                .status(ScheduleStatus.ACTIVE)
-                                .build()
-                ).stream()
+        return groupSchedulePort.getActiveSchedulesByGroup(groupId, date).stream()
                 .map(slot -> new AvailableSlotOutput(date, slot.startTime(), slot.endTime()))
                 .distinct()
                 .toList();
@@ -282,14 +387,8 @@ public class AdminGroupService {
     }
 
     private void verifyAdminBranchAccess(UUID adminId, UUID branchId) {
-        boolean hasAccess =
-                adminBranchService.verifyAdminBelongsToBranch(adminId, branchId);
-
-        if (!hasAccess) {
-            throw new BadRequestException(
-                    "Admin does not have access to branch",
-                    branchId
-            );
+        if (!adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)) {
+            throw new BadRequestException("Admin does not have access to branch", branchId);
         }
     }
 
@@ -298,4 +397,219 @@ public class AdminGroupService {
             throw new NotFoundException("Coach not found", coachId);
         }
     }
+
+    private GroupView buildGroupView(GroupDto group) {
+        List<GroupCoachDto> coaches = new ArrayList<>(groupCoachPort.getActiveCoaches(group.groupId()));
+        List<GroupScheduleDto> schedules = groupSchedulePort.getActiveSchedulesByGroup(group.groupId());
+        int studentsCount = countStudents(group.groupId());
+        OffsetDateTime nextSessionAt = toOffsetDateTime(calculateNextSession(schedules));
+        List<AdminGroupHealthOutput.IssueItem> issues = buildIssues(group, coaches, schedules, studentsCount, nextSessionAt);
+        GroupHealth health = resolveHealth(group.status(), issues);
+
+        return new GroupView(
+                group,
+                studentsCount,
+                coaches.size(),
+                !schedules.isEmpty(),
+                nextSessionAt,
+                health,
+                issues
+        );
+    }
+
+    private int countByStatus(List<GroupView> views, GroupStatus status) {
+        return (int) views.stream()
+                .filter(view -> view.group().status() == status)
+                .count();
+    }
+
+    private int countStudents(UUID groupId) {
+        return clientPort.getGroupMembers(groupId).size();
+    }
+
+    private List<AdminGroupHealthOutput.IssueItem> buildIssues(
+            GroupDto group,
+            List<GroupCoachDto> coaches,
+            List<GroupScheduleDto> schedules,
+            int studentsCount,
+            OffsetDateTime nextSessionAt
+    ) {
+        List<AdminGroupHealthOutput.IssueItem> issues = new ArrayList<>();
+
+        boolean hasMainCoach = coaches.stream().anyMatch(coach -> coach.role() == CoachRole.MAIN);
+        if (!hasMainCoach) {
+            issues.add(new AdminGroupHealthOutput.IssueItem(
+                    GroupIssueCode.NO_MAIN_COACH,
+                    "В группе нет главного тренера"
+            ));
+        }
+
+        if (schedules.isEmpty()) {
+            issues.add(new AdminGroupHealthOutput.IssueItem(
+                    GroupIssueCode.NO_SCHEDULE_PERIOD,
+                    "У группы нет активного расписания"
+            ));
+        }
+
+        if (!schedules.isEmpty() && nextSessionAt == null) {
+            issues.add(new AdminGroupHealthOutput.IssueItem(
+                    GroupIssueCode.NO_UPCOMING_SESSION,
+                    "У группы нет ближайшего занятия"
+            ));
+        }
+
+        Integer capacity = Optional.ofNullable(group.capacity()).orElse(0);
+        if (capacity > 0 && studentsCount > capacity) {
+            issues.add(new AdminGroupHealthOutput.IssueItem(
+                    GroupIssueCode.OVER_CAPACITY,
+                    "Количество игроков превышает лимит группы"
+            ));
+        }
+
+        return issues;
+    }
+
+    private GroupHealth resolveHealth(GroupStatus status, List<AdminGroupHealthOutput.IssueItem> issues) {
+        if (status == GroupStatus.STOPPED) {
+            return GroupHealth.STOPPED;
+        }
+        if (status == GroupStatus.PAUSED) {
+            return GroupHealth.PAUSED;
+        }
+        if (issues.stream().anyMatch(issue -> issue.code() == GroupIssueCode.OVER_CAPACITY)) {
+            return GroupHealth.OVER_CAPACITY;
+        }
+        if (issues.stream().anyMatch(issue ->
+                issue.code() == GroupIssueCode.NO_SCHEDULE_PERIOD || issue.code() == GroupIssueCode.NO_UPCOMING_SESSION)) {
+            return GroupHealth.NO_SCHEDULE;
+        }
+        if (issues.stream().anyMatch(issue -> issue.code() == GroupIssueCode.NO_MAIN_COACH)) {
+            return GroupHealth.NO_COACH;
+        }
+        return GroupHealth.OK;
+    }
+
+    private List<String> buildRecommendedActions(GroupView view) {
+        List<String> actions = new ArrayList<>();
+        if (view.issues().stream().anyMatch(issue -> issue.code() == GroupIssueCode.NO_MAIN_COACH)) {
+            actions.add("ASSIGN_MAIN_COACH");
+        }
+        if (view.issues().stream().anyMatch(issue ->
+                issue.code() == GroupIssueCode.NO_SCHEDULE_PERIOD || issue.code() == GroupIssueCode.NO_UPCOMING_SESSION)) {
+            actions.add("CHECK_SCHEDULE");
+        }
+        if (view.issues().stream().anyMatch(issue -> issue.code() == GroupIssueCode.OVER_CAPACITY)) {
+            actions.add("REVIEW_CAPACITY");
+        }
+        return actions;
+    }
+
+    private int countScheduleConflicts(UUID groupId, List<GroupScheduleDto> schedules) {
+        int conflicts = 0;
+        for (GroupScheduleDto schedule : schedules) {
+            List<GroupScheduleDto> coachSchedules =
+                    groupSchedulePort.getActiveSchedulesByCoachAndDay(schedule.coachId(), schedule.dayOfWeek());
+
+            boolean hasConflict = coachSchedules.stream().anyMatch(other ->
+                    !other.scheduleId().equals(schedule.scheduleId())
+                            && !other.groupId().equals(groupId)
+                            && overlaps(schedule.startTime(), schedule.endTime(), other.startTime(), other.endTime())
+                            && overlaps(schedule.startDate(), schedule.endDate(), other.startDate(), other.endDate())
+            );
+
+            if (hasConflict) {
+                conflicts++;
+            }
+        }
+        return conflicts;
+    }
+
+    private int distinctScheduleDays(List<GroupScheduleDto> schedules) {
+        return (int) schedules.stream()
+                .map(GroupScheduleDto::dayOfWeek)
+                .distinct()
+                .count();
+    }
+
+    private LocalDateTime calculateNextSession(List<GroupScheduleDto> schedules) {
+        LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
+
+        return schedules.stream()
+                .map(schedule -> resolveNextSessionDateTime(schedule, today, now))
+                .filter(Objects::nonNull)
+                .min(LocalDateTime::compareTo)
+                .orElse(null);
+    }
+
+    private LocalDateTime resolveNextSessionDateTime(GroupScheduleDto schedule, LocalDate today, LocalDateTime now) {
+        LocalDate candidate = today;
+        while (candidate.getDayOfWeek() != schedule.dayOfWeek()) {
+            candidate = candidate.plusDays(1);
+        }
+
+        if (candidate.isBefore(schedule.startDate())) {
+            candidate = schedule.startDate();
+            while (candidate.getDayOfWeek() != schedule.dayOfWeek()) {
+                candidate = candidate.plusDays(1);
+            }
+        }
+
+        LocalDateTime next = LocalDateTime.of(candidate, schedule.startTime());
+        if (next.isBefore(now)) {
+            next = next.plusWeeks(1);
+        }
+
+        if (next.toLocalDate().isAfter(schedule.endDate())) {
+            return null;
+        }
+
+        return next;
+    }
+
+    private OffsetDateTime toOffsetDateTime(LocalDateTime value) {
+        return value == null ? null : value.atOffset(ZoneOffset.UTC);
+    }
+
+    private boolean overlaps(LocalDate startOne, LocalDate endOne, LocalDate startTwo, LocalDate endTwo) {
+        return !startOne.isAfter(endTwo) && !startTwo.isAfter(endOne);
+    }
+
+    private boolean overlaps(java.time.LocalTime startOne, java.time.LocalTime endOne,
+                             java.time.LocalTime startTwo, java.time.LocalTime endTwo) {
+        return startOne.isBefore(endTwo) && startTwo.isBefore(endOne);
+    }
+
+    private record GroupView(
+            GroupDto group,
+            int studentsCount,
+            int coachesCount,
+            boolean scheduleActive,
+            OffsetDateTime nextSessionAt,
+            GroupHealth health,
+            List<AdminGroupHealthOutput.IssueItem> issues
+    ) {
+        private boolean overCapacity() {
+            Integer capacity = Optional.ofNullable(group.capacity()).orElse(0);
+            return capacity > 0 && studentsCount > capacity;
+        }
+
+        private AdminGroupOverviewOutput.GroupItem toOverviewItem() {
+            return new AdminGroupOverviewOutput.GroupItem(
+                    group.groupId(),
+                    group.name(),
+                    group.status(),
+                    group.ageFrom(),
+                    group.ageTo(),
+                    group.level(),
+                    group.capacity(),
+                    studentsCount,
+                    coachesCount,
+                    scheduleActive,
+                    nextSessionAt,
+                    health
+            );
+        }
+    }
+
 }

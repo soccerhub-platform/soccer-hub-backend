@@ -125,6 +125,13 @@ public class AuthService implements AuthPort {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<UUID> findUserIdByEmail(String email) {
+        return userRepo.findByEmail(normalizeEmail(email))
+                .map(AppUserEntity::getId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public String getEmail(UUID userId) {
         return userRepo.findById(userId)
                 .map(AppUserEntity::getEmail)

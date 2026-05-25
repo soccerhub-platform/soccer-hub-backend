@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -63,7 +64,6 @@ public class GroupScheduleService implements GroupSchedulePort {
         groupScheduleRepository.saveAll(schedules);
     }
 
-    @Override
     @Transactional(readOnly = true)
     public List<GroupScheduleDto> getSchedules(ScheduleSearchCriteria criteria) {
         return groupScheduleRepository.findAll(
@@ -71,6 +71,68 @@ public class GroupScheduleService implements GroupSchedulePort {
                 ).stream()
                 .map(GroupScheduleMapper::toDto)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<GroupScheduleDto> getActiveSchedulesByGroup(UUID groupId) {
+        return getSchedules(
+                ScheduleSearchCriteria.builder()
+                        .groupId(groupId)
+                        .status(ScheduleStatus.ACTIVE)
+                        .build()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<GroupScheduleDto> getActiveSchedulesByGroup(UUID groupId, LocalDate date) {
+        return getSchedules(
+                ScheduleSearchCriteria.builder()
+                        .groupId(groupId)
+                        .fromDate(date)
+                        .toDate(date)
+                        .dayOfWeek(date.getDayOfWeek())
+                        .status(ScheduleStatus.ACTIVE)
+                        .build()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<GroupScheduleDto> getActiveSchedulesByCoach(UUID coachId) {
+        return getSchedules(
+                ScheduleSearchCriteria.builder()
+                        .coachId(coachId)
+                        .status(ScheduleStatus.ACTIVE)
+                        .build()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<GroupScheduleDto> getActiveSchedulesByCoach(UUID coachId, LocalDate date) {
+        return getSchedules(
+                ScheduleSearchCriteria.builder()
+                        .coachId(coachId)
+                        .fromDate(date)
+                        .toDate(date)
+                        .dayOfWeek(date.getDayOfWeek())
+                        .status(ScheduleStatus.ACTIVE)
+                        .build()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<GroupScheduleDto> getActiveSchedulesByCoachAndDay(UUID coachId, DayOfWeek dayOfWeek) {
+        return getSchedules(
+                ScheduleSearchCriteria.builder()
+                        .coachId(coachId)
+                        .dayOfWeek(dayOfWeek)
+                        .status(ScheduleStatus.ACTIVE)
+                        .build()
+        );
     }
 
     @Override

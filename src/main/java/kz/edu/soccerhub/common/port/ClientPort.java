@@ -2,7 +2,11 @@ package kz.edu.soccerhub.common.port;
 
 import kz.edu.soccerhub.common.dto.client.ClientCreateCommand;
 import kz.edu.soccerhub.common.dto.client.ClientCreateCommandOutput;
+import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
+import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
+import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface ClientPort {
@@ -20,4 +24,8 @@ public interface ClientPort {
     );
 
     ClientCreateCommandOutput create(ClientCreateCommand command);
+
+    List<GroupMemberDto> getGroupMembers(UUID groupId);
+
+    ClientConversionOutput convertLead(ClientConversionCommand command);
 }

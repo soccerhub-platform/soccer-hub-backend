@@ -2,30 +2,17 @@ package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.coach.*;
 import kz.edu.soccerhub.common.domain.enums.Role;
-import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
-import kz.edu.soccerhub.common.dto.coach.AdminCoachOverviewOutput;
-import kz.edu.soccerhub.common.dto.coach.AdminCoachProfileOutput;
-import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
-import kz.edu.soccerhub.common.dto.coach.CoachDto;
-import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
-import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
-import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
+import kz.edu.soccerhub.common.dto.coach.*;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
+import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
-import kz.edu.soccerhub.common.port.AuthPort;
-import kz.edu.soccerhub.common.port.CoachPort;
-import kz.edu.soccerhub.common.port.GroupCoachPort;
-import kz.edu.soccerhub.common.port.GroupPort;
-import kz.edu.soccerhub.common.port.GroupSchedulePort;
-import kz.edu.soccerhub.dispatcher.application.dto.admin.DispatcherAdminResetPasswordOutput;
+import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.dispatcher.application.service.PasswordGenerator;
-import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
-import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -38,13 +25,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.TemporalAdjusters;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -164,15 +145,7 @@ public class AdminCoachService {
             throw new NotFoundException("Coach not found", coachId);
         }
 
-        return groupSchedulePort.getSchedules(
-                        ScheduleSearchCriteria.builder()
-                                .coachId(coachId)
-                                .fromDate(date)
-                                .toDate(date)
-                                .dayOfWeek(date.getDayOfWeek())
-                                .status(ScheduleStatus.ACTIVE)
-                                .build()
-                ).stream()
+        return groupSchedulePort.getActiveSchedulesByCoach(coachId, date).stream()
                 .map(slot -> new AvailableSlotOutput(date, slot.startTime(), slot.endTime()))
                 .distinct()
                 .toList();
@@ -365,14 +338,9 @@ public class AdminCoachService {
         LocalDate weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate weekEnd = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY));
 
-        List<GroupScheduleDto> schedules = groupSchedulePort.getSchedules(
-                ScheduleSearchCriteria.builder()
-                        .coachId(coachId)
-                        .fromDate(weekStart)
-                        .toDate(weekEnd)
-                        .status(ScheduleStatus.ACTIVE)
-                        .build()
-        );
+        List<GroupScheduleDto> schedules = groupSchedulePort.getActiveSchedulesByCoach(coachId).stream()
+                .filter(schedule -> !schedule.endDate().isBefore(weekStart) && !schedule.startDate().isAfter(weekEnd))
+                .toList();
         List<AdminCoachProfileOutput.WeeklyScheduleItem> weeklySchedule = schedules.stream()
                 .map(schedule -> {
                     GroupDto group = groupsById.get(schedule.groupId());

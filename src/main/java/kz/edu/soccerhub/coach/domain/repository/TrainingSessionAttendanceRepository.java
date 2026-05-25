@@ -5,10 +5,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Repository
 public interface TrainingSessionAttendanceRepository extends JpaRepository<TrainingSessionAttendance, UUID> {
 
     List<TrainingSessionAttendance> findBySessionId(UUID sessionId);
+
+    List<TrainingSessionAttendance> findBySessionIdIn(Set<UUID> sessionIds);
 }

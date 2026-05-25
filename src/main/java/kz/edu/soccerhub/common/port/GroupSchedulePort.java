@@ -4,8 +4,8 @@ import kz.edu.soccerhub.common.dto.group.CancelScheduleBatchCommand;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
 import kz.edu.soccerhub.common.dto.group.UpdateScheduleBatchCommand;
-import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -26,5 +26,13 @@ public interface GroupSchedulePort {
 
     void cancelGroupSchedules(UUID groupId);
 
-    List<GroupScheduleDto> getSchedules(ScheduleSearchCriteria criteria);
+    List<GroupScheduleDto> getActiveSchedulesByGroup(UUID groupId);
+
+    List<GroupScheduleDto> getActiveSchedulesByGroup(UUID groupId, LocalDate date);
+
+    List<GroupScheduleDto> getActiveSchedulesByCoach(UUID coachId);
+
+    List<GroupScheduleDto> getActiveSchedulesByCoach(UUID coachId, LocalDate date);
+
+    List<GroupScheduleDto> getActiveSchedulesByCoachAndDay(UUID coachId, DayOfWeek dayOfWeek);
 }

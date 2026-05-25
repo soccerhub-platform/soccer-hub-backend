@@ -60,6 +60,8 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
 
     List<TrainingSession> findByCoachIdAndReportDoneTrueOrderByUpdatedAtDesc(UUID coachId);
 
+    List<TrainingSession> findByGroupId(UUID groupId);
+
     int countByCoachIdAndSessionDateBeforeAndReportDoneFalseAndStatusNot(
             UUID coachId,
             LocalDate date,

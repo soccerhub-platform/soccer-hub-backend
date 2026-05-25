@@ -7,6 +7,7 @@ import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
 import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
 import kz.edu.soccerhub.coach.domain.model.enums.CoachStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -37,4 +38,5 @@ public interface CoachPort {
     List<CoachSessionAdminView> getReportedSessions(UUID coachId);
     List<CoachStatusHistoryDto> getStatusHistory(UUID coachId);
     void recordStatusHistory(UUID coachId, CoachStatus status, UUID changedBy);
+    List<PlayerAttendanceRateDto> getAttendanceRates(UUID groupId, Set<UUID> playerIds);
 }

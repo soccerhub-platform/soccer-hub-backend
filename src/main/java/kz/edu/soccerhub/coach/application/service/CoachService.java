@@ -6,17 +6,21 @@ import kz.edu.soccerhub.coach.domain.model.CoachBranch;
 import kz.edu.soccerhub.coach.domain.model.CoachProfile;
 import kz.edu.soccerhub.coach.domain.model.CoachStatusHistory;
 import kz.edu.soccerhub.coach.domain.model.TrainingSession;
+import kz.edu.soccerhub.coach.domain.model.TrainingSessionAttendance;
 import kz.edu.soccerhub.coach.domain.model.enums.CoachStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
 import kz.edu.soccerhub.coach.domain.repository.CoachBranchRepository;
 import kz.edu.soccerhub.coach.domain.repository.CoachProfileRepository;
 import kz.edu.soccerhub.coach.domain.repository.CoachStatusHistoryRepository;
+import kz.edu.soccerhub.coach.domain.repository.TrainingSessionAttendanceRepository;
 import kz.edu.soccerhub.coach.domain.repository.TrainingSessionRepository;
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
 import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.CoachPort;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +42,7 @@ public class CoachService implements CoachPort {
     private final CoachBranchService coachBranchService;
     private final CoachBranchRepository coachBranchRepository;
     private final TrainingSessionRepository trainingSessionRepository;
+    private final TrainingSessionAttendanceRepository trainingSessionAttendanceRepository;
     private final CoachStatusHistoryRepository coachStatusHistoryRepository;
     private final AppUserRepo appUserRepo;
 
@@ -248,6 +253,50 @@ public class CoachService implements CoachPort {
                 .changedAt(LocalDateTime.now())
                 .changedBy(changedBy)
                 .build());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PlayerAttendanceRateDto> getAttendanceRates(UUID groupId, Set<UUID> playerIds) {
+        if (playerIds == null || playerIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<TrainingSession> sessions = trainingSessionRepository.findByGroupId(groupId);
+        if (sessions.isEmpty()) {
+            return playerIds.stream()
+                    .map(playerId -> new PlayerAttendanceRateDto(playerId, 0))
+                    .toList();
+        }
+
+        Set<UUID> sessionIds = sessions.stream()
+                .map(TrainingSession::getId)
+                .collect(Collectors.toSet());
+
+        Map<UUID, List<TrainingSessionAttendance>> attendanceByPlayerId =
+                trainingSessionAttendanceRepository.findBySessionIdIn(sessionIds).stream()
+                        .filter(attendance -> playerIds.contains(attendance.getPlayerId()))
+                        .collect(Collectors.groupingBy(TrainingSessionAttendance::getPlayerId));
+
+        return playerIds.stream()
+                .map(playerId -> new PlayerAttendanceRateDto(
+                        playerId,
+                        calculateAttendanceRate(attendanceByPlayerId.getOrDefault(playerId, List.of()))
+                ))
+                .toList();
+    }
+
+    private int calculateAttendanceRate(List<TrainingSessionAttendance> attendances) {
+        if (attendances.isEmpty()) {
+            return 0;
+        }
+
+        long attended = attendances.stream()
+                .filter(attendance -> attendance.getStatus() == TrainingSessionAttendanceStatus.PRESENT
+                        || attendance.getStatus() == TrainingSessionAttendanceStatus.LATE)
+                .count();
+
+        return (int) Math.round((attended * 100.0) / attendances.size());
     }
 
     private CoachDto toDto(@NotNull CoachProfile coachProfile) {
