@@ -109,24 +109,26 @@ jobs:
           envs: IMAGE,GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PATH,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,JWT_PRIVATE_PEM_B64,JWT_PUBLIC_PEM_B64
           script: |
             set -euo pipefail
-
+          
             mkdir -p "$DEPLOY_PATH/secrets"
             cd "$DEPLOY_PATH"
             mv docker-compose.prod.yml docker-compose.yml
-
+          
             cat > .env <<EOF
             IMAGE=$IMAGE
             POSTGRES_DB=$POSTGRES_DB
             POSTGRES_USER=$POSTGRES_USER
             POSTGRES_PASSWORD=$POSTGRES_PASSWORD
             EOF
-
+          
+            sudo rm -f secrets/private.pem secrets/public.pem
+          
             printf '%s' "$JWT_PRIVATE_PEM_B64" | base64 -d > secrets/private.pem
             printf '%s' "$JWT_PUBLIC_PEM_B64" | base64 -d > secrets/public.pem
-            
+          
             sudo chown 999:999 secrets/private.pem secrets/public.pem
             sudo chmod 400 secrets/private.pem secrets/public.pem
-
+          
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
             docker compose pull app
             docker compose up -d --remove-orphans
