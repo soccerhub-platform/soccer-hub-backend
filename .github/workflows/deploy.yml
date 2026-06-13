@@ -123,7 +123,9 @@ jobs:
 
             printf '%s' "$JWT_PRIVATE_PEM_B64" | base64 -d > secrets/private.pem
             printf '%s' "$JWT_PUBLIC_PEM_B64" | base64 -d > secrets/public.pem
-            chmod 600 secrets/private.pem secrets/public.pem
+            
+            sudo chown 999:999 secrets/private.pem secrets/public.pem
+            chmod 400 secrets/private.pem secrets/public.pem
 
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
             docker compose pull app
