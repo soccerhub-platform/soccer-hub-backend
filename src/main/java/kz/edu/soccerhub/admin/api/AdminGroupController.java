@@ -2,6 +2,8 @@ package kz.edu.soccerhub.admin.api;
 
 import jakarta.validation.Valid;
 import kz.edu.soccerhub.admin.application.dto.group.*;
+import kz.edu.soccerhub.common.dto.group.GroupScheduleValidationCommand;
+import kz.edu.soccerhub.common.dto.group.ScheduleValidationResult;
 import kz.edu.soccerhub.admin.application.service.AdminGroupService;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
 import kz.edu.soccerhub.common.dto.group.UpdateScheduleBatchCommand;
@@ -196,6 +198,16 @@ public class AdminGroupController {
 
         adminGroupService.updateGroupSchedule(adminId, groupId, command);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{groupId}/schedule/validate")
+    public ResponseEntity<ScheduleValidationResult> validateSchedule(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @Valid @RequestBody GroupScheduleValidationCommand command
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupService.validateGroupSchedule(adminId, groupId, command));
     }
 
     /* ================= AVAILABILITY ================= */

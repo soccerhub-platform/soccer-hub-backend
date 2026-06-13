@@ -7,9 +7,9 @@ import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
-import kz.edu.soccerhub.common.dto.lead.LeadChildInput;
 import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
+import kz.edu.soccerhub.common.dto.lead.LeadParticipantInput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
@@ -69,14 +69,15 @@ public class LeadService implements LeadPort {
     public UUID createLead(@Valid LeadCreateCommand command) {
         validateAssignedAdmin(command.assignedAdminId());
 
-        String normalizedPhone = PhoneNormalizer.normalize(command.phone());
+        String normalizedPhone = PhoneNormalizer.normalize(command.primaryContact().phone());
         ensureNoActiveDuplicate(normalizedPhone);
 
         Lead lead = Lead.builder()
                 .id(UUID.randomUUID())
-                .parentName(trim(command.parentName()))
-                .phone(normalizedPhone)
-                .email(trim(command.email()))
+                .leadType(command.leadType())
+                .primaryContactName(trim(command.primaryContact().fullName()))
+                .primaryContactPhone(normalizedPhone)
+                .primaryContactEmail(trim(command.primaryContact().email()))
                 .source(LeadSource.OTHER)
                 .status(LeadStatus.NEW)
                 .assignedAdminId(command.assignedAdminId())
@@ -84,12 +85,12 @@ public class LeadService implements LeadPort {
                 .comment(trim(command.comment()))
                 .build();
 
-        for (LeadChildInput child : command.children()) {
-            lead.addChild(
-                    trim(child.childName()),
-                    child.childAge(),
-                    child.gender(),
-                    trim(child.experience())
+        for (LeadParticipantInput participant : command.participants()) {
+            lead.addParticipant(
+                    trim(participant.fullName()),
+                    participant.birthDate(),
+                    participant.gender(),
+                    trim(participant.experience())
             );
         }
 
@@ -117,9 +118,10 @@ public class LeadService implements LeadPort {
         lead.updateQualificationFields(
                 trim(input.preferredDays()),
                 trim(input.experience()),
+                input.timePreference(),
                 trim(input.notes())
         );
-        replaceChildrenFromQualification(lead, input.children());
+        replaceParticipantsFromQualification(lead, input.participants());
         lead.updateStatus(newStatus);
 
         leadRepository.save(lead);
@@ -134,7 +136,7 @@ public class LeadService implements LeadPort {
         validateTrialInput(input);
 
         Lead lead = findById(leadId);
-        validateChildBelongsToLead(lead, input.childId());
+        validateParticipantBelongsToLead(lead, input.participantId());
 
         List<GroupScheduleDto> groupSlots = input.groupId() == null
                 ? List.of()
@@ -161,7 +163,7 @@ public class LeadService implements LeadPort {
         LeadStatus previousStatus = lead.getStatus();
 
         lead.scheduleTrial(
-                input.childId(),
+                input.participantId(),
                 resolvedGroupId,
                 resolvedCoachId,
                 input.slot().date(),
@@ -362,18 +364,18 @@ public class LeadService implements LeadPort {
         return leadConversionService.convertLeadToClient(leadId, request, currentAdminId);
     }
 
-    private void replaceChildrenFromQualification(Lead lead, List<LeadChildInput> children) {
-        if (children == null) {
+    private void replaceParticipantsFromQualification(Lead lead, List<LeadParticipantInput> participants) {
+        if (participants == null) {
             return;
         }
 
-        lead.clearChildren();
-        for (LeadChildInput child : children) {
-            lead.addChild(
-                    trim(child.childName()),
-                    child.childAge(),
-                    child.gender(),
-                    trim(child.experience())
+        lead.clearParticipants();
+        for (LeadParticipantInput participant : participants) {
+            lead.addParticipant(
+                    trim(participant.fullName()),
+                    participant.birthDate(),
+                    participant.gender(),
+                    trim(participant.experience())
             );
         }
     }
@@ -418,8 +420,8 @@ public class LeadService implements LeadPort {
         if (input == null) {
             throw new BadRequestException("Trial payload is required");
         }
-        if (input.childId() == null) {
-            throw new BadRequestException("Child id is required");
+        if (input.participantId() == null) {
+            throw new BadRequestException("Participant id is required");
         }
         if (input.groupId() == null && input.coachId() == null) {
             throw new BadRequestException("Either group id or coach id is required");
@@ -429,12 +431,15 @@ public class LeadService implements LeadPort {
         }
     }
 
-    private void validateChildBelongsToLead(Lead lead, UUID childId) {
-        boolean exists = lead.getChildren().stream()
-                .anyMatch(child -> Objects.equals(child.getId(), childId));
+    private void validateParticipantBelongsToLead(Lead lead, UUID participantId) {
+        boolean exists = lead.getParticipants().stream()
+                .anyMatch(participant -> Objects.equals(participant.getId(), participantId));
 
         if (!exists) {
-            throw new BadRequestException("Child does not belong to lead", Map.of("leadId", lead.getId(), "childId", childId));
+            throw new BadRequestException(
+                    "Participant does not belong to lead",
+                    Map.of("leadId", lead.getId(), "participantId", participantId)
+            );
         }
     }
 

@@ -2,14 +2,14 @@ package kz.edu.soccerhub.common.dto.lead;
 
 import kz.edu.soccerhub.crm.domain.model.enums.Gender;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
-public record LeadChildOutput(
+public record LeadParticipantOutput(
         UUID id,
-        String childName,
-        Integer childAge,
+        String fullName,
+        LocalDate birthDate,
         Gender gender,
         String experience
 ) {
 }
-

@@ -14,6 +14,7 @@ public final class GroupMapper {
                 .branchId(group.getBranchId())
                 .ageFrom(group.getAgeFrom())
                 .ageTo(group.getAgeTo())
+                .audienceType(group.getAudienceType())
                 .level(group.getLevel())
                 .capacity(group.getCapacity())
                 .description(group.getDescription())

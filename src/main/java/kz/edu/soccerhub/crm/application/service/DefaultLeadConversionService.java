@@ -12,7 +12,7 @@ import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.crm.domain.model.Lead;
-import kz.edu.soccerhub.crm.domain.model.LeadChild;
+import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import lombok.RequiredArgsConstructor;
@@ -41,12 +41,12 @@ public class DefaultLeadConversionService implements LeadConversionService {
         validateConvertRequest(request);
         validateLeadStatusForConversion(lead);
 
-        LeadChild child = lead.getChildren().stream()
-                .filter(item -> Objects.equals(item.getId(), request.childId()))
+        LeadParticipant participant = lead.getParticipants().stream()
+                .filter(item -> Objects.equals(item.getId(), request.participantId()))
                 .findFirst()
                 .orElseThrow(() -> new BadRequestException(
-                        "Child does not belong to lead",
-                        Map.of("leadId", leadId, "childId", request.childId())
+                        "Participant does not belong to lead",
+                        Map.of("leadId", leadId, "participantId", request.participantId())
                 ));
 
         GroupDto group = groupPort.getGroupById(request.groupId());
@@ -59,14 +59,14 @@ public class DefaultLeadConversionService implements LeadConversionService {
 
         ClientConversionOutput conversion = clientPort.convertLead(new ClientConversionCommand(
                 lead.getClientId(),
-                lead.getParentName(),
-                lead.getPhone(),
-                lead.getEmail(),
+                lead.getPrimaryContactName(),
+                lead.getPrimaryContactPhone(),
+                lead.getPrimaryContactEmail(),
                 lead.getBranchId(),
                 lead.getSource() == null ? null : lead.getSource().name(),
                 lead.getComment(),
-                child.getChildName(),
-                request.childBirthDate(),
+                participant.getFullName(),
+                request.participantBirthDate(),
                 request.groupId(),
                 request.contractStartDate(),
                 request.contractEndDate(),
@@ -105,14 +105,14 @@ public class DefaultLeadConversionService implements LeadConversionService {
         if (request == null) {
             throw new BadRequestException("Conversion payload is required");
         }
-        if (request.childId() == null) {
-            throw new BadRequestException("childId is required");
+        if (request.participantId() == null) {
+            throw new BadRequestException("participantId is required");
         }
         if (request.groupId() == null) {
             throw new BadRequestException("groupId is required");
         }
-        if (request.childBirthDate() == null) {
-            throw new BadRequestException("childBirthDate is required");
+        if (request.participantBirthDate() == null) {
+            throw new BadRequestException("participantBirthDate is required");
         }
         if (request.contractStartDate() == null) {
             throw new BadRequestException("contractStartDate is required");
@@ -139,7 +139,7 @@ public class DefaultLeadConversionService implements LeadConversionService {
     private String buildConversionDetails(ConvertLeadRequest request, UUID playerId, UUID contractId) {
         try {
             Map<String, Object> payload = new java.util.LinkedHashMap<>();
-            payload.put("childId", request.childId());
+            payload.put("participantId", request.participantId());
             payload.put("groupId", request.groupId());
             payload.put("playerId", playerId);
             payload.put("contractId", contractId);

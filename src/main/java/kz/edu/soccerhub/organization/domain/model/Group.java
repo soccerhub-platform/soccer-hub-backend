@@ -2,6 +2,7 @@ package kz.edu.soccerhub.organization.domain.model;
 
 import jakarta.persistence.*;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupLevel;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import lombok.*;
@@ -32,6 +33,10 @@ public class Group extends AbstractAuditableEntity {
 
     @Column(name = "age_to")
     private Integer ageTo;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "audience_type")
+    private GroupAudienceType audienceType;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "level")

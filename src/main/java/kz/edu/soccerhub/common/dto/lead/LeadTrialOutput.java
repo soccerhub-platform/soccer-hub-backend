@@ -9,7 +9,7 @@ import java.util.UUID;
 public record LeadTrialOutput(
         UUID id,
         UUID leadId,
-        UUID childId,
+        UUID participantId,
         UUID groupId,
         UUID coachId,
         LocalDate trialDate,
@@ -19,4 +19,3 @@ public record LeadTrialOutput(
         LeadTrialStatus status
 ) {
 }
-

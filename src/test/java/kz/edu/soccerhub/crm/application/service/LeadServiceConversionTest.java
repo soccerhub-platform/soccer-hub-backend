@@ -10,9 +10,10 @@ import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.crm.domain.model.Lead;
-import kz.edu.soccerhub.crm.domain.model.LeadChild;
+import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
+import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
 import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,15 +66,15 @@ class LeadServiceConversionTest {
     void convertValidLeadCreatesClientPlayerContractAndUpdatesLead() {
         UUID leadId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        UUID childId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID branchId = UUID.randomUUID();
         UUID clientId = UUID.randomUUID();
         UUID playerId = UUID.randomUUID();
         UUID contractId = UUID.randomUUID();
 
-        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, branchId, childId, "Alex Doe");
-        ConvertLeadRequest request = request(childId, groupId);
+        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, branchId, participantId, "Alex Doe");
+        ConvertLeadRequest request = request(participantId, groupId);
 
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
         when(groupPort.getGroupById(groupId)).thenReturn(group(groupId, branchId));
@@ -88,28 +89,28 @@ class LeadServiceConversionTest {
         assertEquals("CONVERTED", response.status());
         assertEquals(LeadStatus.WON, lead.getStatus());
         assertEquals(clientId, lead.getClientId());
-        assertEquals(playerId, lead.getPlayerId());
+        assertEquals(playerId, lead.getParticipantId());
         assertEquals(contractId, lead.getContractId());
 
         verify(leadRepository).save(lead);
         verify(clientPort).convertLead(argThat(command ->
                 command.existingClientId() == null
                         && command.groupId().equals(groupId)
-                        && command.childName().equals("Alex Doe")
-                        && command.childBirthDate().equals(request.childBirthDate())
+                        && command.participantName().equals("Alex Doe")
+                        && command.participantBirthDate().equals(request.participantBirthDate())
         ));
-        verify(leadActivityService).logLeadConverted(eq(lead), eq(actorId), eq(LeadStatus.TRIAL_DONE), contains("\"childId\""));
+        verify(leadActivityService).logLeadConverted(eq(lead), eq(actorId), eq(LeadStatus.TRIAL_DONE), contains("\"participantId\""));
     }
 
     @Test
     void convertFromWaitingPaymentShouldBeAllowed() {
         UUID leadId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        UUID childId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID branchId = UUID.randomUUID();
 
-        Lead lead = lead(leadId, LeadStatus.WAITING_PAYMENT, branchId, childId, "Alex Doe");
+        Lead lead = lead(leadId, LeadStatus.WAITING_PAYMENT, branchId, participantId, "Alex Doe");
 
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
         when(groupPort.getGroupById(groupId)).thenReturn(group(groupId, branchId));
@@ -119,7 +120,7 @@ class LeadServiceConversionTest {
                 UUID.randomUUID()
         ));
 
-        ConvertLeadResponse response = conversionService.convertLeadToClient(leadId, request(childId, groupId), actorId);
+        ConvertLeadResponse response = conversionService.convertLeadToClient(leadId, request(participantId, groupId), actorId);
 
         assertEquals("CONVERTED", response.status());
         assertEquals(LeadStatus.WON, lead.getStatus());
@@ -127,36 +128,36 @@ class LeadServiceConversionTest {
     }
 
     @Test
-    void convertChildFromAnotherLeadShouldFail() {
+    void convertParticipantFromAnotherLeadShouldFail() {
         UUID leadId = UUID.randomUUID();
-        UUID childId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
 
         Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, UUID.randomUUID(), UUID.randomUUID(), "Foreign Kid");
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
 
         BadRequestException ex = assertThrows(
                 BadRequestException.class,
-                () -> conversionService.convertLeadToClient(leadId, request(childId, UUID.randomUUID()), UUID.randomUUID())
+                () -> conversionService.convertLeadToClient(leadId, request(participantId, UUID.randomUUID()), UUID.randomUUID())
         );
 
-        assertTrue(ex.getMessage().contains("Child does not belong"));
+        assertTrue(ex.getMessage().contains("Participant does not belong"));
     }
 
     @Test
     void convertWithGroupFromAnotherBranchShouldFail() {
         UUID leadId = UUID.randomUUID();
-        UUID childId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID leadBranch = UUID.randomUUID();
         UUID otherBranch = UUID.randomUUID();
 
-        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, leadBranch, childId, "Alex Doe");
+        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, leadBranch, participantId, "Alex Doe");
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
         when(groupPort.getGroupById(groupId)).thenReturn(group(groupId, otherBranch));
 
         BadRequestException ex = assertThrows(
                 BadRequestException.class,
-                () -> conversionService.convertLeadToClient(leadId, request(childId, groupId), UUID.randomUUID())
+                () -> conversionService.convertLeadToClient(leadId, request(participantId, groupId), UUID.randomUUID())
         );
 
         assertTrue(ex.getMessage().contains("does not belong to lead branch"));
@@ -165,30 +166,30 @@ class LeadServiceConversionTest {
     @Test
     void convertWithMissingGroupShouldReturnNotFound() {
         UUID leadId = UUID.randomUUID();
-        UUID childId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
 
-        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, UUID.randomUUID(), childId, "Alex Doe");
+        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, UUID.randomUUID(), participantId, "Alex Doe");
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
         when(groupPort.getGroupById(groupId)).thenThrow(new NotFoundException("Group not found", groupId));
 
         assertThrows(
                 NotFoundException.class,
-                () -> conversionService.convertLeadToClient(leadId, request(childId, groupId), UUID.randomUUID())
+                () -> conversionService.convertLeadToClient(leadId, request(participantId, groupId), UUID.randomUUID())
         );
     }
 
     @Test
     void convertAlreadyConvertedLeadShouldReuseExistingClientId() {
         UUID leadId = UUID.randomUUID();
-        UUID childId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID branchId = UUID.randomUUID();
         UUID clientId = UUID.randomUUID();
         UUID playerId = UUID.randomUUID();
         UUID contractId = UUID.randomUUID();
 
-        Lead lead = lead(leadId, LeadStatus.WON, branchId, childId, "Alex Doe");
+        Lead lead = lead(leadId, LeadStatus.WON, branchId, participantId, "Alex Doe");
         lead.markConverted(clientId, playerId, contractId);
 
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
@@ -197,7 +198,7 @@ class LeadServiceConversionTest {
 
         ConvertLeadResponse response = conversionService.convertLeadToClient(
                 leadId,
-                request(childId, groupId),
+                request(participantId, groupId),
                 UUID.randomUUID()
         );
 
@@ -208,16 +209,16 @@ class LeadServiceConversionTest {
     }
 
     @Test
-    void convertWithoutChildBirthDateShouldFailValidation() {
+    void convertWithoutParticipantBirthDateShouldFailValidation() {
         UUID leadId = UUID.randomUUID();
-        UUID childId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
 
-        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, UUID.randomUUID(), childId, "Alex Doe");
+        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, UUID.randomUUID(), participantId, "Alex Doe");
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
 
         ConvertLeadRequest request = new ConvertLeadRequest(
-                childId,
+                participantId,
                 groupId,
                 null,
                 LocalDate.of(2026, 5, 20),
@@ -229,12 +230,12 @@ class LeadServiceConversionTest {
                 BadRequestException.class,
                 () -> conversionService.convertLeadToClient(leadId, request, UUID.randomUUID())
         );
-        assertTrue(ex.getMessage().contains("childBirthDate"));
+        assertTrue(ex.getMessage().contains("participantBirthDate"));
     }
 
-    private ConvertLeadRequest request(UUID childId, UUID groupId) {
+    private ConvertLeadRequest request(UUID participantId, UUID groupId) {
         return new ConvertLeadRequest(
-                childId,
+                participantId,
                 groupId,
                 LocalDate.of(2016, 5, 20),
                 LocalDate.of(2026, 5, 20),
@@ -252,24 +253,25 @@ class LeadServiceConversionTest {
                 .build();
     }
 
-    private Lead lead(UUID leadId, LeadStatus status, UUID branchId, UUID childId, String childName) {
+    private Lead lead(UUID leadId, LeadStatus status, UUID branchId, UUID participantId, String participantName) {
         Lead lead = Lead.builder()
                 .id(leadId)
-                .parentName("Parent One")
-                .phone("+77001112233")
-                .email("parent@example.com")
+                .leadType(LeadType.CHILDREN)
+                .primaryContactName("Parent One")
+                .primaryContactPhone("+77001112233")
+                .primaryContactEmail("parent@example.com")
                 .source(LeadSource.OTHER)
                 .status(status)
                 .branchId(branchId)
                 .build();
 
-        LeadChild child = LeadChild.builder()
-                .id(childId)
+        LeadParticipant participant = LeadParticipant.builder()
+                .id(participantId)
                 .lead(lead)
-                .childName(childName)
-                .childAge(10)
+                .fullName(participantName)
+                .birthDate(LocalDate.of(2016, 5, 20))
                 .build();
-        lead.getChildren().add(child);
+        lead.getParticipants().add(participant);
         return lead;
     }
 }

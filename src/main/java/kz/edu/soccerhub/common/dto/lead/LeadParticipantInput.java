@@ -1,17 +1,17 @@
 package kz.edu.soccerhub.common.dto.lead;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import kz.edu.soccerhub.crm.domain.model.enums.Gender;
 
-public record LeadChildInput(
-        @NotBlank(message = "Child name is required")
-        @Size(max = 255, message = "Child name is too long")
-        String childName,
+import java.time.LocalDate;
 
-        @NotNull(message = "Child age is required")
-        Integer childAge,
+public record LeadParticipantInput(
+        @NotBlank(message = "Participant name is required")
+        @Size(max = 255, message = "Participant name is too long")
+        String fullName,
+
+        LocalDate birthDate,
 
         Gender gender,
 
@@ -19,4 +19,3 @@ public record LeadChildInput(
         String experience
 ) {
 }
-

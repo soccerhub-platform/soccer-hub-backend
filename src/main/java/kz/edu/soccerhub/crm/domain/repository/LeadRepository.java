@@ -14,7 +14,7 @@ public interface LeadRepository extends JpaRepository<Lead, UUID>, JpaSpecificat
     @Query("""
             select (count(l) > 0)
             from Lead l
-            where l.phone = :phone
+            where l.primaryContactPhone = :phone
               and l.status in (
                   kz.edu.soccerhub.crm.domain.model.enums.LeadStatus.NEW,
                   kz.edu.soccerhub.crm.domain.model.enums.LeadStatus.CONTACTED,

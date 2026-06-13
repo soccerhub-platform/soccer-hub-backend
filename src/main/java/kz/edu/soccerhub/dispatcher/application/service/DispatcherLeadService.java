@@ -25,13 +25,16 @@ public class DispatcherLeadService {
 
     private LeadCreateCommand toCommand(DispatcherLeadCreateInput input) {
         return new LeadCreateCommand(
-                trim(input.parentName()),
-                normalizePhone(input.phone()),
-                trim(input.email()),
+                input.leadType(),
+                new kz.edu.soccerhub.common.dto.lead.LeadPrimaryContactInput(
+                        trim(input.primaryContact().fullName()),
+                        normalizePhone(input.primaryContact().phone()),
+                        trim(input.primaryContact().email())
+                ),
                 trim(input.comment()),
                 null,
                 input.branchId(),
-                input.children()
+                input.participants()
         );
     }
 
@@ -43,4 +46,3 @@ public class DispatcherLeadService {
         return value == null ? null : value.trim();
     }
 }
-

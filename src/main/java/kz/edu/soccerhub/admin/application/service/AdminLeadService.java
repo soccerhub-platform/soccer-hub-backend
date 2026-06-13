@@ -39,13 +39,12 @@ public class AdminLeadService {
         verifyAdminAccessToBranch(adminId, input.branchId());
 
         LeadCreateCommand command = new LeadCreateCommand(
-                input.name(),
-                input.phone(),
-                input.email(),
+                input.leadType(),
+                input.primaryContact(),
                 input.comment(),
                 adminId,
                 input.branchId(),
-                input.children()
+                input.participants()
         );
 
         UUID leadId = leadPort.createLead(command);

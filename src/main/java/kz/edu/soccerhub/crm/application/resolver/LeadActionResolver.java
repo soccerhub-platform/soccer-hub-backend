@@ -30,7 +30,7 @@ public class LeadActionResolver {
             );
 
             case QUALIFIED -> List.of(
-                    primary(LeadEvent.SCHEDULE_TRIAL, "Назначить пробное", hasChildren(lead), branchAllowed),
+                    primary(LeadEvent.SCHEDULE_TRIAL, "Назначить пробное", hasParticipants(lead), branchAllowed),
                     secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, branchAllowed)
             );
 
@@ -67,8 +67,8 @@ public class LeadActionResolver {
         return new LeadActionOutput(event.name(), label, false, danger, isOwner && businessEnabled);
     }
 
-    private boolean hasChildren(Lead lead) {
-        return lead.getChildren() != null && !lead.getChildren().isEmpty();
+    private boolean hasParticipants(Lead lead) {
+        return lead.getParticipants() != null && !lead.getParticipants().isEmpty();
     }
 
     private boolean hasCompletedTrial(Lead lead) {

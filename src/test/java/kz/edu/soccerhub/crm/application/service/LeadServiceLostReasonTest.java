@@ -14,6 +14,7 @@ import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadLossReasonEntity;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
+import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
 import kz.edu.soccerhub.crm.domain.repository.LeadLossReasonRepository;
 import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -195,9 +196,10 @@ class LeadServiceLostReasonTest {
     private Lead lead(UUID id, LeadStatus status) {
         return Lead.builder()
                 .id(id)
-                .parentName("Parent")
-                .phone("+77001112233")
-                .email("parent@example.com")
+                .leadType(LeadType.CHILDREN)
+                .primaryContactName("Parent")
+                .primaryContactPhone("+77001112233")
+                .primaryContactEmail("parent@example.com")
                 .source(LeadSource.OTHER)
                 .status(status)
                 .branchId(UUID.randomUUID())

@@ -18,15 +18,16 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
-@Table(name = "lead_children")
+@Table(name = "lead_participants")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder
-public class LeadChild extends AbstractAuditableEntity {
+public class LeadParticipant extends AbstractAuditableEntity {
 
     @Id
     @Column(nullable = false)
@@ -36,11 +37,11 @@ public class LeadChild extends AbstractAuditableEntity {
     @JoinColumn(name = "lead_id", nullable = false)
     private Lead lead;
 
-    @Column(name = "child_name", nullable = false)
-    private String childName;
+    @Column(name = "full_name", nullable = false)
+    private String fullName;
 
-    @Column(name = "child_age", nullable = false)
-    private Integer childAge;
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "gender")
@@ -55,6 +56,4 @@ public class LeadChild extends AbstractAuditableEntity {
             id = UUID.randomUUID();
         }
     }
-
 }
-

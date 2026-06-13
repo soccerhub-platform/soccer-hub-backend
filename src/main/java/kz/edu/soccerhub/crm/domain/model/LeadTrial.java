@@ -38,8 +38,8 @@ public class LeadTrial extends AbstractAuditableEntity {
     @JoinColumn(name = "lead_id", nullable = false, unique = true)
     private Lead lead;
 
-    @Column(name = "child_id", nullable = false)
-    private UUID childId;
+    @Column(name = "participant_id", nullable = false)
+    private UUID participantId;
 
     @Column(name = "group_id")
     private UUID groupId;
@@ -68,7 +68,7 @@ public class LeadTrial extends AbstractAuditableEntity {
     }
 
     public void schedule(
-            UUID childId,
+            UUID participantId,
             UUID groupId,
             UUID coachId,
             LocalDate trialDate,
@@ -76,7 +76,7 @@ public class LeadTrial extends AbstractAuditableEntity {
             LocalTime endTime,
             String comment
     ) {
-        this.childId = childId;
+        this.participantId = participantId;
         this.groupId = groupId;
         this.coachId = coachId;
         this.trialDate = trialDate;

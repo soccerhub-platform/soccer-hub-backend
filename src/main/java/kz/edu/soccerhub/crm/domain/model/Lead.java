@@ -5,6 +5,8 @@ import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import kz.edu.soccerhub.crm.domain.model.enums.Gender;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
+import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
+import kz.edu.soccerhub.crm.domain.model.enums.TimePreference;
 import lombok.*;
 
 import java.time.LocalDate;
@@ -26,13 +28,18 @@ public class Lead extends AbstractAuditableEntity {
     @Column(nullable = false)
     private UUID id;
 
-    @Column(name = "parent_name", nullable = false)
-    private String parentName;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "lead_type", nullable = false)
+    private LeadType leadType;
 
-    @Column(nullable = false)
-    private String phone;
+    @Column(name = "primary_contact_name", nullable = false)
+    private String primaryContactName;
 
-    private String email;
+    @Column(name = "primary_contact_phone", nullable = false)
+    private String primaryContactPhone;
+
+    @Column(name = "primary_contact_email")
+    private String primaryContactEmail;
 
 
     @Enumerated(EnumType.STRING)
@@ -61,6 +68,10 @@ public class Lead extends AbstractAuditableEntity {
     @Column(name = "experience")
     private String experience;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "time_preference")
+    private TimePreference timePreference;
+
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
@@ -70,8 +81,8 @@ public class Lead extends AbstractAuditableEntity {
     @Column(name = "client_id")
     private UUID clientId;
 
-    @Column(name = "player_id")
-    private UUID playerId;
+    @Column(name = "participant_id")
+    private UUID participantId;
 
     @Column(name = "contract_id")
     private UUID contractId;
@@ -91,7 +102,7 @@ public class Lead extends AbstractAuditableEntity {
 
     @Builder.Default
     @OneToMany(mappedBy = "lead", fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<LeadChild> children = new ArrayList<>();
+    private List<LeadParticipant> participants = new ArrayList<>();
 
     public void assignAdmin(UUID adminId) {
         this.assignedAdminId = adminId;
@@ -111,8 +122,20 @@ public class Lead extends AbstractAuditableEntity {
         this.notes = notes;
     }
 
+    public void updateQualificationFields(
+            String preferredDays,
+            String experience,
+            TimePreference timePreference,
+            String notes
+    ) {
+        this.preferredDays = preferredDays;
+        this.experience = experience;
+        this.timePreference = timePreference;
+        this.notes = notes;
+    }
+
     public void scheduleTrial(
-            UUID childId,
+            UUID participantId,
             UUID groupId,
             UUID coachId,
             LocalDate trialDate,
@@ -128,7 +151,7 @@ public class Lead extends AbstractAuditableEntity {
         }
 
         this.trial.schedule(
-                childId,
+                participantId,
                 groupId,
                 coachId,
                 trialDate,
@@ -138,9 +161,9 @@ public class Lead extends AbstractAuditableEntity {
         );
     }
 
-    public void markConverted(UUID clientId, UUID playerId, UUID contractId) {
+    public void markConverted(UUID clientId, UUID participantId, UUID contractId) {
         this.clientId = clientId;
-        this.playerId = playerId;
+        this.participantId = participantId;
         this.contractId = contractId;
     }
 
@@ -156,38 +179,35 @@ public class Lead extends AbstractAuditableEntity {
         this.lostAt = null;
     }
 
-    public void addChild(String childName, Integer childAge, Gender gender, String experience) {
-        LeadChild leadChild = LeadChild.builder()
+    public void addParticipant(String fullName, java.time.LocalDate birthDate, Gender gender, String experience) {
+        LeadParticipant leadParticipant = LeadParticipant.builder()
                 .id(UUID.randomUUID())
                 .lead(this)
-                .childName(childName)
-                .childAge(childAge)
+                .fullName(fullName)
+                .birthDate(birthDate)
                 .gender(gender)
                 .experience(experience)
                 .build();
-        this.children.add(leadChild);
+        this.participants.add(leadParticipant);
     }
 
-    public void clearChildren() {
-        this.children.clear();
+    public void clearParticipants() {
+        this.participants.clear();
     }
 
     public boolean isReadyForConversion() {
-        if (parentName == null || parentName.isBlank()) {
+        if (primaryContactName == null || primaryContactName.isBlank()) {
             return false;
         }
-        if (phone == null || phone.isBlank()) {
+        if (primaryContactPhone == null || primaryContactPhone.isBlank()) {
             return false;
         }
-        if (children == null || children.isEmpty()) {
+        if (participants == null || participants.isEmpty()) {
             return false;
         }
 
-        for (LeadChild child : children) {
-            if (child.getChildName() == null || child.getChildName().isBlank()) {
-                return false;
-            }
-            if (child.getChildAge() == null) {
+        for (LeadParticipant participant : participants) {
+            if (participant.getFullName() == null || participant.getFullName().isBlank()) {
                 return false;
             }
         }

@@ -8,14 +8,14 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 public record ConvertLeadRequest(
-        @NotNull(message = "childId is required")
-        UUID childId,
+        @NotNull(message = "participantId is required")
+        UUID participantId,
 
         @NotNull(message = "groupId is required")
         UUID groupId,
 
-        @NotNull(message = "childBirthDate is required")
-        LocalDate childBirthDate,
+        @NotNull(message = "participantBirthDate is required")
+        LocalDate participantBirthDate,
 
         @NotNull(message = "contractStartDate is required")
         LocalDate contractStartDate,

@@ -5,8 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record ScheduleTrialInput(
-        @NotNull(message = "Child id is required")
-        UUID childId,
+        @NotNull(message = "Participant id is required")
+        UUID participantId,
 
         UUID groupId,
 
@@ -18,4 +18,3 @@ public record ScheduleTrialInput(
         String comment
 ) {
 }
-

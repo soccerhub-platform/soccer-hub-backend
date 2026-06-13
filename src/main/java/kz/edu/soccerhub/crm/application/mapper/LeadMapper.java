@@ -4,10 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
 import kz.edu.soccerhub.common.dto.admin.AdminDto;
-import kz.edu.soccerhub.common.dto.lead.AdminShortOutput;
-import kz.edu.soccerhub.common.dto.lead.LeadChildOutput;
-import kz.edu.soccerhub.common.dto.lead.LeadOutput;
-import kz.edu.soccerhub.common.dto.lead.LeadTrialOutput;
+import kz.edu.soccerhub.common.dto.lead.*;
 import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.crm.application.resolver.LeadActionResolver;
 import kz.edu.soccerhub.crm.domain.model.Lead;
@@ -29,37 +26,44 @@ public class LeadMapper {
     public LeadOutput toOutput(Lead lead, UUID currentAdminId) {
         return new LeadOutput(
                 lead.getId(),
-                lead.getParentName(),
-                lead.getPhone(),
-                lead.getEmail(),
+                lead.getLeadType(),
+                new LeadPrimaryContactOutput(
+                        lead.getPrimaryContactName(),
+                        lead.getPrimaryContactPhone(),
+                        lead.getPrimaryContactEmail()
+                ),
                 lead.getSource(),
                 lead.getStatus(),
                 leadActionResolver.resolve(lead, currentAdminId),
                 mapAssignedAdmin(lead.getAssignedAdminId()),
                 lead.getComment(),
                 parseQualificationData(lead.getQualificationData()),
+                lead.getPreferredDays(),
+                lead.getTimePreference(),
+                lead.getExperience(),
+                lead.getNotes(),
                 lead.getLostReasonCode(),
                 lead.getLostReason() == null ? null : lead.getLostReason().getName(),
                 lead.getLostComment(),
                 lead.getLostAt(),
                 lead.getClientId(),
-                lead.getPlayerId(),
+                lead.getParticipantId(),
                 lead.getContractId(),
-                mapChildren(lead),
+                mapParticipants(lead),
                 mapTrial(lead.getTrial()),
                 lead.getCreatedAt(),
                 lead.getUpdatedAt()
         );
     }
 
-    private List<LeadChildOutput> mapChildren(Lead lead) {
-        return lead.getChildren().stream()
-                .map(child -> new LeadChildOutput(
-                        child.getId(),
-                        child.getChildName(),
-                        child.getChildAge(),
-                        child.getGender(),
-                        child.getExperience()
+    private List<LeadParticipantOutput> mapParticipants(Lead lead) {
+        return lead.getParticipants().stream()
+                .map(participant -> new LeadParticipantOutput(
+                        participant.getId(),
+                        participant.getFullName(),
+                        participant.getBirthDate(),
+                        participant.getGender(),
+                        participant.getExperience()
                 ))
                 .toList();
     }
@@ -72,7 +76,7 @@ public class LeadMapper {
         return new LeadTrialOutput(
                 trial.getId(),
                 trial.getLead().getId(),
-                trial.getChildId(),
+                trial.getParticipantId(),
                 trial.getGroupId(),
                 trial.getCoachId(),
                 trial.getTrialDate(),

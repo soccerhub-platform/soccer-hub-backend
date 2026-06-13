@@ -8,6 +8,7 @@ import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.organization.application.dto.GroupSummary;
 import kz.edu.soccerhub.organization.application.mapper.GroupMapper;
 import kz.edu.soccerhub.organization.domain.model.Group;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import kz.edu.soccerhub.organization.domain.repository.GroupRepository;
@@ -32,7 +33,7 @@ public class GroupService implements GroupPort {
     public UUID createGroup(CreateGroupCommand command) {
         final UUID groupId = UUID.randomUUID();
 
-        validateAgeRange(command.ageFrom(), command.ageTo());
+        validateAgeConstraints(command.audienceType(), command.ageFrom(), command.ageTo());
 
         Group group = Group.builder()
                 .id(groupId)
@@ -40,6 +41,7 @@ public class GroupService implements GroupPort {
                 .description(command.description())
                 .ageFrom(command.ageFrom())
                 .ageTo(command.ageTo())
+                .audienceType(command.audienceType())
                 .capacity(command.capacity())
                 .level(command.level())
                 .branchId(command.branchId())
@@ -134,7 +136,10 @@ public class GroupService implements GroupPort {
                 .build();
     }
 
-    private void validateAgeRange(Integer from, Integer to) {
+    private void validateAgeConstraints(GroupAudienceType audienceType, Integer from, Integer to) {
+        if (audienceType == GroupAudienceType.CHILDREN && (from == null || to == null)) {
+            throw new BadRequestException("Age range is required for children groups");
+        }
         if (from != null && to != null && from > to) {
             throw new BadRequestException("Invalid age range: 'from' age cannot be greater then 'to' age.", from, to);
         }

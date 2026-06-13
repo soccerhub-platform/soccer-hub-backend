@@ -142,7 +142,7 @@ public class ClientService implements ClientPort {
     @Transactional
     public ClientConversionOutput convertLead(ClientConversionCommand command) {
         Client client = resolveOrCreateClient(command);
-        Player player = resolveOrCreatePlayer(client, command.childName(), command.childBirthDate());
+        Player player = resolveOrCreatePlayer(client, command.participantName(), command.participantBirthDate());
         Contract contract = resolveOrCreateContract(player.getId(), command);
 
         return new ClientConversionOutput(
@@ -158,7 +158,7 @@ public class ClientService implements ClientPort {
                     .orElseThrow(() -> new NotFoundException("Client from lead.clientId not found", command.existingClientId()));
         }
 
-        String[] parentName = splitName(command.parentName());
+        String[] parentName = splitName(command.primaryContactName());
         String normalizedEmail = resolveClientEmail(command.email(), command.phone());
         UUID userId = authPort.findUserIdByEmail(normalizedEmail)
                 .orElseGet(() -> registerClientUser(normalizedEmail));
@@ -186,8 +186,8 @@ public class ClientService implements ClientPort {
         return output.id();
     }
 
-    private Player resolveOrCreatePlayer(Client client, String childFullName, LocalDate birthDate) {
-        String[] childName = splitName(childFullName);
+    private Player resolveOrCreatePlayer(Client client, String participantFullName, LocalDate birthDate) {
+        String[] childName = splitName(participantFullName);
 
         return playerRepository.findFirstByParent_IdAndFirstNameAndLastNameAndBirthDate(
                         client.getId(),

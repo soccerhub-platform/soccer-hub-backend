@@ -35,8 +35,8 @@ public final class LeadSpecification {
         return (root, query, cb) -> {
             String queryValue = "%" + queryText.toLowerCase() + "%";
             return cb.or(
-                    cb.like(cb.lower(root.get("parentName")), queryValue),
-                    cb.like(cb.lower(root.get("phone")), queryValue)
+                    cb.like(cb.lower(root.get("primaryContactName")), queryValue),
+                    cb.like(cb.lower(root.get("primaryContactPhone")), queryValue)
             );
         };
     }
@@ -93,4 +93,3 @@ public final class LeadSpecification {
         return specification;
     }
 }
-

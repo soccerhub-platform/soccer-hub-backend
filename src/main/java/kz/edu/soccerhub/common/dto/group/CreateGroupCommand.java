@@ -2,6 +2,7 @@ package kz.edu.soccerhub.common.dto.group;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupLevel;
 import lombok.Builder;
 
@@ -18,6 +19,8 @@ public record CreateGroupCommand(
         Integer ageFrom,
         @Min(value = 1, message = "AgeTo must be at least 1")
         Integer ageTo,
+        @NotNull
+        GroupAudienceType audienceType,
         @Min(value = 1, message = "Capacity must be at least 1")
         Integer capacity,
         @NotNull

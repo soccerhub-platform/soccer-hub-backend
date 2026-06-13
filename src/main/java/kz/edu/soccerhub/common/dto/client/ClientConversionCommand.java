@@ -6,14 +6,14 @@ import java.util.UUID;
 
 public record ClientConversionCommand(
         UUID existingClientId,
-        String parentName,
+        String primaryContactName,
         String phone,
         String email,
         UUID branchId,
         String source,
         String comments,
-        String childName,
-        LocalDate childBirthDate,
+        String participantName,
+        LocalDate participantBirthDate,
         UUID groupId,
         LocalDate contractStartDate,
         LocalDate contractEndDate,

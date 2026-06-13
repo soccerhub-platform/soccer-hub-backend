@@ -1,0 +1,10 @@
+package kz.edu.soccerhub.common.dto.group;
+
+public enum ScheduleValidationConflictCode {
+    EMPTY_SLOTS,
+    INVALID_DATE_RANGE,
+    INVALID_TIME_RANGE,
+    OVERLAPPING_INPUT_SLOTS,
+    GROUP_SCHEDULE_CONFLICT,
+    COACH_SCHEDULE_CONFLICT
+}

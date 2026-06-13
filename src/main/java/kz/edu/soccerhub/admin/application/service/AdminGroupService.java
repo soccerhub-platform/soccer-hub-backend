@@ -18,6 +18,7 @@ import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
+import kz.edu.soccerhub.organization.application.service.GroupScheduleValidationService;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,7 @@ public class AdminGroupService {
     private final GroupSchedulePort groupSchedulePort;
     private final CoachAvailabilityPort coachAvailabilityPort;
     private final ClientPort clientPort;
+    private final GroupScheduleValidationService groupScheduleValidationService;
 
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
@@ -64,6 +66,7 @@ public class AdminGroupService {
                 .description(input.description())
                 .ageFrom(input.ageFrom())
                 .ageTo(input.ageTo())
+                .audienceType(input.audienceType())
                 .capacity(input.capacity())
                 .level(input.level())
                 .branchId(input.branchId())
@@ -348,6 +351,17 @@ public class AdminGroupService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public ScheduleValidationResult validateGroupSchedule(
+            UUID adminId,
+            UUID groupId,
+            GroupScheduleValidationCommand command
+    ) {
+        verifyAdmin(adminId);
+        verifyAdminBranchAccess(adminId, groupPort.getGroupById(groupId).branchId());
+        return groupScheduleValidationService.validate(groupId, command);
+    }
+
     /* ================= AVAILABILITY ================= */
 
     @Transactional(readOnly = true)
@@ -590,7 +604,7 @@ public class AdminGroupService {
             List<AdminGroupHealthOutput.IssueItem> issues
     ) {
         private boolean overCapacity() {
-            Integer capacity = Optional.ofNullable(group.capacity()).orElse(0);
+            int capacity = Optional.ofNullable(group.capacity()).orElse(0);
             return capacity > 0 && studentsCount > capacity;
         }
 
