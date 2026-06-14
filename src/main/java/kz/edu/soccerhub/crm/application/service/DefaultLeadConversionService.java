@@ -68,6 +68,7 @@ public class DefaultLeadConversionService implements LeadConversionService {
                 participant.getFullName(),
                 request.participantBirthDate(),
                 request.groupId(),
+                lead.getLeadType(),
                 request.contractStartDate(),
                 request.contractEndDate(),
                 request.amount()

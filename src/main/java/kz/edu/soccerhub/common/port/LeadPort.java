@@ -10,8 +10,10 @@ import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
+import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
 import kz.edu.soccerhub.crm.application.state.LeadEvent;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -43,4 +45,6 @@ public interface LeadPort {
     UUID getLeadBranchId(UUID leadId);
 
     List<LeadLossReasonResponse> getActiveLossReasons();
+
+    Map<UUID, LeadType> getLatestLeadTypesByParticipantIds(Collection<UUID> participantIds);
 }

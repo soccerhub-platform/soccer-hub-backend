@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.common.exception.advice;
 
 import jakarta.servlet.http.HttpServletRequest;
+import kz.edu.soccerhub.common.exception.ContractValidationException;
 import kz.edu.soccerhub.common.exception.SoccerHubException;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestControllerAdvice
@@ -33,11 +35,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(ex.getHttpStatus()).body(body);
     }
 
+    @ExceptionHandler(ContractValidationException.class)
+    public ResponseEntity<?> handleContractValidationException(ContractValidationException ex) {
+        return ResponseEntity.badRequest().body(Map.of(
+                "valid", false,
+                "errors", ex.getErrors() == null ? List.of() : ex.getErrors()
+        ));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleGeneric(Exception ex) {
         log.error(ex.getMessage(), ex);
+        String message = ex.getMessage() == null || ex.getMessage().isBlank() ? "Unexpected internal error" : ex.getMessage();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                             .body(Map.of("error", "INTERNAL_ERROR", "message", ex.getMessage()));
+                             .body(Map.of("error", "INTERNAL_ERROR", "message", message));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

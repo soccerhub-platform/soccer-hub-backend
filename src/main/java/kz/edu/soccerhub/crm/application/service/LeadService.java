@@ -40,8 +40,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -268,6 +270,22 @@ public class LeadService implements LeadPort {
                 .stream()
                 .map(reason -> new LeadLossReasonResponse(reason.getCode(), reason.getName()))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, kz.edu.soccerhub.crm.domain.model.enums.LeadType> getLatestLeadTypesByParticipantIds(Collection<UUID> participantIds) {
+        if (participantIds == null || participantIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<UUID, kz.edu.soccerhub.crm.domain.model.enums.LeadType> result = new LinkedHashMap<>();
+        for (Lead lead : leadRepository.findByParticipantIdInOrderByUpdatedAtDesc(participantIds)) {
+            if (lead.getParticipantId() != null && !result.containsKey(lead.getParticipantId())) {
+                result.put(lead.getParticipantId(), lead.getLeadType());
+            }
+        }
+        return result;
     }
 
     @Transactional

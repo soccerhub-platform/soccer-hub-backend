@@ -2,6 +2,7 @@ package kz.edu.soccerhub.client.domain.repository;
 
 import kz.edu.soccerhub.client.domain.model.Player;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -20,4 +21,13 @@ public interface PlayerRepository extends JpaRepository<Player, UUID> {
     );
 
     List<Player> findByIdIn(Iterable<UUID> ids);
+
+    @Query("""
+            select p
+            from Player p
+            join fetch p.parent parent
+            where parent.branchId = :branchId
+            order by lower(p.firstName), lower(p.lastName)
+            """)
+    List<Player> findAllByParentBranchId(UUID branchId);
 }

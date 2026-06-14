@@ -8,6 +8,7 @@ import kz.edu.soccerhub.client.domain.repository.ClientRepository;
 import kz.edu.soccerhub.client.domain.repository.ContractRepository;
 import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
 import kz.edu.soccerhub.client.domain.enums.ClientStatus;
+import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.common.domain.enums.Role;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
@@ -215,9 +216,15 @@ public class ClientService implements ClientPort {
                         .id(UUID.randomUUID())
                         .playerId(playerId)
                         .groupId(command.groupId())
+                        .contractNumber(generateContractNumber())
+                        .leadType(command.leadType())
+                        .status(ContractStatus.ACTIVE)
+                        .coachId(null)
                         .startDate(command.contractStartDate())
                         .endDate(command.contractEndDate())
                         .amount(command.amount())
+                        .currency("KZT")
+                        .notes(command.comments())
                         .build()));
     }
 
@@ -228,6 +235,21 @@ public class ClientService implements ClientPort {
         }
         String normalizedPhone = phone == null ? UUID.randomUUID().toString().replace("-", "") : phone.replaceAll("[^0-9]", "");
         return "client+" + normalizedPhone + "@soccerhub.local";
+    }
+
+    private String generateContractNumber() {
+        String year = String.valueOf(LocalDate.now().getYear());
+        long seed = contractRepository.count() + 1;
+        String candidate = buildContractNumber(year, seed);
+        while (contractRepository.existsByContractNumber(candidate)) {
+            seed++;
+            candidate = buildContractNumber(year, seed);
+        }
+        return candidate;
+    }
+
+    private String buildContractNumber(String year, long seed) {
+        return "CNT-" + year + "-" + String.format(java.util.Locale.ROOT, "%05d", seed);
     }
 
     private GroupMemberDto toGroupMember(List<Contract> contracts, Player player) {
