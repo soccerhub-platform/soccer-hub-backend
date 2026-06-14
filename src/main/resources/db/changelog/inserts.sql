@@ -3,7 +3,8 @@ INSERT INTO public.app_role (code, description) VALUES
                                              ('LEAD', 'Лид-клиент, потенциальный клиент'),
                                              ('COACH', 'Тренер спортивной школы'),
                                              ('DISPATCHER', 'Диспетчер, который распределяет заявки'),
-                                             ('SUPER_ADMIN', 'Суперадминистратор системы');
+                                             ('SUPER_ADMIN', 'Суперадминистратор системы'),
+                                             ('CLIENT', 'Клиент школы');
 
 -- Clubs
 INSERT INTO public.clubs (id, name, slug, email, phone, website, logo_url, address, timezone, is_active, created_at, updated_at, created_by, modified_by)

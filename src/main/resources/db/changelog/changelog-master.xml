@@ -17,5 +17,6 @@
     <include file="/db/changelog/2026-05-24-profile-pages.sql"/>
     <include file="/db/changelog/2026-06-13-lead-participants-and-group-audience.sql"/>
     <include file="/db/changelog/2026-06-13-groups-age-nullable.sql"/>
+    <include file="/db/changelog/2026-06-13-add-client-role.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>
