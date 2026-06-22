@@ -5,5 +5,13 @@ public enum ContractStatus {
     UPCOMING,
     ACTIVE,
     EXPIRED,
-    CANCELLED
+    CANCELLED;
+
+    public boolean isEditable() {
+        return this != CANCELLED && this != EXPIRED;
+    }
+
+    public boolean canBeExtended() {
+        return this != CANCELLED;
+    }
 }

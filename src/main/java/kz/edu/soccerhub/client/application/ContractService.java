@@ -246,7 +246,7 @@ public class ContractService implements ContractPort {
     public ContractDetailsOutput update(UUID contractId, ContractUpdateCommand command, UUID actorUserId) {
         Contract contract = findContract(contractId);
         touchLifecycleStatus(contract);
-        validateEditable(contract);
+        validateUpdatable(contract);
 
         List<ContractValidationError> errors = new ArrayList<>();
         validateUpdateCommand(command, contract, errors);
@@ -294,7 +294,7 @@ public class ContractService implements ContractPort {
     public ContractDetailsOutput extend(UUID contractId, ContractExtendCommand command, UUID actorUserId) {
         Contract contract = findContract(contractId);
         touchLifecycleStatus(contract);
-        validateEditable(contract);
+        validateExtendable(contract);
 
         List<ContractValidationError> errors = new ArrayList<>();
         if (command.endDate() == null) {
@@ -331,7 +331,7 @@ public class ContractService implements ContractPort {
     public ContractDetailsOutput cancel(UUID contractId, ContractCancelCommand command, UUID actorUserId) {
         Contract contract = findContract(contractId);
         touchLifecycleStatus(contract);
-        validateEditable(contract);
+        validateUpdatable(contract);
 
         List<ContractValidationError> errors = new ArrayList<>();
         if (command.reasonCode() == null) {
@@ -519,10 +519,18 @@ public class ContractService implements ContractPort {
         }
     }
 
-    private void validateEditable(Contract contract) {
-        if (contract.getStatus() == ContractStatus.CANCELLED || contract.getStatus() == ContractStatus.EXPIRED) {
+    private void validateUpdatable(Contract contract) {
+        if (!contract.getStatus().isEditable()) {
             throw new ContractValidationException(List.of(
-                    error("IMMUTABLE_STATUS", "status", "Договор в статусе CANCELLED или EXPIRED нельзя редактировать")
+                    error("IMMUTABLE_STATUS", "status", "Договор в статусе " + contract.getStatus() + " нельзя редактировать")
+            ));
+        }
+    }
+
+    private void validateExtendable(Contract contract) {
+        if (!contract.getStatus().canBeExtended()) {
+            throw new ContractValidationException(List.of(
+                    error("IMMUTABLE_STATUS", "status", "Договор в статусе " + contract.getStatus() + " нельзя продлевать")
             ));
         }
     }
