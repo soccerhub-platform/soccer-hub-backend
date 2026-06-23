@@ -47,4 +47,6 @@ public interface LeadPort {
     List<LeadLossReasonResponse> getActiveLossReasons();
 
     Map<UUID, LeadType> getLatestLeadTypesByParticipantIds(Collection<UUID> participantIds);
+
+    boolean markWonByContractIfWaitingPayment(UUID contractId, UUID currentAdminId);
 }

@@ -288,6 +288,26 @@ public class LeadService implements LeadPort {
         return result;
     }
 
+    @Override
+    @Transactional
+    public boolean markWonByContractIfWaitingPayment(UUID contractId, UUID currentAdminId) {
+        if (contractId == null) {
+            return false;
+        }
+
+        Lead lead = leadRepository.findTopByContractIdOrderByUpdatedAtDesc(contractId).orElse(null);
+        if (lead == null || lead.getStatus() != LeadStatus.WAITING_PAYMENT) {
+            return false;
+        }
+
+        LeadStatus previousStatus = lead.getStatus();
+        LeadStatus newStatus = stateMachineService.process(lead.getId(), previousStatus, LeadEvent.CONFIRM_PAYMENT);
+        lead.updateStatus(newStatus);
+        leadRepository.save(lead);
+        leadActivityService.logStatusChanged(lead, LeadEvent.CONFIRM_PAYMENT, previousStatus, currentAdminId);
+        return true;
+    }
+
     @Transactional
     @Override
     public void assignLead(UUID leadId, UUID assignedAdminId, UUID currentAdminId) {

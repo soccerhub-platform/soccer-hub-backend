@@ -36,6 +36,7 @@ import kz.edu.soccerhub.common.dto.contract.ContractValidationError;
 import kz.edu.soccerhub.common.dto.contract.ContractsPageOutput;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentContextOutput;
 import kz.edu.soccerhub.common.exception.ContractValidationException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AdminPort;
@@ -140,6 +141,28 @@ public class ContractService implements ContractPort {
     public UUID getBranchId(UUID contractId) {
         Player player = findPlayer(findContract(contractId).getPlayerId());
         return requireParent(player).getBranchId();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ContractPaymentContextOutput getPaymentContext(UUID contractId) {
+        Contract contract = findContract(contractId);
+        Player player = findPlayer(contract.getPlayerId());
+        Client client = requireParent(player);
+        touchLifecycleStatus(contract);
+
+        return new ContractPaymentContextOutput(
+                contract.getId(),
+                contract.getContractNumber(),
+                client.getId(),
+                buildClientName(client),
+                player.getId(),
+                buildPlayerName(player),
+                client.getBranchId(),
+                defaultAmount(contract.getAmount()),
+                contract.getCurrency(),
+                contract.getStatus()
+        );
     }
 
     @Override

@@ -8,6 +8,7 @@ import kz.edu.soccerhub.common.dto.branch.BranchDto;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.exception.BadRequestException;
+import kz.edu.soccerhub.common.port.AdminBranchAccessPort;
 import kz.edu.soccerhub.common.port.BranchPort;
 import kz.edu.soccerhub.common.port.CoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
@@ -27,7 +28,7 @@ import org.springframework.data.domain.Pageable;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class AdminBranchService {
+public class AdminBranchService implements AdminBranchAccessPort {
 
     private final AdminBranchRepository adminBranchRepository;
     private final BranchPort branchPort;
@@ -78,6 +79,7 @@ public class AdminBranchService {
     }
 
     @Transactional(readOnly = true)
+    @Override
     public boolean verifyAdminBelongsToBranch(UUID adminId, UUID branchId) {
         return adminBranchRepository.existsByAdminIdAndBranchId(adminId, branchId);
     }

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -29,5 +30,7 @@ public interface LeadRepository extends JpaRepository<Lead, UUID>, JpaSpecificat
     boolean existsActiveLeadByPhone(String phone);
 
     List<Lead> findByParticipantIdInOrderByUpdatedAtDesc(Collection<UUID> participantIds);
+
+    Optional<Lead> findTopByContractIdOrderByUpdatedAtDesc(UUID contractId);
 
 }

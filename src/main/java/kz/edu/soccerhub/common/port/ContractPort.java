@@ -9,6 +9,7 @@ import kz.edu.soccerhub.common.dto.contract.ContractParticipantLookupOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractSearchQuery;
 import kz.edu.soccerhub.common.dto.contract.ContractUpdateCommand;
 import kz.edu.soccerhub.common.dto.contract.ContractsPageOutput;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentContextOutput;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
 import org.springframework.data.domain.Pageable;
 
@@ -22,6 +23,8 @@ public interface ContractPort {
     ContractDetailsOutput getById(UUID contractId);
 
     UUID getBranchId(UUID contractId);
+
+    ContractPaymentContextOutput getPaymentContext(UUID contractId);
 
     List<ContractParticipantLookupOutput> getParticipants(UUID branchId);
 
