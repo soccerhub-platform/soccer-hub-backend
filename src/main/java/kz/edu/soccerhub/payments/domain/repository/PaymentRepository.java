@@ -22,12 +22,12 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             select p
             from Payment p
             where p.branchId = :branchId
-              and (:contractId is null or p.contractId = :contractId)
-              and (:clientId is null or p.clientId = :clientId)
+              and (cast(:contractId as uuid) is null or p.contractId = :contractId)
+              and (cast(:clientId as uuid) is null or p.clientId = :clientId)
               and (:statusesEmpty = true or p.status in :statuses)
               and (:methodsEmpty = true or p.method in :methods)
-              and (:paidFrom is null or p.paidAt >= :paidFrom)
-              and (:paidTo is null or p.paidAt <= :paidTo)
+              and (cast(:paidFrom as timestamp) is null or p.paidAt >= :paidFrom)
+              and (cast(:paidTo as timestamp) is null or p.paidAt <= :paidTo)
             """)
     Page<Payment> search(
             UUID branchId,
