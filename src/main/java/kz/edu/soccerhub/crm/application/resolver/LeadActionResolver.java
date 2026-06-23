@@ -36,16 +36,16 @@ public class LeadActionResolver {
 
             case TRIAL_SCHEDULED -> List.of(
                     primary(LeadEvent.COMPLETE_TRIAL, "Отметить: пришел", true, branchAllowed),
+                    secondary(LeadEvent.CANCEL_TRIAL, "Отменить пробное", false, true, branchAllowed),
                     secondary(LeadEvent.NO_SHOW, "Не пришел", true, true, branchAllowed)
             );
 
             case TRIAL_DONE -> List.of(
-                    primary(LeadEvent.REQUEST_PAYMENT, "Отправить на оплату", hasCompletedTrial(lead), branchAllowed),
+                    primary(LeadEvent.REQUEST_PAYMENT, "Отправить на оплату", hasPaymentRequestReady(lead), branchAllowed),
                     secondary(LeadEvent.POST_TRIAL_REJECT, "Отказ после пробного", true, true, branchAllowed)
             );
 
             case WAITING_PAYMENT -> List.of(
-                    primary(LeadEvent.CONFIRM_PAYMENT, "Подтвердить оплату", status == LeadStatus.WAITING_PAYMENT, branchAllowed),
                     secondary(LeadEvent.REJECT, "Отказ / Закрыть", true, true, branchAllowed)
             );
 
@@ -73,5 +73,9 @@ public class LeadActionResolver {
 
     private boolean hasCompletedTrial(Lead lead) {
         return lead.getTrial() != null && lead.getTrial().getStatus() == LeadTrialStatus.COMPLETED;
+    }
+
+    private boolean hasPaymentRequestReady(Lead lead) {
+        return hasCompletedTrial(lead) && lead.getContractId() != null;
     }
 }

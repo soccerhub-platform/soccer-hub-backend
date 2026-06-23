@@ -5,8 +5,10 @@ import kz.edu.soccerhub.common.dto.payment.ContractPaymentContextOutput;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryQueryInput;
+import kz.edu.soccerhub.common.dto.payment.PaymentCancelCommand;
 import kz.edu.soccerhub.common.dto.payment.PaymentCreateCommand;
 import kz.edu.soccerhub.common.dto.payment.PaymentCreateOutput;
+import kz.edu.soccerhub.common.dto.payment.PaymentOutput;
 import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.common.port.ContractPort;
 import kz.edu.soccerhub.common.port.LeadPort;
@@ -120,6 +122,26 @@ class PaymentServiceTest {
         verify(paymentRepository).findByContractIdInOrderByPaidAtDescCreatedAtDesc(argThat(ids ->
                 ids.contains(firstContractId) && ids.contains(secondContractId) && ids.size() == 2
         ));
+    }
+
+    @Test
+    void cancelPaymentShouldNotRollbackLeadFromWon() {
+        UUID contractId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        ContractPaymentContextOutput context = context(contractId, BigDecimal.valueOf(80000));
+        Payment payment = savedPayment(contractId, context, BigDecimal.valueOf(80000));
+
+        when(paymentRepository.findById(payment.getId())).thenReturn(java.util.Optional.of(payment));
+        when(contractPort.getPaymentContext(contractId)).thenReturn(context);
+
+        PaymentOutput output = paymentService.cancelPayment(
+                payment.getId(),
+                new PaymentCancelCommand("duplicate payment", "reverted manually"),
+                actorId
+        );
+
+        assertEquals(PaymentStatus.CANCELLED, output.status());
+        verify(leadPort, never()).markWonByContractIfWaitingPayment(any(), any());
     }
 
     private ContractPaymentContextOutput context(UUID contractId, BigDecimal amount) {

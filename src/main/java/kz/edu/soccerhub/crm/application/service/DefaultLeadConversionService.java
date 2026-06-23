@@ -75,10 +75,8 @@ public class DefaultLeadConversionService implements LeadConversionService {
         ));
 
         LeadStatus previousStatus = lead.getStatus();
-        if (lead.getStatus() != LeadStatus.WON) {
-            lead.updateStatus(LeadStatus.WON);
-        }
         lead.markConverted(conversion.clientId(), conversion.playerId(), conversion.contractId());
+        lead.updateStatus(resolveStatusAfterConversion(previousStatus, request.amount()));
         leadRepository.save(lead);
 
         leadActivityService.logLeadConverted(
@@ -128,13 +126,22 @@ public class DefaultLeadConversionService implements LeadConversionService {
 
     private void validateLeadStatusForConversion(Lead lead) {
         boolean allowed = lead.getStatus() == LeadStatus.TRIAL_DONE
-                          || lead.getStatus() == LeadStatus.QUALIFIED
-                          || lead.getStatus() == LeadStatus.TRIAL_SCHEDULED
-                          || lead.getStatus() == LeadStatus.WAITING_PAYMENT
-                          || lead.getStatus() == LeadStatus.WON;
+                          || (lead.getStatus() == LeadStatus.WAITING_PAYMENT && lead.getContractId() != null)
+                          || (lead.getStatus() == LeadStatus.WON && lead.getContractId() != null);
         if (!allowed) {
             throw new BadRequestException("Lead status is not allowed for conversion", lead.getStatus());
         }
+    }
+
+    private LeadStatus resolveStatusAfterConversion(LeadStatus previousStatus, BigDecimal amount) {
+        if (previousStatus == LeadStatus.WAITING_PAYMENT || previousStatus == LeadStatus.WON) {
+            return previousStatus;
+        }
+        return requiresPayment(amount) ? LeadStatus.WAITING_PAYMENT : LeadStatus.WON;
+    }
+
+    private boolean requiresPayment(BigDecimal amount) {
+        return amount != null && amount.compareTo(BigDecimal.ZERO) > 0;
     }
 
     private String buildConversionDetails(ConvertLeadRequest request, UUID playerId, UUID contractId) {

@@ -173,7 +173,9 @@ public class LeadService implements LeadPort {
                 selectedSlot.endTime(),
                 trim(input.comment())
         );
-        LeadStatus newStatus = stateMachineService.process(leadId, previousStatus, LeadEvent.SCHEDULE_TRIAL);
+        LeadStatus newStatus = previousStatus == LeadStatus.TRIAL_SCHEDULED
+                ? LeadStatus.TRIAL_SCHEDULED
+                : stateMachineService.process(leadId, previousStatus, LeadEvent.SCHEDULE_TRIAL);
         lead.updateStatus(newStatus);
 
         leadRepository.save(lead);
@@ -332,6 +334,7 @@ public class LeadService implements LeadPort {
     ) {
         Lead lead = findById(leadId);
         LeadStatus previousStatus = lead.getStatus();
+        validateManualEvent(lead, event);
 
         LeadStatus newStatus = stateMachineService.process(lead.getId(), previousStatus, event);
         syncTrialStatusByEvent(lead, event);
@@ -361,11 +364,21 @@ public class LeadService implements LeadPort {
             return;
         }
 
-        if (event == LeadEvent.NO_SHOW) {
+        if (event == LeadEvent.NO_SHOW || event == LeadEvent.CANCEL_TRIAL) {
             if (lead.getTrial() == null) {
                 throw new BadRequestException("Trial is not scheduled", lead.getId());
             }
             lead.getTrial().markCanceled();
+        }
+    }
+
+    private void validateManualEvent(Lead lead, LeadEvent event) {
+        if (event == LeadEvent.CONFIRM_PAYMENT) {
+            throw new BadRequestException("Manual CONFIRM_PAYMENT is not allowed. Lead is moved to WON by payment coverage.");
+        }
+
+        if (event == LeadEvent.REQUEST_PAYMENT && lead.getContractId() == null) {
+            throw new BadRequestException("REQUEST_PAYMENT requires an existing contract", lead.getId());
         }
     }
 

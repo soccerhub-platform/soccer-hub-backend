@@ -165,6 +165,7 @@ public class LeadActivityService {
         return switch (activity.getEvent()) {
             case QUALIFY -> "Квалифицирован";
             case SCHEDULE_TRIAL -> "Назначено пробное";
+            case CANCEL_TRIAL -> "Пробное отменено";
             case COMPLETE_TRIAL -> "Пробное завершено";
             case NO_SHOW -> "Не пришел";
             case REQUEST_PAYMENT -> "Запрошена оплата";

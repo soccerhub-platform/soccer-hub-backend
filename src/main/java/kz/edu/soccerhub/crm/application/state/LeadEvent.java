@@ -5,6 +5,7 @@ public enum LeadEvent {
     CONTACT,
     QUALIFY,
     SCHEDULE_TRIAL,
+    CANCEL_TRIAL,
     NO_SHOW,
     COMPLETE_TRIAL,
     REQUEST_PAYMENT,

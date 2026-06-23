@@ -87,7 +87,7 @@ class LeadServiceConversionTest {
         assertEquals(playerId, response.playerId());
         assertEquals(contractId, response.contractId());
         assertEquals("CONVERTED", response.status());
-        assertEquals(LeadStatus.WON, lead.getStatus());
+        assertEquals(LeadStatus.WAITING_PAYMENT, lead.getStatus());
         assertEquals(clientId, lead.getClientId());
         assertEquals(playerId, lead.getParticipantId());
         assertEquals(contractId, lead.getContractId());
@@ -103,14 +103,43 @@ class LeadServiceConversionTest {
     }
 
     @Test
-    void convertFromWaitingPaymentShouldBeAllowed() {
+    void convertFromWaitingPaymentShouldBeAllowedForAlreadyConvertedLead() {
+        UUID leadId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID existingClientId = UUID.randomUUID();
+        UUID existingPlayerId = UUID.randomUUID();
+        UUID existingContractId = UUID.randomUUID();
+
+        Lead lead = lead(leadId, LeadStatus.WAITING_PAYMENT, branchId, participantId, "Alex Doe");
+        lead.markConverted(existingClientId, existingPlayerId, existingContractId);
+
+        when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
+        when(groupPort.getGroupById(groupId)).thenReturn(group(groupId, branchId));
+        when(clientPort.convertLead(any())).thenReturn(new ClientConversionOutput(
+                existingClientId,
+                existingPlayerId,
+                existingContractId
+        ));
+
+        ConvertLeadResponse response = conversionService.convertLeadToClient(leadId, request(participantId, groupId), actorId);
+
+        assertEquals("CONVERTED", response.status());
+        assertEquals(LeadStatus.WAITING_PAYMENT, lead.getStatus());
+        verify(leadRepository).save(lead);
+    }
+
+    @Test
+    void convertFromTrialDoneWithoutPaymentShouldMoveLeadToWon() {
         UUID leadId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
         UUID participantId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID branchId = UUID.randomUUID();
 
-        Lead lead = lead(leadId, LeadStatus.WAITING_PAYMENT, branchId, participantId, "Alex Doe");
+        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE, branchId, participantId, "Alex Doe");
 
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
         when(groupPort.getGroupById(groupId)).thenReturn(group(groupId, branchId));
@@ -120,11 +149,18 @@ class LeadServiceConversionTest {
                 UUID.randomUUID()
         ));
 
-        ConvertLeadResponse response = conversionService.convertLeadToClient(leadId, request(participantId, groupId), actorId);
+        ConvertLeadRequest request = new ConvertLeadRequest(
+                participantId,
+                groupId,
+                LocalDate.of(2016, 5, 20),
+                LocalDate.of(2026, 5, 20),
+                LocalDate.of(2026, 6, 20),
+                BigDecimal.ZERO
+        );
 
-        assertEquals("CONVERTED", response.status());
+        conversionService.convertLeadToClient(leadId, request, actorId);
+
         assertEquals(LeadStatus.WON, lead.getStatus());
-        verify(leadRepository).save(lead);
     }
 
     @Test
@@ -206,6 +242,23 @@ class LeadServiceConversionTest {
         assertEquals(playerId, response.playerId());
         assertEquals(contractId, response.contractId());
         verify(clientPort).convertLead(argThat(command -> command.existingClientId().equals(clientId)));
+    }
+
+    @Test
+    void convertFromTrialScheduledShouldFail() {
+        UUID leadId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        Lead lead = lead(leadId, LeadStatus.TRIAL_SCHEDULED, UUID.randomUUID(), participantId, "Alex Doe");
+        when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
+
+        BadRequestException ex = assertThrows(
+                BadRequestException.class,
+                () -> conversionService.convertLeadToClient(leadId, request(participantId, groupId), UUID.randomUUID())
+        );
+
+        assertTrue(ex.getMessage().contains("not allowed"));
     }
 
     @Test
