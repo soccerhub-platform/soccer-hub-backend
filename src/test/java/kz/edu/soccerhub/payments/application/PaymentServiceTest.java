@@ -2,6 +2,9 @@ package kz.edu.soccerhub.payments.application;
 
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentContextOutput;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryQueryInput;
 import kz.edu.soccerhub.common.dto.payment.PaymentCreateCommand;
 import kz.edu.soccerhub.common.dto.payment.PaymentCreateOutput;
 import kz.edu.soccerhub.common.port.AdminPort;
@@ -20,10 +23,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -90,6 +95,33 @@ class PaymentServiceTest {
         verify(leadPort, never()).markWonByContractIfWaitingPayment(contractId, actorId);
     }
 
+    @Test
+    void batchSummaryShouldReturnZeroStateForMissingPaymentsAndUseSingleRepositoryCall() {
+        UUID firstContractId = UUID.randomUUID();
+        UUID secondContractId = UUID.randomUUID();
+
+        when(paymentRepository.findByContractIdInOrderByPaidAtDescCreatedAtDesc(argThat(ids ->
+                ids.contains(firstContractId) && ids.contains(secondContractId) && ids.size() == 2
+        ))).thenReturn(List.of(
+                savedPayment(firstContractId, context(firstContractId, BigDecimal.valueOf(80000)), BigDecimal.valueOf(50000)),
+                cancelledPayment(firstContractId, context(firstContractId, BigDecimal.valueOf(80000)), BigDecimal.valueOf(10000))
+        ));
+
+        Map<UUID, ContractPaymentSummaryOutput> summaries = paymentService.getContractPaymentSummaries(List.of(
+                new ContractPaymentSummaryQueryInput(firstContractId, BigDecimal.valueOf(80000)),
+                new ContractPaymentSummaryQueryInput(secondContractId, BigDecimal.valueOf(30000))
+        ));
+
+        assertEquals(ContractPaymentStatus.PARTIALLY_PAID, summaries.get(firstContractId).paymentStatus());
+        assertEquals(BigDecimal.valueOf(50000), summaries.get(firstContractId).paidAmount());
+        assertEquals(ContractPaymentStatus.UNPAID, summaries.get(secondContractId).paymentStatus());
+        assertEquals(BigDecimal.ZERO, summaries.get(secondContractId).paidAmount());
+        assertEquals(BigDecimal.valueOf(30000), summaries.get(secondContractId).outstandingAmount());
+        verify(paymentRepository).findByContractIdInOrderByPaidAtDescCreatedAtDesc(argThat(ids ->
+                ids.contains(firstContractId) && ids.contains(secondContractId) && ids.size() == 2
+        ));
+    }
+
     private ContractPaymentContextOutput context(UUID contractId, BigDecimal amount) {
         return new ContractPaymentContextOutput(
                 contractId,
@@ -130,6 +162,23 @@ class PaymentServiceTest {
                 .method(PaymentMethod.KASPI)
                 .paidAt(LocalDateTime.of(2026, 6, 23, 12, 0))
                 .recordedAt(LocalDateTime.of(2026, 6, 23, 12, 0))
+                .recordedBy(UUID.randomUUID())
+                .build();
+    }
+
+    private Payment cancelledPayment(UUID contractId, ContractPaymentContextOutput context, BigDecimal amount) {
+        return Payment.builder()
+                .id(UUID.randomUUID())
+                .contractId(contractId)
+                .clientId(context.clientId())
+                .playerId(context.playerId())
+                .branchId(context.branchId())
+                .amount(amount)
+                .currency("KZT")
+                .status(PaymentStatus.CANCELLED)
+                .method(PaymentMethod.KASPI)
+                .paidAt(LocalDateTime.of(2026, 6, 24, 12, 0))
+                .recordedAt(LocalDateTime.of(2026, 6, 24, 12, 0))
                 .recordedBy(UUID.randomUUID())
                 .build();
     }

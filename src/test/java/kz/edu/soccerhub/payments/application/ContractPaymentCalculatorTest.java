@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class ContractPaymentCalculatorTest {
 
@@ -53,6 +54,40 @@ class ContractPaymentCalculatorTest {
         assertEquals(BigDecimal.valueOf(100000), summary.paidAmount());
         assertEquals(BigDecimal.ZERO, summary.outstandingAmount());
         assertEquals(BigDecimal.valueOf(20000), summary.overpaidAmount());
+    }
+
+    @Test
+    void shouldReturnZeroStateWhenNoPaymentsExist() {
+        UUID contractId = UUID.randomUUID();
+
+        ContractPaymentSummaryOutput summary = calculator.summarize(
+                contractId,
+                BigDecimal.valueOf(80000),
+                List.of()
+        );
+
+        assertEquals(ContractPaymentStatus.UNPAID, summary.paymentStatus());
+        assertEquals(BigDecimal.ZERO, summary.paidAmount());
+        assertEquals(BigDecimal.valueOf(80000), summary.outstandingAmount());
+        assertEquals(BigDecimal.ZERO, summary.overpaidAmount());
+        assertEquals(0, summary.paymentsCount());
+        assertNull(summary.lastPaidAt());
+    }
+
+    @Test
+    void shouldCalculateFullyPaidWithoutOverpayment() {
+        UUID contractId = UUID.randomUUID();
+
+        ContractPaymentSummaryOutput summary = calculator.summarize(
+                contractId,
+                BigDecimal.valueOf(80000),
+                List.of(payment(BigDecimal.valueOf(80000), PaymentStatus.PAID, LocalDateTime.of(2026, 6, 23, 12, 0)))
+        );
+
+        assertEquals(ContractPaymentStatus.PAID, summary.paymentStatus());
+        assertEquals(BigDecimal.valueOf(80000), summary.paidAmount());
+        assertEquals(BigDecimal.ZERO, summary.outstandingAmount());
+        assertEquals(BigDecimal.ZERO, summary.overpaidAmount());
     }
 
     private Payment payment(BigDecimal amount, PaymentStatus status, LocalDateTime paidAt) {

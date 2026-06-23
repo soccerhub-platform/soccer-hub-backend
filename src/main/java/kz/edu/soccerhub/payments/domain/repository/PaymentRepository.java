@@ -44,5 +44,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     List<Payment> findByContractIdOrderByPaidAtDescCreatedAtDesc(UUID contractId);
 
+    List<Payment> findByContractIdInOrderByPaidAtDescCreatedAtDesc(Collection<UUID> contractIds);
+
     Optional<Payment> findTopByContractIdAndStatusOrderByPaidAtDescCreatedAtDesc(UUID contractId, PaymentStatus status);
 }

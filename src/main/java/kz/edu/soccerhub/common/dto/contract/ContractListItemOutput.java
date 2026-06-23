@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.common.dto.contract;
 
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
 
 import java.math.BigDecimal;
@@ -23,6 +24,11 @@ public record ContractListItemOutput(
         ContractPrimaryContactOutput primaryContact,
         ContractGroupOutput group,
         ContractCoachOutput coach,
+        ContractPaymentStatus paymentStatus,
+        BigDecimal paidAmount,
+        BigDecimal outstandingAmount,
+        BigDecimal overpaidAmount,
+        LocalDateTime lastPaidAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

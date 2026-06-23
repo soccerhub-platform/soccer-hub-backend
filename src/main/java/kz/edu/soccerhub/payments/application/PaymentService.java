@@ -3,6 +3,7 @@ package kz.edu.soccerhub.payments.application;
 import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentContextOutput;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryQueryInput;
 import kz.edu.soccerhub.common.dto.payment.PaymentCancelCommand;
 import kz.edu.soccerhub.common.dto.payment.PaymentCreateCommand;
 import kz.edu.soccerhub.common.dto.payment.PaymentCreateOutput;
@@ -25,10 +26,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -145,6 +147,45 @@ public class PaymentService implements PaymentPort {
                 contract.contractAmount(),
                 paymentRepository.findByContractIdOrderByPaidAtDescCreatedAtDesc(contractId)
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, ContractPaymentSummaryOutput> getContractPaymentSummaries(Collection<ContractPaymentSummaryQueryInput> contracts) {
+        if (contracts == null || contracts.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<UUID, ContractPaymentSummaryQueryInput> queryByContractId = contracts.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(
+                        ContractPaymentSummaryQueryInput::contractId,
+                        item -> item,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        if (queryByContractId.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<UUID, List<Payment>> paymentsByContractId = paymentRepository
+                .findByContractIdInOrderByPaidAtDescCreatedAtDesc(queryByContractId.keySet())
+                .stream()
+                .collect(Collectors.groupingBy(Payment::getContractId));
+
+        Map<UUID, ContractPaymentSummaryOutput> result = new LinkedHashMap<>();
+        for (ContractPaymentSummaryQueryInput contract : queryByContractId.values()) {
+            result.put(
+                    contract.contractId(),
+                    contractPaymentCalculator.summarize(
+                            contract.contractId(),
+                            contract.contractAmount(),
+                            paymentsByContractId.getOrDefault(contract.contractId(), List.of())
+                    )
+            );
+        }
+        return result;
     }
 
     @Override

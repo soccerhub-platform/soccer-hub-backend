@@ -673,6 +673,11 @@ public class ContractService implements ContractPort {
                 client == null ? null : toPrimaryContact(client),
                 group == null ? null : toGroupOutput(group),
                 toCoachOutput(coach),
+                null,
+                null,
+                null,
+                null,
+                null,
                 contract.getCreatedAt(),
                 contract.getUpdatedAt()
         );
@@ -701,6 +706,11 @@ public class ContractService implements ContractPort {
                 toPrimaryContact(client),
                 toGroupOutput(group),
                 toCoachOutput(coach),
+                null,
+                null,
+                null,
+                null,
+                null,
                 contract.getCreatedAt(),
                 contract.getUpdatedAt(),
                 history
