@@ -4,12 +4,17 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
 import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
+import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryQueryInput;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.ContractPaymentSummaryPort;
+import kz.edu.soccerhub.common.port.ContractSnapshotPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
@@ -31,6 +36,8 @@ public class DefaultLeadConversionService implements LeadConversionService {
     private final LeadRepository leadRepository;
     private final GroupPort groupPort;
     private final ClientPort clientPort;
+    private final ContractSnapshotPort contractSnapshotPort;
+    private final ContractPaymentSummaryPort contractPaymentSummaryPort;
     private final LeadActivityService leadActivityService;
     private final ObjectMapper objectMapper;
 
@@ -86,11 +93,29 @@ public class DefaultLeadConversionService implements LeadConversionService {
                 buildConversionDetails(request, conversion.playerId(), conversion.contractId())
         );
 
+        StudentContractSnapshotOutput contract = contractSnapshotPort.getStudentContracts(lead.getBranchId(), conversion.playerId()).stream()
+                .filter(item -> Objects.equals(item.id(), conversion.contractId()))
+                .findFirst()
+                .orElse(null);
+        ContractPaymentSummaryOutput paymentSummary = contract == null
+                ? null
+                : contractPaymentSummaryPort.getContractPaymentSummary(
+                        new ContractPaymentSummaryQueryInput(contract.id(), contract.amount())
+                );
+
         return new ConvertLeadResponse(
                 lead.getId(),
+                lead.getStatus(),
                 conversion.clientId(),
+                lead.getPrimaryContactName(),
                 conversion.playerId(),
+                participant.getFullName(),
                 conversion.contractId(),
+                contract == null ? null : contract.contractNumber(),
+                contract == null ? null : contract.status(),
+                paymentSummary == null ? null : paymentSummary.paymentStatus(),
+                contract == null ? null : contract.amount(),
+                paymentSummary == null ? null : paymentSummary.outstandingAmount(),
                 "CONVERTED"
         );
     }

@@ -6,6 +6,7 @@ import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.crm.application.service.LeadService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -42,17 +43,21 @@ public class LeadController {
             @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
         UUID currentAdminId = UUID.fromString(jwt.getSubject());
-        Page<LeadOutput> leads = leadService.getLeads(
-                        statuses,
-                        assignedAdminId,
-                        branchId,
-                        unassigned,
-                        search,
-                        createdFrom,
-                        createdTo,
-                        pageable
-                )
-                .map(lead -> leadMapper.toOutput(lead, currentAdminId));
+        Page<kz.edu.soccerhub.crm.domain.model.Lead> page = leadService.getLeads(
+                statuses,
+                assignedAdminId,
+                branchId,
+                unassigned,
+                search,
+                createdFrom,
+                createdTo,
+                pageable
+        );
+        Page<LeadOutput> leads = new PageImpl<>(
+                leadMapper.toOutputs(page.getContent(), currentAdminId),
+                pageable,
+                page.getTotalElements()
+        );
 
         return ResponseEntity.ok(leads);
     }

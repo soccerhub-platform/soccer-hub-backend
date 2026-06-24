@@ -6,6 +6,7 @@ import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
+import kz.edu.soccerhub.common.dto.lead.LeadLossReasonStage;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
@@ -40,11 +41,13 @@ public interface LeadPort {
 
     Map<LeadStatus, List<LeadOutput>> getKanban(UUID branchId, UUID currentAdminId);
 
+    LeadOutput getLeadOutput(UUID leadId, UUID currentAdminId);
+
     List<LeadActivityOutput> getLeadActivities(UUID leadId);
 
     UUID getLeadBranchId(UUID leadId);
 
-    List<LeadLossReasonResponse> getActiveLossReasons();
+    List<LeadLossReasonResponse> getActiveLossReasons(LeadLossReasonStage stage);
 
     Map<UUID, LeadType> getLatestLeadTypesByParticipantIds(Collection<UUID> participantIds);
 

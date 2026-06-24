@@ -2,6 +2,7 @@ package kz.edu.soccerhub.crm.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
+import kz.edu.soccerhub.common.dto.lead.LeadLossReasonStage;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.common.port.CoachPort;
@@ -54,6 +55,8 @@ class LeadServiceLostReasonTest {
     private LeadMapper leadMapper;
     @Mock
     private LeadLossReasonRepository leadLossReasonRepository;
+    @Mock
+    private LeadLossReasonPolicy leadLossReasonPolicy;
 
     private LeadService leadService;
 
@@ -70,6 +73,7 @@ class LeadServiceLostReasonTest {
                 leadActivityService,
                 leadMapper,
                 leadLossReasonRepository,
+                leadLossReasonPolicy,
                 new ObjectMapper()
         );
     }
@@ -119,6 +123,8 @@ class LeadServiceLostReasonTest {
 
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
         when(stateMachineService.process(leadId, LeadStatus.NEW, LeadEvent.REJECT)).thenReturn(LeadStatus.LOST);
+        when(leadLossReasonPolicy.resolveStage(LeadEvent.REJECT, LeadStatus.NEW)).thenReturn(LeadLossReasonStage.PRE_QUALIFICATION);
+        when(leadLossReasonPolicy.isAllowed("PRICE", LeadLossReasonStage.PRE_QUALIFICATION)).thenReturn(true);
         when(leadLossReasonRepository.findByCodeAndActiveTrue("PRICE"))
                 .thenReturn(Optional.of(LeadLossReasonEntity.builder()
                         .code("PRICE")
@@ -178,18 +184,53 @@ class LeadServiceLostReasonTest {
     }
 
     @Test
+    void rejectWithReasonNotAllowedForStageShouldFail() {
+        UUID leadId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        Lead lead = lead(leadId, LeadStatus.WAITING_PAYMENT);
+
+        when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
+        when(stateMachineService.process(leadId, LeadStatus.WAITING_PAYMENT, LeadEvent.REJECT)).thenReturn(LeadStatus.LOST);
+        when(leadLossReasonRepository.findByCodeAndActiveTrue("NO_RESPONSE"))
+                .thenReturn(Optional.of(LeadLossReasonEntity.builder()
+                        .code("NO_RESPONSE")
+                        .name("Не отвечает")
+                        .active(true)
+                        .sortOrder(40)
+                        .build()));
+        when(leadLossReasonPolicy.resolveStage(LeadEvent.REJECT, LeadStatus.WAITING_PAYMENT))
+                .thenReturn(LeadLossReasonStage.PAYMENT_REJECT);
+        when(leadLossReasonPolicy.isAllowed("NO_RESPONSE", LeadLossReasonStage.PAYMENT_REJECT)).thenReturn(false);
+
+        BadRequestException ex = assertThrows(
+                BadRequestException.class,
+                () -> leadService.processEvent(leadId, LeadEvent.REJECT, "NO_RESPONSE", "no answer", adminId)
+        );
+
+        assertTrue(ex.getMessage().contains("not allowed"));
+        verify(leadRepository, never()).save(any());
+    }
+
+    @Test
     void getActiveLossReasonsShouldReturnOnlyActiveOrderedList() {
         when(leadLossReasonRepository.findByActiveTrueOrderBySortOrderAscNameAsc())
                 .thenReturn(List.of(
                         LeadLossReasonEntity.builder().code("PRICE").name("Цена").active(true).sortOrder(10).build(),
                         LeadLossReasonEntity.builder().code("OTHER").name("Другое").active(true).sortOrder(100).build()
                 ));
+        when(leadLossReasonPolicy.resolveStagesForCode("PRICE"))
+                .thenReturn(java.util.EnumSet.of(LeadLossReasonStage.PRE_QUALIFICATION, LeadLossReasonStage.PAYMENT_REJECT));
+        when(leadLossReasonPolicy.resolveStagesForCode("OTHER"))
+                .thenReturn(java.util.EnumSet.allOf(LeadLossReasonStage.class));
+        when(leadLossReasonPolicy.isAllowed("PRICE", LeadLossReasonStage.PAYMENT_REJECT)).thenReturn(true);
+        when(leadLossReasonPolicy.isAllowed("OTHER", LeadLossReasonStage.PAYMENT_REJECT)).thenReturn(true);
 
-        List<LeadLossReasonResponse> reasons = leadService.getActiveLossReasons();
+        List<LeadLossReasonResponse> reasons = leadService.getActiveLossReasons(LeadLossReasonStage.PAYMENT_REJECT);
 
         assertEquals(2, reasons.size());
         assertEquals("PRICE", reasons.get(0).code());
         assertEquals("Цена", reasons.get(0).name());
+        assertTrue(reasons.get(0).stages().contains(LeadLossReasonStage.PAYMENT_REJECT));
         assertEquals("OTHER", reasons.get(1).code());
     }
 

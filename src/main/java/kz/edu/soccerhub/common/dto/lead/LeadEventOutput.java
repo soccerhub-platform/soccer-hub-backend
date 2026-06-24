@@ -6,7 +6,7 @@ import java.util.UUID;
 
 public record LeadEventOutput(
         UUID leadId,
-        LeadStatus status
+        LeadStatus status,
+        LeadOutput lead
 ) {
 }
-

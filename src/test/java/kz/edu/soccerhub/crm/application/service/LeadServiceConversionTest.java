@@ -2,12 +2,18 @@ package kz.edu.soccerhub.crm.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
+import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryQueryInput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.ContractPaymentSummaryPort;
+import kz.edu.soccerhub.common.port.ContractSnapshotPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
@@ -47,6 +53,10 @@ class LeadServiceConversionTest {
     @Mock
     private ClientPort clientPort;
     @Mock
+    private ContractSnapshotPort contractSnapshotPort;
+    @Mock
+    private ContractPaymentSummaryPort contractPaymentSummaryPort;
+    @Mock
     private LeadActivityService leadActivityService;
 
     private DefaultLeadConversionService conversionService;
@@ -57,6 +67,8 @@ class LeadServiceConversionTest {
                 leadRepository,
                 groupPort,
                 clientPort,
+                contractSnapshotPort,
+                contractPaymentSummaryPort,
                 leadActivityService,
                 new ObjectMapper()
         );
@@ -79,13 +91,47 @@ class LeadServiceConversionTest {
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
         when(groupPort.getGroupById(groupId)).thenReturn(group(groupId, branchId));
         when(clientPort.convertLead(any())).thenReturn(new ClientConversionOutput(clientId, playerId, contractId));
+        when(contractSnapshotPort.getStudentContracts(branchId, playerId)).thenReturn(java.util.List.of(
+                new StudentContractSnapshotOutput(
+                        contractId,
+                        playerId,
+                        branchId,
+                        "CNT-2026-00001",
+                        kz.edu.soccerhub.client.domain.enums.ContractStatus.ACTIVE,
+                        request.contractStartDate(),
+                        request.contractEndDate(),
+                        request.amount(),
+                        "KZT",
+                        groupId,
+                        "Group A",
+                        null,
+                        null
+                )
+        ));
+        when(contractPaymentSummaryPort.getContractPaymentSummary(new ContractPaymentSummaryQueryInput(contractId, request.amount()))).thenReturn(new ContractPaymentSummaryOutput(
+                contractId,
+                request.amount(),
+                BigDecimal.ZERO,
+                request.amount(),
+                BigDecimal.ZERO,
+                ContractPaymentStatus.UNPAID,
+                null,
+                0
+        ));
 
         ConvertLeadResponse response = conversionService.convertLeadToClient(leadId, request, actorId);
 
         assertEquals(leadId, response.leadId());
+        assertEquals(LeadStatus.WAITING_PAYMENT, response.leadStatus());
         assertEquals(clientId, response.clientId());
+        assertEquals("Parent One", response.clientName());
         assertEquals(playerId, response.playerId());
+        assertEquals("Alex Doe", response.playerName());
         assertEquals(contractId, response.contractId());
+        assertEquals("CNT-2026-00001", response.contractNumber());
+        assertEquals(ContractPaymentStatus.UNPAID, response.paymentStatus());
+        assertEquals(request.amount(), response.amount());
+        assertEquals(request.amount(), response.outstandingAmount());
         assertEquals("CONVERTED", response.status());
         assertEquals(LeadStatus.WAITING_PAYMENT, lead.getStatus());
         assertEquals(clientId, lead.getClientId());
@@ -123,6 +169,7 @@ class LeadServiceConversionTest {
                 existingPlayerId,
                 existingContractId
         ));
+        when(contractSnapshotPort.getStudentContracts(branchId, existingPlayerId)).thenReturn(java.util.List.of());
 
         ConvertLeadResponse response = conversionService.convertLeadToClient(leadId, request(participantId, groupId), actorId);
 
@@ -148,6 +195,7 @@ class LeadServiceConversionTest {
                 UUID.randomUUID(),
                 UUID.randomUUID()
         ));
+        when(contractSnapshotPort.getStudentContracts(eq(branchId), any(UUID.class))).thenReturn(java.util.List.of());
 
         ConvertLeadRequest request = new ConvertLeadRequest(
                 participantId,

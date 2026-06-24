@@ -1,11 +1,13 @@
 package kz.edu.soccerhub.common.dto.lead;
 
+import kz.edu.soccerhub.crm.application.state.LeadEvent;
+
 public record LeadActionOutput(
-		String type,
+		LeadActionType type,
 		String label,
+        LeadEvent event,
 		boolean primary,
 		boolean danger,
 		boolean enabled
 ) {
 }
-

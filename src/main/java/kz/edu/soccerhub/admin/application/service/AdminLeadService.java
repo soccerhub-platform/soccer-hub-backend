@@ -8,6 +8,7 @@ import kz.edu.soccerhub.common.dto.lead.LeadCreateOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadEventOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadKanbanOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
+import kz.edu.soccerhub.common.dto.lead.LeadLossReasonStage;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
@@ -84,7 +85,7 @@ public class AdminLeadService {
     ) {
         verifyAdminAccessToLead(adminId, leadId);
         LeadStatus status = leadPort.processEvent(leadId, event, lostReasonCode, lostComment, adminId);
-        return new LeadEventOutput(leadId, status);
+        return new LeadEventOutput(leadId, status, leadPort.getLeadOutput(leadId, adminId));
     }
 
     @Transactional(readOnly = true)
@@ -102,9 +103,9 @@ public class AdminLeadService {
     }
 
     @Transactional(readOnly = true)
-    public List<LeadLossReasonResponse> getActiveLossReasons(UUID adminId) {
+    public List<LeadLossReasonResponse> getActiveLossReasons(UUID adminId, LeadLossReasonStage stage) {
         verifyAdminExists(adminId);
-        return leadPort.getActiveLossReasons();
+        return leadPort.getActiveLossReasons(stage);
     }
 
     private void verifyAdminAccessToLead(UUID adminId, UUID leadId) {

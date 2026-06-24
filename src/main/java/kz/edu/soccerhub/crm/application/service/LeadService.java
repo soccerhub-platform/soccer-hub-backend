@@ -8,6 +8,7 @@ import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
 import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
+import kz.edu.soccerhub.common.dto.lead.LeadLossReasonStage;
 import kz.edu.soccerhub.common.dto.lead.LeadOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadParticipantInput;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
@@ -64,6 +65,7 @@ public class LeadService implements LeadPort {
     private final LeadActivityService leadActivityService;
     private final LeadMapper leadMapper;
     private final LeadLossReasonRepository leadLossReasonRepository;
+    private final LeadLossReasonPolicy leadLossReasonPolicy;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -238,9 +240,7 @@ public class LeadService implements LeadPort {
         for (LeadStatus status : LeadStatus.values()) {
             outputColumns.put(
                     status,
-                    leadColumns.get(status).stream()
-                            .map(lead -> leadMapper.toOutput(lead, currentAdminId))
-                            .toList()
+                    leadMapper.toOutputs(leadColumns.get(status), currentAdminId)
             );
         }
 
@@ -261,16 +261,27 @@ public class LeadService implements LeadPort {
 
     @Transactional(readOnly = true)
     @Override
+    public LeadOutput getLeadOutput(UUID leadId, UUID currentAdminId) {
+        return leadMapper.toOutput(findById(leadId), currentAdminId);
+    }
+
+    @Transactional(readOnly = true)
+    @Override
     public UUID getLeadBranchId(UUID leadId) {
         return findById(leadId).getBranchId();
     }
 
     @Transactional(readOnly = true)
     @Override
-    public List<LeadLossReasonResponse> getActiveLossReasons() {
+    public List<LeadLossReasonResponse> getActiveLossReasons(LeadLossReasonStage stage) {
         return leadLossReasonRepository.findByActiveTrueOrderBySortOrderAscNameAsc()
                 .stream()
-                .map(reason -> new LeadLossReasonResponse(reason.getCode(), reason.getName()))
+                .filter(reason -> stage == null || leadLossReasonPolicy.isAllowed(reason.getCode(), stage))
+                .map(reason -> new LeadLossReasonResponse(
+                        reason.getCode(),
+                        reason.getName(),
+                        leadLossReasonPolicy.resolveStagesForCode(reason.getCode())
+                ))
                 .toList();
     }
 
@@ -342,7 +353,7 @@ public class LeadService implements LeadPort {
 
         String activityDetailsOverride = null;
         if (newStatus == LeadStatus.LOST) {
-            LeadLossReasonEntity reason = validateAndResolveLossReason(lostReasonCode, lostComment);
+            LeadLossReasonEntity reason = validateAndResolveLossReason(event, previousStatus, lostReasonCode, lostComment);
             lead.markLost(reason.getCode(), trim(lostComment), LocalDateTime.now());
             activityDetailsOverride = buildLostDetails(event, reason.getCode(), trim(lostComment));
         } else if (previousStatus == LeadStatus.LOST) {
@@ -382,7 +393,12 @@ public class LeadService implements LeadPort {
         }
     }
 
-    private LeadLossReasonEntity validateAndResolveLossReason(String lostReasonCode, String lostComment) {
+    private LeadLossReasonEntity validateAndResolveLossReason(
+            LeadEvent event,
+            LeadStatus previousStatus,
+            String lostReasonCode,
+            String lostComment
+    ) {
         if (lostReasonCode == null || lostReasonCode.isBlank()) {
             throw new BadRequestException("lostReasonCode is required for LOST transition");
         }
@@ -392,6 +408,15 @@ public class LeadService implements LeadPort {
 
         if ("OTHER".equals(reason.getCode()) && (lostComment == null || lostComment.isBlank())) {
             throw new BadRequestException("lostComment is required for OTHER loss reason");
+        }
+
+        LeadLossReasonStage stage = leadLossReasonPolicy.resolveStage(event, previousStatus);
+        if (stage != null && !leadLossReasonPolicy.isAllowed(reason.getCode(), stage)) {
+            throw new BadRequestException("Loss reason is not allowed for lead stage", java.util.Map.of(
+                    "reasonCode", reason.getCode(),
+                    "stage", stage.name(),
+                    "event", event.name()
+            ));
         }
 
         return reason;

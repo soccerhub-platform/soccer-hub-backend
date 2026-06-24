@@ -12,6 +12,7 @@ import kz.edu.soccerhub.common.dto.lead.LeadEventInput;
 import kz.edu.soccerhub.common.dto.lead.LeadEventOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadKanbanOutput;
 import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
+import kz.edu.soccerhub.common.dto.lead.LeadLossReasonStage;
 import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
 import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
 import lombok.RequiredArgsConstructor;
@@ -125,10 +126,11 @@ public class AdminLeadController {
     @GetMapping("/loss-reasons")
     @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<List<LeadLossReasonResponse>> getLossReasons(
-            @AuthenticationPrincipal Jwt jwt
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) LeadLossReasonStage stage
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
-        return ResponseEntity.ok(adminLeadService.getActiveLossReasons(adminId));
+        return ResponseEntity.ok(adminLeadService.getActiveLossReasons(adminId, stage));
     }
 
     @GetMapping("/kanban")
