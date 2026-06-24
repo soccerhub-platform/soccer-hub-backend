@@ -7,12 +7,14 @@ import kz.edu.soccerhub.common.dto.contract.ContractExtendCommand;
 import kz.edu.soccerhub.common.dto.contract.ContractGroupLookupOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractParticipantLookupOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractSearchQuery;
+import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractUpdateCommand;
 import kz.edu.soccerhub.common.dto.contract.ContractsPageOutput;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentContextOutput;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,6 +31,10 @@ public interface ContractPort {
     List<ContractParticipantLookupOutput> getParticipants(UUID branchId);
 
     List<ContractGroupLookupOutput> getGroups(UUID branchId, LeadType leadType);
+
+    List<StudentContractSnapshotOutput> getStudentContracts(UUID branchId, Collection<UUID> playerIds);
+
+    List<StudentContractSnapshotOutput> getStudentContracts(UUID branchId, UUID playerId);
 
     ContractDetailsOutput create(ContractCreateCommand command, UUID actorUserId);
 

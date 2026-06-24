@@ -17,12 +17,16 @@ import kz.edu.soccerhub.coach.domain.repository.TrainingSessionAttendanceReposit
 import kz.edu.soccerhub.coach.domain.repository.TrainingSessionRepository;
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
 import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
+import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -45,6 +49,7 @@ public class CoachService implements CoachPort {
     private final TrainingSessionAttendanceRepository trainingSessionAttendanceRepository;
     private final CoachStatusHistoryRepository coachStatusHistoryRepository;
     private final AppUserRepo appUserRepo;
+    private final GroupPort groupPort;
 
     @Transactional
     public UUID create(CoachCreateCommand command) {
@@ -286,6 +291,67 @@ public class CoachService implements CoachPort {
                 .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<PlayerAttendanceSummaryDto> getAttendanceSummaries(Set<UUID> playerIds) {
+        if (playerIds == null || playerIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<TrainingSessionAttendance> attendances = trainingSessionAttendanceRepository.findByPlayerIdIn(playerIds);
+        if (attendances.isEmpty()) {
+            return playerIds.stream()
+                    .map(playerId -> new PlayerAttendanceSummaryDto(playerId, 0, 0, 0, 0, 0, 0))
+                    .toList();
+        }
+
+        Set<UUID> sessionIds = attendances.stream()
+                .map(TrainingSessionAttendance::getSessionId)
+                .collect(Collectors.toSet());
+        Map<UUID, TrainingSession> sessionsById = trainingSessionRepository.findAllById(sessionIds).stream()
+                .collect(Collectors.toMap(TrainingSession::getId, item -> item));
+        LocalDate last30Boundary = LocalDate.now().minusDays(30);
+
+        Map<UUID, List<TrainingSessionAttendance>> byPlayerId = attendances.stream()
+                .collect(Collectors.groupingBy(TrainingSessionAttendance::getPlayerId));
+
+        return playerIds.stream()
+                .map(playerId -> summarizeAttendance(playerId, byPlayerId.getOrDefault(playerId, List.of()), sessionsById, last30Boundary))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PlayerAttendanceRecordDto> getRecentAttendance(UUID playerId, int limit) {
+        if (playerId == null || limit <= 0) {
+            return List.of();
+        }
+
+        List<TrainingSessionAttendance> attendances = trainingSessionAttendanceRepository.findByPlayerId(playerId);
+        if (attendances.isEmpty()) {
+            return List.of();
+        }
+
+        Set<UUID> sessionIds = attendances.stream()
+                .map(TrainingSessionAttendance::getSessionId)
+                .collect(Collectors.toSet());
+        Map<UUID, TrainingSession> sessionsById = trainingSessionRepository.findAllById(sessionIds).stream()
+                .collect(Collectors.toMap(TrainingSession::getId, item -> item));
+        Set<UUID> groupIds = sessionsById.values().stream()
+                .map(TrainingSession::getGroupId)
+                .collect(Collectors.toSet());
+        Map<UUID, GroupDto> groupsById = groupIds.isEmpty()
+                ? Map.of()
+                : groupPort.getGroupsByIds(groupIds).stream().collect(Collectors.toMap(GroupDto::groupId, item -> item));
+
+        return attendances.stream()
+                .map(attendance -> toAttendanceRecord(attendance, sessionsById.get(attendance.getSessionId()), groupsById))
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(PlayerAttendanceRecordDto::sessionDate).reversed())
+                .limit(limit)
+                .toList();
+    }
+
     private int calculateAttendanceRate(List<TrainingSessionAttendance> attendances) {
         if (attendances.isEmpty()) {
             return 0;
@@ -297,6 +363,64 @@ public class CoachService implements CoachPort {
                 .count();
 
         return (int) Math.round((attended * 100.0) / attendances.size());
+    }
+
+    private PlayerAttendanceSummaryDto summarizeAttendance(
+            UUID playerId,
+            List<TrainingSessionAttendance> attendances,
+            Map<UUID, TrainingSession> sessionsById,
+            LocalDate last30Boundary
+    ) {
+        int presentCount = 0;
+        int absentCount = 0;
+        int lateCount = 0;
+        int excusedCount = 0;
+        int missedLast30Days = 0;
+
+        for (TrainingSessionAttendance attendance : attendances) {
+            switch (attendance.getStatus()) {
+                case PRESENT -> presentCount++;
+                case ABSENT -> absentCount++;
+                case LATE -> lateCount++;
+                case EXCUSED -> excusedCount++;
+            }
+
+            TrainingSession session = sessionsById.get(attendance.getSessionId());
+            if (session != null
+                    && !session.getSessionDate().isBefore(last30Boundary)
+                    && attendance.getStatus() == TrainingSessionAttendanceStatus.ABSENT) {
+                missedLast30Days++;
+            }
+        }
+
+        return new PlayerAttendanceSummaryDto(
+                playerId,
+                calculateAttendanceRate(attendances),
+                presentCount,
+                absentCount,
+                lateCount,
+                excusedCount,
+                missedLast30Days
+        );
+    }
+
+    private PlayerAttendanceRecordDto toAttendanceRecord(
+            TrainingSessionAttendance attendance,
+            TrainingSession session,
+            Map<UUID, GroupDto> groupsById
+    ) {
+        if (session == null) {
+            return null;
+        }
+        GroupDto group = groupsById.get(session.getGroupId());
+        return new PlayerAttendanceRecordDto(
+                attendance.getPlayerId(),
+                session.getId(),
+                session.getSessionDate(),
+                session.getGroupId(),
+                group == null ? null : group.name(),
+                attendance.getStatus()
+        );
     }
 
     private CoachDto toDto(@NotNull CoachProfile coachProfile) {

@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -90,6 +91,8 @@ public class PaymentService implements PaymentPort {
                 query.branchId(),
                 query.contractId(),
                 query.clientId(),
+                normalizeSearchLike(query.search()),
+                parseUuid(query.search()),
                 query.statuses() == null ? List.of() : query.statuses(),
                 query.statuses() == null || query.statuses().isEmpty(),
                 query.methods() == null ? List.of() : query.methods(),
@@ -111,6 +114,32 @@ public class PaymentService implements PaymentPort {
                 page.getNumber(),
                 page.getSize()
         );
+    }
+
+    private String normalizeSearchLike(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim().toLowerCase(Locale.ROOT);
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return "%" + trimmed + "%";
+    }
+
+    private UUID parseUuid(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(trimmed);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     @Override

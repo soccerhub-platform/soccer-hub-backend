@@ -17,6 +17,7 @@ import kz.edu.soccerhub.common.dto.client.ClientCreateCommandOutput;
 import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
 import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
+import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.BranchPort;
@@ -153,6 +154,22 @@ public class ClientService implements ClientPort {
         );
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<StudentProfileDto> getStudentProfilesByBranch(UUID branchId) {
+        return playerRepository.findAllByParentBranchId(branchId).stream()
+                .map(this::toStudentProfile)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StudentProfileDto getStudentProfile(UUID playerId) {
+        Player player = playerRepository.findWithParentById(playerId)
+                .orElseThrow(() -> new NotFoundException("Player not found", playerId));
+        return toStudentProfile(player);
+    }
+
     private Client resolveOrCreateClient(ClientConversionCommand command) {
         if (command.existingClientId() != null) {
             return clientRepository.findById(command.existingClientId())
@@ -252,6 +269,21 @@ public class ClientService implements ClientPort {
         return "CNT-" + year + "-" + String.format(java.util.Locale.ROOT, "%05d", seed);
     }
 
+    private StudentProfileDto toStudentProfile(Player player) {
+        Client client = player.getParent();
+        return new StudentProfileDto(
+                client == null ? null : client.getBranchId(),
+                player.getId(),
+                joinName(player.getFirstName(), player.getLastName()),
+                player.getBirthDate(),
+                client == null ? null : client.getId(),
+                client == null ? null : joinName(client.getFirstName(), client.getLastName()),
+                client == null ? null : client.getPhone(),
+                client == null ? null : trimToNull(client.getComments()),
+                client == null || client.getStatus() == null ? null : client.getStatus().name()
+        );
+    }
+
     private GroupMemberDto toGroupMember(List<Contract> contracts, Player player) {
         if (player == null) {
             return null;
@@ -286,9 +318,21 @@ public class ClientService implements ClientPort {
     }
 
     private String buildPlayerName(Player player) {
-        String firstName = player.getFirstName() == null ? "" : player.getFirstName().trim();
-        String lastName = player.getLastName() == null ? "" : player.getLastName().trim();
-        return (firstName + " " + lastName).trim();
+        return joinName(player.getFirstName(), player.getLastName());
+    }
+
+    private String joinName(String firstName, String lastName) {
+        String left = firstName == null ? "" : firstName.trim();
+        String right = lastName == null ? "" : lastName.trim();
+        return (left + " " + right).trim();
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String[] splitName(String fullName) {

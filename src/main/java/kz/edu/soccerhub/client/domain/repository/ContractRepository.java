@@ -27,6 +27,10 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
 
     List<Contract> findByGroupId(UUID groupId);
 
+    List<Contract> findByPlayerIdIn(Collection<UUID> playerIds);
+
+    List<Contract> findByPlayerId(UUID playerId);
+
     Optional<Contract> findTopByPlayerIdOrderByCreatedAtDesc(UUID playerId);
 
     boolean existsByContractNumber(String contractNumber);

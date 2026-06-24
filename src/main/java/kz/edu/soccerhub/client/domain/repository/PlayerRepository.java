@@ -26,6 +26,22 @@ public interface PlayerRepository extends JpaRepository<Player, UUID> {
             select p
             from Player p
             join fetch p.parent parent
+            where p.id = :playerId
+            """)
+    Optional<Player> findWithParentById(UUID playerId);
+
+    @Query("""
+            select p
+            from Player p
+            join fetch p.parent parent
+            where p.id in :playerIds
+            """)
+    List<Player> findAllWithParentByIdIn(Iterable<UUID> playerIds);
+
+    @Query("""
+            select p
+            from Player p
+            join fetch p.parent parent
             where parent.branchId = :branchId
             order by lower(p.firstName), lower(p.lastName)
             """)

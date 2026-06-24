@@ -11,6 +11,7 @@ public record PaymentSearchQuery(
         UUID branchId,
         UUID contractId,
         UUID clientId,
+        String search,
         Set<PaymentStatus> statuses,
         Set<PaymentMethod> methods,
         LocalDateTime paidFrom,

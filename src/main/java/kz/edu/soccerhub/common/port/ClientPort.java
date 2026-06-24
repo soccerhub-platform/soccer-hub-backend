@@ -5,6 +5,7 @@ import kz.edu.soccerhub.common.dto.client.ClientCreateCommandOutput;
 import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
 import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
+import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
 
 import java.util.List;
 import java.util.UUID;
@@ -28,4 +29,8 @@ public interface ClientPort {
     List<GroupMemberDto> getGroupMembers(UUID groupId);
 
     ClientConversionOutput convertLead(ClientConversionCommand command);
+
+    List<StudentProfileDto> getStudentProfilesByBranch(UUID branchId);
+
+    StudentProfileDto getStudentProfile(UUID playerId);
 }

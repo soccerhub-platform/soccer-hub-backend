@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.payments.application;
+package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
 import kz.edu.soccerhub.common.dto.payment.PaymentCancelCommand;
@@ -9,8 +9,6 @@ import kz.edu.soccerhub.common.dto.payment.PaymentSearchQuery;
 import kz.edu.soccerhub.common.dto.payment.PaymentsPageOutput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
-import kz.edu.soccerhub.common.port.AdminBranchAccessPort;
-import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.common.port.ContractPort;
 import kz.edu.soccerhub.common.port.PaymentPort;
 import lombok.RequiredArgsConstructor;
@@ -27,20 +25,18 @@ public class AdminPaymentService {
 
     private final PaymentPort paymentPort;
     private final ContractPort contractPort;
-    private final AdminPort adminPort;
-    private final AdminBranchAccessPort adminBranchAccessPort;
+    private final AdminService adminService;
+    private final AdminBranchService adminBranchService;
 
     @Transactional
     public PaymentCreateOutput create(UUID adminId, PaymentCreateCommand command) {
-        verifyAdminExists(adminId);
-        verifyAdminBranchAccess(adminId, contractPort.getBranchId(command.contractId()));
+        verifyAdminAccessToBranch(adminId, contractPort.getBranchId(command.contractId()));
         return paymentPort.createPayment(command, adminId);
     }
 
     @Transactional(readOnly = true)
     public PaymentsPageOutput list(UUID adminId, PaymentSearchQuery query, Pageable pageable) {
-        verifyAdminExists(adminId);
-        verifyAdminBranchAccess(adminId, query.branchId());
+        verifyAdminAccessToBranch(adminId, query.branchId());
         return paymentPort.listPayments(query, pageable);
     }
 
@@ -62,26 +58,28 @@ public class AdminPaymentService {
 
     @Transactional(readOnly = true)
     public ContractPaymentSummaryOutput getContractSummary(UUID adminId, UUID contractId) {
-        verifyAdminExists(adminId);
-        verifyAdminBranchAccess(adminId, contractPort.getBranchId(contractId));
+        verifyAdminAccessToBranch(adminId, contractPort.getBranchId(contractId));
         return paymentPort.getContractPaymentSummary(contractId);
     }
 
     @Transactional(readOnly = true)
     public List<PaymentOutput> getContractPayments(UUID adminId, UUID contractId) {
-        verifyAdminExists(adminId);
-        verifyAdminBranchAccess(adminId, contractPort.getBranchId(contractId));
+        verifyAdminAccessToBranch(adminId, contractPort.getBranchId(contractId));
         return paymentPort.getContractPayments(contractId);
     }
 
+    private void verifyAdminAccessToBranch(UUID adminId, UUID branchId) {
+        verifyAdminExists(adminId);
+        verifyAdminBranchAccess(adminId, branchId);
+    }
+
     private void verifyAdminExists(UUID adminId) {
-        if (!adminPort.verifyAdmin(adminId)) {
-            throw new NotFoundException("Admin not found", adminId);
-        }
+        adminService.findById(adminId)
+                .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
     }
 
     private void verifyAdminBranchAccess(UUID adminId, UUID branchId) {
-        if (!adminBranchAccessPort.verifyAdminBelongsToBranch(adminId, branchId)) {
+        if (!adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)) {
             throw new BadRequestException("Admin does not have access to branch", branchId);
         }
     }

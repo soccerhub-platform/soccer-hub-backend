@@ -14,4 +14,8 @@ public interface TrainingSessionAttendanceRepository extends JpaRepository<Train
     List<TrainingSessionAttendance> findBySessionId(UUID sessionId);
 
     List<TrainingSessionAttendance> findBySessionIdIn(Set<UUID> sessionIds);
+
+    List<TrainingSessionAttendance> findByPlayerIdIn(Set<UUID> playerIds);
+
+    List<TrainingSessionAttendance> findByPlayerId(UUID playerId);
 }

@@ -1,13 +1,13 @@
-package kz.edu.soccerhub.payments.api;
+package kz.edu.soccerhub.admin.api;
 
 import jakarta.validation.Valid;
+import kz.edu.soccerhub.admin.application.service.AdminPaymentService;
 import kz.edu.soccerhub.common.dto.payment.PaymentCancelCommand;
 import kz.edu.soccerhub.common.dto.payment.PaymentCreateCommand;
 import kz.edu.soccerhub.common.dto.payment.PaymentCreateOutput;
 import kz.edu.soccerhub.common.dto.payment.PaymentOutput;
 import kz.edu.soccerhub.common.dto.payment.PaymentSearchQuery;
 import kz.edu.soccerhub.common.dto.payment.PaymentsPageOutput;
-import kz.edu.soccerhub.payments.application.AdminPaymentService;
 import kz.edu.soccerhub.payments.domain.enums.PaymentMethod;
 import kz.edu.soccerhub.payments.domain.enums.PaymentStatus;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +56,7 @@ public class AdminPaymentController {
             @RequestParam UUID branchId,
             @RequestParam(required = false) UUID contractId,
             @RequestParam(required = false) UUID clientId,
+            @RequestParam(required = false) String search,
             @RequestParam(required = false) Set<PaymentStatus> status,
             @RequestParam(required = false) Set<PaymentMethod> method,
             @RequestParam(required = false) LocalDateTime paidFrom,
@@ -66,7 +67,7 @@ public class AdminPaymentController {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "paidAt", "createdAt"));
         return ResponseEntity.ok(adminPaymentService.list(
                 getCurrentUserId(jwt),
-                new PaymentSearchQuery(branchId, contractId, clientId, status, method, paidFrom, paidTo),
+                new PaymentSearchQuery(branchId, contractId, clientId, search, status, method, paidFrom, paidTo),
                 pageable
         ));
     }

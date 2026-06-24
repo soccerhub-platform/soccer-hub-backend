@@ -1,0 +1,277 @@
+package kz.edu.soccerhub.admin.application.service;
+
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentDetailsOutput;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentRiskCode;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsPageOutput;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsQuery;
+import kz.edu.soccerhub.client.domain.enums.ContractStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
+import kz.edu.soccerhub.common.dto.admin.AdminDto;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
+import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
+import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryQueryInput;
+import kz.edu.soccerhub.common.dto.payment.PaymentOutput;
+import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
+import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.ContractPort;
+import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupSchedulePort;
+import kz.edu.soccerhub.common.port.PaymentPort;
+import kz.edu.soccerhub.payments.domain.enums.PaymentMethod;
+import kz.edu.soccerhub.payments.domain.enums.PaymentStatus;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
+
+import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class AdminStudentReadServiceTest {
+
+    @Mock
+    private ClientPort clientPort;
+    @Mock
+    private ContractPort contractPort;
+    @Mock
+    private PaymentPort paymentPort;
+    @Mock
+    private CoachPort coachPort;
+    @Mock
+    private GroupSchedulePort groupSchedulePort;
+    @Mock
+    private AdminService adminService;
+    @Mock
+    private AdminBranchService adminBranchService;
+
+    private AdminStudentReadService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new AdminStudentReadService(
+                clientPort,
+                contractPort,
+                paymentPort,
+                coachPort,
+                groupSchedulePort,
+                adminService,
+                adminBranchService
+        );
+    }
+
+    @Test
+    void getStudentsShouldReturnAggregatedListFilteredByRisk() {
+        UUID adminId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID debtPlayerId = UUID.randomUUID();
+        UUID noGroupPlayerId = UUID.randomUUID();
+        UUID contractId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(admin(adminId)));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(clientPort.getStudentProfilesByBranch(branchId)).thenReturn(List.of(
+                profile(branchId, debtPlayerId, "Alex Doe", "Jane Doe"),
+                profile(branchId, noGroupPlayerId, "Mia Roe", "John Roe")
+        ));
+        when(contractPort.getStudentContracts(branchId, List.of(debtPlayerId, noGroupPlayerId))).thenReturn(List.of(
+                contract(contractId, debtPlayerId, groupId, "Group A", ContractStatus.ACTIVE, LocalDate.now().plusDays(5))
+        ));
+        when(coachPort.getAttendanceSummaries(Set.of(debtPlayerId, noGroupPlayerId))).thenReturn(List.of(
+                new PlayerAttendanceSummaryDto(debtPlayerId, 82, 9, 1, 1, 0, 1),
+                new PlayerAttendanceSummaryDto(noGroupPlayerId, 40, 2, 3, 0, 0, 3)
+        ));
+        when(paymentPort.getContractPaymentSummaries(ArgumentMatchers.<List<ContractPaymentSummaryQueryInput>>any())).thenReturn(Map.of(
+                contractId,
+                new ContractPaymentSummaryOutput(
+                        contractId,
+                        BigDecimal.valueOf(50000),
+                        BigDecimal.valueOf(20000),
+                        BigDecimal.valueOf(30000),
+                        BigDecimal.ZERO,
+                        ContractPaymentStatus.PARTIALLY_PAID,
+                        LocalDateTime.of(2026, 6, 23, 12, 0),
+                        1
+                )
+        ));
+
+        AdminStudentsPageOutput output = service.getStudents(
+                adminId,
+                new AdminStudentsQuery(branchId, null, null, null, AdminStudentRiskCode.DEBT, null),
+                PageRequest.of(0, 20),
+                "playerName,asc"
+        );
+
+        assertEquals(1, output.content().size());
+        assertEquals(debtPlayerId, output.content().getFirst().playerId());
+        assertEquals(ContractPaymentStatus.PARTIALLY_PAID, output.content().getFirst().paymentStatus());
+        assertEquals("Group A", output.content().getFirst().groupName());
+        assertTrue(output.content().getFirst().risks().stream().anyMatch(risk -> risk.code() == AdminStudentRiskCode.DEBT));
+    }
+
+    @Test
+    void getStudentShouldPreferUpcomingContractAndPopulateDetailBlocks() {
+        UUID adminId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        UUID upcomingContractId = UUID.randomUUID();
+        UUID expiredContractId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(admin(adminId)));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(clientPort.getStudentProfile(playerId)).thenReturn(profile(branchId, playerId, "Alex Doe", "Jane Doe"));
+        when(contractPort.getStudentContracts(branchId, playerId)).thenReturn(List.of(
+                contract(expiredContractId, playerId, groupId, "Group A", ContractStatus.EXPIRED, LocalDate.now().minusDays(1)),
+                contract(upcomingContractId, playerId, groupId, "Group A", ContractStatus.UPCOMING, LocalDate.now().plusDays(30))
+        ));
+        when(paymentPort.getContractPaymentSummaries(ArgumentMatchers.<List<ContractPaymentSummaryQueryInput>>any())).thenReturn(Map.of(
+                upcomingContractId,
+                new ContractPaymentSummaryOutput(
+                        upcomingContractId,
+                        BigDecimal.valueOf(60000),
+                        BigDecimal.ZERO,
+                        BigDecimal.valueOf(60000),
+                        BigDecimal.ZERO,
+                        ContractPaymentStatus.UNPAID,
+                        null,
+                        0
+                )
+        ));
+        when(coachPort.getAttendanceSummaries(Set.of(playerId))).thenReturn(List.of(
+                new PlayerAttendanceSummaryDto(playerId, 75, 6, 2, 1, 0, 2)
+        ));
+        when(coachPort.getRecentAttendance(playerId, 10)).thenReturn(List.of(
+                new PlayerAttendanceRecordDto(
+                        playerId,
+                        UUID.randomUUID(),
+                        LocalDate.now().minusDays(1),
+                        groupId,
+                        "Group A",
+                        TrainingSessionAttendanceStatus.PRESENT
+                )
+        ));
+        when(paymentPort.getContractPayments(upcomingContractId)).thenReturn(List.of(
+                new PaymentOutput(
+                        UUID.randomUUID(),
+                        upcomingContractId,
+                        "CNT-2026-00001",
+                        UUID.randomUUID(),
+                        "Jane Doe",
+                        playerId,
+                        "Alex Doe",
+                        branchId,
+                        BigDecimal.valueOf(10000),
+                        "KZT",
+                        PaymentMethod.CASH,
+                        PaymentStatus.PAID,
+                        LocalDateTime.of(2026, 6, 23, 12, 0),
+                        LocalDateTime.of(2026, 6, 23, 12, 0),
+                        UUID.randomUUID(),
+                        "Admin User",
+                        "First payment",
+                        null,
+                        null,
+                        null,
+                        LocalDateTime.of(2026, 6, 23, 12, 0),
+                        LocalDateTime.of(2026, 6, 23, 12, 0)
+                )
+        ));
+        when(groupSchedulePort.getActiveSchedulesByGroup(groupId)).thenReturn(List.of(
+                GroupScheduleDto.builder()
+                        .scheduleId(UUID.randomUUID())
+                        .groupId(groupId)
+                        .coachId(UUID.randomUUID())
+                        .branchId(branchId)
+                        .dayOfWeek(DayOfWeek.MONDAY)
+                        .startTime(LocalTime.of(18, 0))
+                        .endTime(LocalTime.of(19, 0))
+                        .startDate(LocalDate.now().minusDays(3))
+                        .endDate(LocalDate.now().plusMonths(1))
+                        .scheduleType("REGULAR")
+                        .status("ACTIVE")
+                        .substitution(false)
+                        .build()
+        ));
+
+        AdminStudentDetailsOutput output = service.getStudent(adminId, playerId);
+
+        assertEquals(upcomingContractId, output.currentContract().id());
+        assertEquals(ContractStatus.UPCOMING, output.currentContract().status());
+        assertEquals("Group A", output.currentGroup().name());
+        assertNotNull(output.currentGroup().scheduleLabel());
+        assertEquals(1, output.recentPayments().size());
+        assertEquals(1, output.recentAttendance().size());
+        assertEquals(ContractPaymentStatus.UNPAID, output.currentContract().paymentStatus());
+    }
+
+    private AdminDto admin(UUID adminId) {
+        return AdminDto.builder()
+                .id(adminId)
+                .firstName("Admin")
+                .lastName("User")
+                .branchesId(Set.of())
+                .build();
+    }
+
+    private StudentProfileDto profile(UUID branchId, UUID playerId, String playerName, String parentName) {
+        return new StudentProfileDto(
+                branchId,
+                playerId,
+                playerName,
+                LocalDate.of(2015, 5, 10),
+                UUID.randomUUID(),
+                parentName,
+                "+77010000000",
+                "parent@example.com",
+                "ACTIVE"
+        );
+    }
+
+    private StudentContractSnapshotOutput contract(
+            UUID contractId,
+            UUID playerId,
+            UUID groupId,
+            String groupName,
+            ContractStatus status,
+            LocalDate endDate
+    ) {
+        LocalDate startDate = status == ContractStatus.UPCOMING ? LocalDate.now().plusDays(1) : LocalDate.now().minusDays(20);
+        return new StudentContractSnapshotOutput(
+                contractId,
+                playerId,
+                UUID.randomUUID(),
+                "CNT-2026-00001",
+                status,
+                startDate,
+                endDate,
+                BigDecimal.valueOf(50000),
+                "KZT",
+                groupId,
+                groupName,
+                UUID.randomUUID(),
+                "Coach Smith"
+        );
+    }
+}

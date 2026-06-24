@@ -31,6 +31,7 @@ import kz.edu.soccerhub.common.dto.contract.ContractParticipantOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractPrimaryContactDraftInput;
 import kz.edu.soccerhub.common.dto.contract.ContractPrimaryContactOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractSearchQuery;
+import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractUpdateCommand;
 import kz.edu.soccerhub.common.dto.contract.ContractValidationError;
 import kz.edu.soccerhub.common.dto.contract.ContractsPageOutput;
@@ -226,6 +227,32 @@ public class ContractService implements ContractPort {
                         toCoachOutput(coaches.get(coachIdsByGroup.get(group.groupId())))
                 ))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<StudentContractSnapshotOutput> getStudentContracts(UUID branchId, Collection<UUID> playerIds) {
+        if (playerIds == null || playerIds.isEmpty()) {
+            return List.of();
+        }
+        return toStudentContractSnapshots(
+                contractRepository.findByPlayerIdIn(playerIds).stream()
+                        .filter(contract -> belongsToBranch(contract, branchId))
+                        .toList()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<StudentContractSnapshotOutput> getStudentContracts(UUID branchId, UUID playerId) {
+        if (playerId == null) {
+            return List.of();
+        }
+        return toStudentContractSnapshots(
+                contractRepository.findByPlayerId(playerId).stream()
+                        .filter(contract -> belongsToBranch(contract, branchId))
+                        .toList()
+        );
     }
 
     @Override
@@ -648,6 +675,42 @@ public class ContractService implements ContractPort {
                 .toList();
     }
 
+    private List<StudentContractSnapshotOutput> toStudentContractSnapshots(List<Contract> contracts) {
+        if (contracts.isEmpty()) {
+            return List.of();
+        }
+
+        touchLifecycleStatuses(contracts);
+        Map<UUID, Player> players = loadPlayers(contracts);
+        Map<UUID, Client> clients = loadClients(players.values());
+        Map<UUID, GroupDto> groups = loadGroups(contracts);
+        Map<UUID, CoachDto> coaches = loadCoaches(contracts);
+
+        return contracts.stream()
+                .map(contract -> {
+                    Player player = players.get(contract.getPlayerId());
+                    Client client = player == null || player.getParent() == null ? null : clients.get(player.getParent().getId());
+                    GroupDto group = groups.get(contract.getGroupId());
+                    CoachDto coach = contract.getCoachId() == null ? null : coaches.get(contract.getCoachId());
+                    return new StudentContractSnapshotOutput(
+                            contract.getId(),
+                            contract.getPlayerId(),
+                            client == null ? null : client.getBranchId(),
+                            contract.getContractNumber(),
+                            contract.getStatus(),
+                            contract.getStartDate(),
+                            contract.getEndDate(),
+                            defaultAmount(contract.getAmount()),
+                            contract.getCurrency(),
+                            contract.getGroupId(),
+                            group == null ? null : group.name(),
+                            contract.getCoachId(),
+                            coach == null ? null : joinName(coach.firstName(), coach.lastName())
+                    );
+                })
+                .toList();
+    }
+
     private ContractListItemOutput toListItem(
             Contract contract,
             Player player,
@@ -856,6 +919,11 @@ public class ContractService implements ContractPort {
 
     private String buildClientName(Client client) {
         return joinName(client.getFirstName(), client.getLastName());
+    }
+
+    private boolean belongsToBranch(Contract contract, UUID branchId) {
+        Player player = findPlayer(contract.getPlayerId());
+        return Objects.equals(requireParent(player).getBranchId(), branchId);
     }
 
     private String buildCoachName(CoachDto coach) {

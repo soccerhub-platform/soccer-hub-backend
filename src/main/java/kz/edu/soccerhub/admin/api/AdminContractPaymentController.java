@@ -1,8 +1,8 @@
-package kz.edu.soccerhub.payments.api;
+package kz.edu.soccerhub.admin.api;
 
+import kz.edu.soccerhub.admin.application.service.AdminPaymentService;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
 import kz.edu.soccerhub.common.dto.payment.PaymentOutput;
-import kz.edu.soccerhub.payments.application.AdminPaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
