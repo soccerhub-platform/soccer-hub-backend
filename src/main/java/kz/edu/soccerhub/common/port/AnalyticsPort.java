@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.common.port;
 
 import kz.edu.soccerhub.common.dto.analytics.AnalyticsGroupBy;
+import kz.edu.soccerhub.common.dto.analytics.DashboardLeadAnalyticsOutput;
 import kz.edu.soccerhub.common.dto.analytics.AnalyticsResponseOutput;
 
 import java.time.LocalDate;
@@ -66,5 +67,11 @@ public interface AnalyticsPort {
             String timezone,
             UUID coachId,
             UUID groupId
+    );
+
+    DashboardLeadAnalyticsOutput getDashboardLeadAnalytics(
+            UUID branchId,
+            LocalDate date,
+            String timezone
     );
 }

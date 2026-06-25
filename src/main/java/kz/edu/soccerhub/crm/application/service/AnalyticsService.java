@@ -11,9 +11,11 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 
 @Service
@@ -178,6 +180,30 @@ public class AnalyticsService implements AnalyticsPort {
                 summary,
                 Map.of("kpi", summary),
                 totals
+        );
+    }
+
+    @Override
+    public DashboardLeadAnalyticsOutput getDashboardLeadAnalytics(UUID branchId, LocalDate date, String timezone) {
+        String resolvedTimezone = normalizeTimezone(timezone);
+        LocalDate kpiDateFrom = date.minusDays(27);
+        LocalDate weekStart = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).minusWeeks(2);
+
+        Map<LeadStatus, Long> funnelTotals = loadFunnelTotals(
+                branchId,
+                kpiDateFrom,
+                date,
+                resolvedTimezone,
+                null,
+                null
+        );
+
+        return new DashboardLeadAnalyticsOutput(
+                funnelTotals.getOrDefault(LeadStatus.NEW, 0L),
+                loadAverageLeadDurationMinutes(branchId, kpiDateFrom, date, resolvedTimezone, "CONTACTED"),
+                loadLeadBreachCount(branchId, kpiDateFrom, date, resolvedTimezone, "CONTACTED", 120),
+                funnelTotals,
+                loadDashboardWeeklyTrend(branchId, weekStart, date, resolvedTimezone)
         );
     }
 
@@ -816,6 +842,94 @@ public class AnalyticsService implements AnalyticsPort {
             int p90 = (int) Math.round(rs.getDouble("p90") * multiplier);
             return new SlaPercentileOutput(p50, p75, p90);
         });
+    }
+
+    private int loadAverageLeadDurationMinutes(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            String timezone,
+            String status
+    ) {
+        String sql = """
+                select coalesce(avg(diff_minutes), 0)
+                from (%s) t
+                """.formatted(leadDurationSql(status));
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("branchId", branchId)
+                .addValue("dateFrom", dateFrom)
+                .addValue("dateTo", dateTo)
+                .addValue("tz", timezone)
+                .addValue("coachId", null)
+                .addValue("groupId", null);
+
+        Double average = jdbcTemplate.queryForObject(sql, params, Double.class);
+        return (int) Math.round(average == null ? 0.0 : average);
+    }
+
+    private long loadLeadBreachCount(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            String timezone,
+            String status,
+            int thresholdMinutes
+    ) {
+        String sql = """
+                select count(*)
+                from (%s) t
+                where diff_minutes > :thresholdMinutes
+                """.formatted(leadDurationSql(status));
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("branchId", branchId)
+                .addValue("dateFrom", dateFrom)
+                .addValue("dateTo", dateTo)
+                .addValue("tz", timezone)
+                .addValue("coachId", null)
+                .addValue("groupId", null)
+                .addValue("thresholdMinutes", thresholdMinutes);
+
+        Long count = jdbcTemplate.queryForObject(sql, params, Long.class);
+        return count == null ? 0 : count;
+    }
+
+    private List<DashboardLeadWeeklyTrendItemOutput> loadDashboardWeeklyTrend(
+            UUID branchId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            String timezone
+    ) {
+        Map<String, FunnelSeriesOutput> seriesByBucket = loadFunnelSeries(
+                branchId,
+                dateFrom,
+                dateTo,
+                AnalyticsGroupBy.WEEK,
+                timezone,
+                null,
+                null
+        ).stream().collect(LinkedHashMap::new, (map, item) -> map.put(item.getBucket(), item), Map::putAll);
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("YYYY-'W'ww");
+        List<DashboardLeadWeeklyTrendItemOutput> items = new ArrayList<>();
+        LocalDate cursor = dateFrom.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate lastWeek = dateTo.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+
+        while (!cursor.isAfter(lastWeek)) {
+            String bucket = cursor.format(formatter);
+            FunnelSeriesOutput series = seriesByBucket.get(bucket);
+            Map<LeadStatus, Long> counts = series == null ? Map.of() : series.getCounts();
+            items.add(new DashboardLeadWeeklyTrendItemOutput(
+                    bucket,
+                    counts.getOrDefault(LeadStatus.NEW, 0L),
+                    counts.getOrDefault(LeadStatus.WON, 0L),
+                    counts.getOrDefault(LeadStatus.LOST, 0L)
+            ));
+            cursor = cursor.plusWeeks(1);
+        }
+
+        return items;
     }
 
     private String leadDurationSql(String targetStatus) {

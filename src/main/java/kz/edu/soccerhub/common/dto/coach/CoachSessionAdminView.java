@@ -8,6 +8,8 @@ public record CoachSessionAdminView(
         UUID sessionId,
         UUID coachId,
         UUID groupId,
+        UUID scheduleId,
+        String scheduleType,
         LocalDate sessionDate,
         LocalDateTime scheduledStartAt,
         LocalDateTime scheduledEndAt,

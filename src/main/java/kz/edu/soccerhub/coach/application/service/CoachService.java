@@ -15,6 +15,8 @@ import kz.edu.soccerhub.coach.domain.repository.CoachProfileRepository;
 import kz.edu.soccerhub.coach.domain.repository.CoachStatusHistoryRepository;
 import kz.edu.soccerhub.coach.domain.repository.TrainingSessionAttendanceRepository;
 import kz.edu.soccerhub.coach.domain.repository.TrainingSessionRepository;
+import kz.edu.soccerhub.organization.domain.model.GroupSchedule;
+import kz.edu.soccerhub.organization.domain.repository.GroupScheduleRepository;
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
@@ -50,6 +52,7 @@ public class CoachService implements CoachPort {
     private final CoachStatusHistoryRepository coachStatusHistoryRepository;
     private final AppUserRepo appUserRepo;
     private final GroupPort groupPort;
+    private final GroupScheduleRepository groupScheduleRepository;
 
     @Transactional
     public UUID create(CoachCreateCommand command) {
@@ -168,11 +171,11 @@ public class CoachService implements CoachPort {
         if (coachIds.isEmpty() || groupIds.isEmpty()) {
             return List.of();
         }
-        return trainingSessionRepository
+        List<TrainingSession> sessions = trainingSessionRepository
                 .findByCoachIdInAndGroupIdInAndSessionDateBetween(coachIds, groupIds, dateFrom, dateTo)
                 .stream()
-                .map(this::toSessionAdminView)
                 .toList();
+        return toSessionAdminViews(sessions);
     }
 
     @Override
@@ -185,12 +188,12 @@ public class CoachService implements CoachPort {
         if (coachIds.isEmpty() || groupIds.isEmpty()) {
             return List.of();
         }
-        return trainingSessionRepository
+        List<TrainingSession> sessions = trainingSessionRepository
                 .findByCoachIdInAndGroupIdInAndSessionDateBeforeAndReportDoneFalse(coachIds, groupIds, beforeDate)
                 .stream()
                 .filter(session -> session.getStatus() != TrainingSessionStatus.CANCELLED)
-                .map(this::toSessionAdminView)
                 .toList();
+        return toSessionAdminViews(sessions);
     }
 
     @Override
@@ -199,21 +202,19 @@ public class CoachService implements CoachPort {
         if (coachIds.isEmpty() || groupIds.isEmpty()) {
             return List.of();
         }
-        return trainingSessionRepository.findByCoachIdInAndGroupIdInAndReportDoneTrue(coachIds, groupIds)
-                .stream()
-                .map(this::toSessionAdminView)
-                .toList();
+        return toSessionAdminViews(
+                trainingSessionRepository.findByCoachIdInAndGroupIdInAndReportDoneTrue(coachIds, groupIds)
+        );
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<CoachSessionAdminView> getUpcomingSessions(UUID coachId, LocalDate fromDate) {
-        return trainingSessionRepository
+        return toSessionAdminViews(trainingSessionRepository
                 .findByCoachIdAndSessionDateGreaterThanEqualOrderBySessionDateAscScheduledStartAtAsc(coachId, fromDate)
                 .stream()
                 .filter(session -> session.getStatus() != TrainingSessionStatus.CANCELLED)
-                .map(this::toSessionAdminView)
-                .toList();
+                .toList());
     }
 
     @Override
@@ -229,10 +230,9 @@ public class CoachService implements CoachPort {
     @Override
     @Transactional(readOnly = true)
     public List<CoachSessionAdminView> getReportedSessions(UUID coachId) {
-        return trainingSessionRepository.findByCoachIdAndReportDoneTrueOrderByUpdatedAtDesc(coachId)
-                .stream()
-                .map(this::toSessionAdminView)
-                .toList();
+        return toSessionAdminViews(
+                trainingSessionRepository.findByCoachIdAndReportDoneTrueOrderByUpdatedAtDesc(coachId)
+        );
     }
 
     @Override
@@ -435,11 +435,29 @@ public class CoachService implements CoachPort {
                 .build();
     }
 
-    private CoachSessionAdminView toSessionAdminView(TrainingSession session) {
+    private List<CoachSessionAdminView> toSessionAdminViews(List<TrainingSession> sessions) {
+        if (sessions.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, String> scheduleTypesById = groupScheduleRepository.findAllById(
+                        sessions.stream()
+                                .map(TrainingSession::getScheduleId)
+                                .filter(Objects::nonNull)
+                                .collect(Collectors.toSet())
+                ).stream()
+                .collect(Collectors.toMap(GroupSchedule::getId, schedule -> schedule.getScheduleType().name()));
+        return sessions.stream()
+                .map(session -> toSessionAdminView(session, scheduleTypesById.get(session.getScheduleId())))
+                .toList();
+    }
+
+    private CoachSessionAdminView toSessionAdminView(TrainingSession session, String scheduleType) {
         return new CoachSessionAdminView(
                 session.getId(),
                 session.getCoachId(),
                 session.getGroupId(),
+                session.getScheduleId(),
+                scheduleType,
                 session.getSessionDate(),
                 session.getScheduledStartAt(),
                 session.getScheduledEndAt(),
