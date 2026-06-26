@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -46,4 +47,27 @@ public interface PlayerRepository extends JpaRepository<Player, UUID> {
             order by lower(p.firstName), lower(p.lastName)
             """)
     List<Player> findAllByParentBranchId(UUID branchId);
+
+    @Query("""
+            select count(p)
+            from Player p
+            join p.parent parent
+            where parent.branchId = :branchId
+              and p.createdAt < :beforeExclusive
+            """)
+    long countByParentBranchIdAndCreatedAtBefore(UUID branchId, LocalDateTime beforeExclusive);
+
+    @Query("""
+            select count(p)
+            from Player p
+            join p.parent parent
+            where parent.branchId = :branchId
+              and p.createdAt >= :fromInclusive
+              and p.createdAt < :toExclusive
+            """)
+    long countByParentBranchIdAndCreatedAtBetween(
+            UUID branchId,
+            LocalDateTime fromInclusive,
+            LocalDateTime toExclusive
+    );
 }

@@ -3,7 +3,10 @@ package kz.edu.soccerhub.admin.application.dto.dashboard;
 public record AdminDashboardRiskItemDto(
         String code,
         String label,
+        String description,
         long value,
-        String tone
+        String unit,
+        String tone,
+        String target
 ) {
 }

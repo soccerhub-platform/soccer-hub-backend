@@ -10,6 +10,7 @@ public record BranchDto(
         String name,
         String address,
         UUID clubId,
+        String timezone,
         boolean active
 ) {
 }

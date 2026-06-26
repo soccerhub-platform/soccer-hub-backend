@@ -10,6 +10,7 @@ import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
 import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
+import kz.edu.soccerhub.common.dto.coach.SessionAttendanceSummaryDto;
 import kz.edu.soccerhub.coach.domain.model.enums.CoachStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -43,4 +44,5 @@ public interface CoachPort {
     List<PlayerAttendanceRateDto> getAttendanceRates(UUID groupId, Set<UUID> playerIds);
     List<PlayerAttendanceSummaryDto> getAttendanceSummaries(Set<UUID> playerIds);
     List<PlayerAttendanceRecordDto> getRecentAttendance(UUID playerId, int limit);
+    List<SessionAttendanceSummaryDto> getSessionAttendanceSummaries(Set<UUID> sessionIds);
 }

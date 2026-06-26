@@ -207,6 +207,25 @@ public class AnalyticsService implements AnalyticsPort {
         );
     }
 
+    @Override
+    public long countCreatedLeads(UUID branchId, LocalDate date, String timezone) {
+        String resolvedTimezone = normalizeTimezone(timezone);
+        String sql = """
+                select count(*)
+                from leads l
+                where l.branch_id = :branchId
+                  and (l.created_at at time zone :tz)::date = :date
+                """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("branchId", branchId)
+                .addValue("date", date)
+                .addValue("tz", resolvedTimezone);
+
+        Long count = jdbcTemplate.queryForObject(sql, params, Long.class);
+        return count == null ? 0 : count;
+    }
+
     private Map<LeadStatus, Long> loadFunnelTotals(
             UUID branchId,
             LocalDate dateFrom,

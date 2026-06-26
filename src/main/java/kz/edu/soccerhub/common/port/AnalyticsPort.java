@@ -74,4 +74,10 @@ public interface AnalyticsPort {
             LocalDate date,
             String timezone
     );
+
+    long countCreatedLeads(
+            UUID branchId,
+            LocalDate date,
+            String timezone
+    );
 }

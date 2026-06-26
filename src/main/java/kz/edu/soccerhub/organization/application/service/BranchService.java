@@ -45,6 +45,7 @@ public class BranchService implements BranchPort {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<BranchDto> findById(UUID branchId) {
         return branchRepository.findById(branchId)
                 .map(BranchService::toDto);
@@ -87,6 +88,7 @@ public class BranchService implements BranchPort {
                 .name(branch.getName())
                 .address(branch.getAddress())
                 .clubId(branch.getClubId())
+                .timezone(branch.getClub() == null ? null : branch.getClub().getTimezone())
                 .active(branch.isActive())
                 .build();
     }

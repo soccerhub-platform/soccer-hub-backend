@@ -25,6 +25,7 @@ import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
 import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
+import kz.edu.soccerhub.common.dto.coach.SessionAttendanceSummaryDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.CoachPort;
@@ -349,6 +350,29 @@ public class CoachService implements CoachPort {
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(PlayerAttendanceRecordDto::sessionDate).reversed())
                 .limit(limit)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SessionAttendanceSummaryDto> getSessionAttendanceSummaries(Set<UUID> sessionIds) {
+        if (sessionIds == null || sessionIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<UUID, List<TrainingSessionAttendance>> attendanceBySessionId = trainingSessionAttendanceRepository.findBySessionIdIn(sessionIds)
+                .stream()
+                .collect(Collectors.groupingBy(TrainingSessionAttendance::getSessionId));
+
+        return sessionIds.stream()
+                .map(sessionId -> {
+                    List<TrainingSessionAttendance> items = attendanceBySessionId.getOrDefault(sessionId, List.of());
+                    long presentLikeMarked = items.stream()
+                            .filter(attendance -> attendance.getStatus() == TrainingSessionAttendanceStatus.PRESENT
+                                    || attendance.getStatus() == TrainingSessionAttendanceStatus.LATE)
+                            .count();
+                    return new SessionAttendanceSummaryDto(sessionId, items.size(), presentLikeMarked);
+                })
                 .toList();
     }
 

@@ -8,6 +8,7 @@ import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
 
 import java.util.List;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public interface ClientPort {
@@ -33,4 +34,16 @@ public interface ClientPort {
     List<StudentProfileDto> getStudentProfilesByBranch(UUID branchId);
 
     StudentProfileDto getStudentProfile(UUID playerId);
+
+    long countStudentsAsOf(
+            UUID branchId,
+            LocalDate date,
+            String timezone
+    );
+
+    long countCreatedStudents(
+            UUID branchId,
+            LocalDate date,
+            String timezone
+    );
 }

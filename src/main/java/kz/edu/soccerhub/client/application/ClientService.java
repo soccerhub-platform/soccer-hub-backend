@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Set;
 import java.util.Collection;
 import java.util.Comparator;
@@ -168,6 +169,27 @@ public class ClientService implements ClientPort {
         Player player = playerRepository.findWithParentById(playerId)
                 .orElseThrow(() -> new NotFoundException("Player not found", playerId));
         return toStudentProfile(player);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countStudentsAsOf(UUID branchId, LocalDate date, String timezone) {
+        ZoneId zoneId = resolveZone(timezone);
+        return playerRepository.countByParentBranchIdAndCreatedAtBefore(
+                branchId,
+                date.plusDays(1).atStartOfDay(zoneId).toLocalDateTime()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countCreatedStudents(UUID branchId, LocalDate date, String timezone) {
+        ZoneId zoneId = resolveZone(timezone);
+        return playerRepository.countByParentBranchIdAndCreatedAtBetween(
+                branchId,
+                date.atStartOfDay(zoneId).toLocalDateTime(),
+                date.plusDays(1).atStartOfDay(zoneId).toLocalDateTime()
+        );
     }
 
     private Client resolveOrCreateClient(ClientConversionCommand command) {
@@ -325,6 +347,14 @@ public class ClientService implements ClientPort {
         String left = firstName == null ? "" : firstName.trim();
         String right = lastName == null ? "" : lastName.trim();
         return (left + " " + right).trim();
+    }
+
+    private ZoneId resolveZone(String timezone) {
+        String value = timezone;
+        if (value == null || value.isBlank()) {
+            value = "Asia/Almaty";
+        }
+        return ZoneId.of(value);
     }
 
     private String trimToNull(String value) {

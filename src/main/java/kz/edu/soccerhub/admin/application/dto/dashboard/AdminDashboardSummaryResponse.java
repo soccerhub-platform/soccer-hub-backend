@@ -1,16 +1,13 @@
 package kz.edu.soccerhub.admin.application.dto.dashboard;
 
-import java.util.List;
-
 public record AdminDashboardSummaryResponse(
         AdminDashboardMetaDto meta,
-        AdminDashboardHeroDto hero,
-        List<AdminDashboardAttentionItemDto> attention,
+        AdminDashboardAlertsDto alerts,
         AdminDashboardKpisDto kpis,
-        AdminDashboardBranchTodayDto branchToday,
-        List<AdminDashboardRiskItemDto> risks,
-        AdminDashboardLeadFunnelDto leadFunnel,
+        AdminDashboardBranchTodayDto branchSummary,
+        AdminDashboardRisksDto risks,
+        AdminDashboardLeadFunnelDto funnel,
         AdminDashboardTodayScheduleDto todaySchedule,
-        AdminDashboardWeeklyTrendDto weeklyTrend
+        AdminDashboardWeeklyTrendDto weeklyDynamics
 ) {
 }
