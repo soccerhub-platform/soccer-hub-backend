@@ -5,6 +5,7 @@ import kz.edu.soccerhub.common.domain.enums.Role;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
 import kz.edu.soccerhub.common.dto.coach.*;
+import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
@@ -41,6 +42,7 @@ public class AdminCoachService {
     private final GroupSchedulePort groupSchedulePort;
     private final GroupPort groupPort;
     private final GroupCoachPort groupCoachPort;
+    private final ClientPort clientPort;
 
     @Transactional
     public AdminCreateCoachOutput createCoach(UUID adminId, AdminCreateCoachInput input) {
@@ -317,28 +319,17 @@ public class AdminCoachService {
         Map<UUID, GroupDto> groupsById = groupPort.getGroupsByIds(groupIds).stream()
                 .collect(Collectors.toMap(GroupDto::groupId, group -> group));
 
-        List<AdminCoachProfileOutput.GroupItem> groups = groupLinks.stream()
-                .map(link -> {
-                    GroupDto group = groupsById.get(link.groupId());
-                    if (group == null) {
-                        return null;
-                    }
-                    return new AdminCoachProfileOutput.GroupItem(
-                            group.groupId(),
-                            group.name(),
-                            group.branchId(),
-                            link.id(),
-                            link.role() == null ? null : link.role().name()
-                    );
-                })
-                .filter(java.util.Objects::nonNull)
-                .toList();
-
         LocalDate today = LocalDate.now();
         LocalDate weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate weekEnd = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY));
 
-        List<GroupScheduleDto> schedules = groupSchedulePort.getActiveSchedulesByCoach(coachId).stream()
+        List<GroupScheduleDto> allActiveSchedules = groupSchedulePort.getActiveSchedulesByCoach(coachId);
+        Map<UUID, Integer> weeklySlotsCountByGroupId = new HashMap<>();
+        for (GroupScheduleDto schedule : allActiveSchedules) {
+            weeklySlotsCountByGroupId.merge(schedule.groupId(), 1, Integer::sum);
+        }
+
+        List<GroupScheduleDto> schedules = allActiveSchedules.stream()
                 .filter(schedule -> !schedule.endDate().isBefore(weekStart) && !schedule.startDate().isAfter(weekEnd))
                 .toList();
         List<AdminCoachProfileOutput.WeeklyScheduleItem> weeklySchedule = schedules.stream()
@@ -365,8 +356,18 @@ public class AdminCoachService {
         int usedSlots = Math.toIntExact(usedSlotsCount);
         String loadStatus = usedSlots > maxSlots ? "OVERLOADED" : "NORMAL";
 
-        List<AdminCoachProfileOutput.UpcomingSessionItem> upcomingSessions = coachPort.getUpcomingSessions(coachId, today)
-                .stream()
+        List<CoachSessionAdminView> upcomingSessionViews = coachPort.getUpcomingSessions(coachId, today);
+        Map<UUID, CoachSessionAdminView> nextSessionByGroupId = upcomingSessionViews.stream()
+                .sorted(Comparator.comparing(CoachSessionAdminView::sessionDate)
+                        .thenComparing(CoachSessionAdminView::scheduledStartAt))
+                .collect(Collectors.toMap(
+                        CoachSessionAdminView::groupId,
+                        session -> session,
+                        (first, second) -> first,
+                        LinkedHashMap::new
+                ));
+
+        List<AdminCoachProfileOutput.UpcomingSessionItem> upcomingSessions = upcomingSessionViews.stream()
                 .limit(10)
                 .map(session -> {
                     GroupDto group = groupsById.get(session.groupId());
@@ -383,6 +384,20 @@ public class AdminCoachService {
                     );
                 })
                 .toList();
+
+        Map<UUID, List<GroupMemberDto>> membersByGroupId = groupIds.stream()
+                .collect(Collectors.toMap(
+                        groupId -> groupId,
+                        clientPort::getGroupMembers
+                ));
+
+        Map<UUID, Boolean> overdueReportsByGroupId = coachPort.getOverdueReportSessions(Set.of(coachId), groupIds, today)
+                .stream()
+                .collect(Collectors.toMap(
+                        CoachSessionAdminView::groupId,
+                        session -> true,
+                        (first, second) -> first
+                ));
 
         List<CoachSessionAdminView> reported = coachPort.getReportedSessions(coachId);
         OffsetDateTime lastReportAt = reported.stream()
@@ -417,6 +432,44 @@ public class AdminCoachService {
                 ))
                 .toList();
 
+        List<AdminCoachProfileOutput.GroupItem> groups = groupLinks.stream()
+                .map(link -> {
+                    GroupDto group = groupsById.get(link.groupId());
+                    if (group == null) {
+                        return null;
+                    }
+
+                    List<GroupMemberDto> members = membersByGroupId.getOrDefault(group.groupId(), List.of());
+                    int studentsCount = members.size();
+                    int activeStudentsCount = (int) members.stream()
+                            .filter(this::isActiveGroupMember)
+                            .count();
+                    int weeklySlotsCount = weeklySlotsCountByGroupId.getOrDefault(group.groupId(), 0);
+                    AdminCoachProfileOutput.NextSessionItem nextSession =
+                            toNextSessionItem(nextSessionByGroupId.get(group.groupId()));
+                    List<AdminCoachProfileOutput.RiskFlagItem> riskFlags = buildGroupRiskFlags(
+                            activeStudentsCount,
+                            weeklySlotsCount,
+                            nextSession,
+                            overdueReportsByGroupId.getOrDefault(group.groupId(), false)
+                    );
+
+                    return new AdminCoachProfileOutput.GroupItem(
+                            group.groupId(),
+                            group.name(),
+                            group.branchId(),
+                            link.id(),
+                            link.role() == null ? null : link.role().name(),
+                            studentsCount,
+                            activeStudentsCount,
+                            weeklySlotsCount,
+                            nextSession,
+                            riskFlags
+                    );
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
         return new AdminCoachProfileOutput(
                 coach.id(),
                 coach.firstName(),
@@ -436,6 +489,62 @@ public class AdminCoachService {
                 ),
                 statusHistory
         );
+    }
+
+    private AdminCoachProfileOutput.NextSessionItem toNextSessionItem(CoachSessionAdminView session) {
+        if (session == null) {
+            return null;
+        }
+        return new AdminCoachProfileOutput.NextSessionItem(
+                session.sessionId(),
+                session.sessionDate(),
+                session.scheduledStartAt().toLocalTime(),
+                session.scheduledEndAt().toLocalTime(),
+                session.status(),
+                session.reportDone()
+        );
+    }
+
+    private List<AdminCoachProfileOutput.RiskFlagItem> buildGroupRiskFlags(
+            int activeStudentsCount,
+            int weeklySlotsCount,
+            AdminCoachProfileOutput.NextSessionItem nextSession,
+            boolean hasOverdueReports
+    ) {
+        List<AdminCoachProfileOutput.RiskFlagItem> riskFlags = new ArrayList<>();
+        if (activeStudentsCount == 0) {
+            riskFlags.add(new AdminCoachProfileOutput.RiskFlagItem(
+                    "NO_STUDENTS",
+                    "Нет активных учеников",
+                    "WARNING"
+            ));
+        }
+        if (weeklySlotsCount == 0) {
+            riskFlags.add(new AdminCoachProfileOutput.RiskFlagItem(
+                    "NO_SCHEDULE",
+                    "Нет активных слотов в расписании",
+                    "CRITICAL"
+            ));
+        }
+        if (nextSession == null) {
+            riskFlags.add(new AdminCoachProfileOutput.RiskFlagItem(
+                    "NO_UPCOMING_SESSIONS",
+                    "Нет ближайших тренировок",
+                    "WARNING"
+            ));
+        }
+        if (hasOverdueReports) {
+            riskFlags.add(new AdminCoachProfileOutput.RiskFlagItem(
+                    "OVERDUE_REPORTS",
+                    "Есть просроченные отчеты",
+                    "CRITICAL"
+            ));
+        }
+        return List.copyOf(riskFlags);
+    }
+
+    private boolean isActiveGroupMember(GroupMemberDto member) {
+        return member.contractStatus() == null || "ACTIVE".equalsIgnoreCase(member.contractStatus());
     }
 
     public AdminCoachResetPasswordOutput resetCoachPassword(UUID adminId, UUID coachId) {

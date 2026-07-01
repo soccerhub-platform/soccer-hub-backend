@@ -28,7 +28,27 @@ public record AdminCoachProfileOutput(
             String groupName,
             UUID branchId,
             UUID groupCoachId,
-            String role
+            String role,
+            int studentsCount,
+            int activeStudentsCount,
+            int weeklySlotsCount,
+            NextSessionItem nextSession,
+            List<RiskFlagItem> riskFlags
+    ) {}
+
+    public record NextSessionItem(
+            UUID sessionId,
+            LocalDate sessionDate,
+            LocalTime startTime,
+            LocalTime endTime,
+            String status,
+            boolean reportDone
+    ) {}
+
+    public record RiskFlagItem(
+            String code,
+            String label,
+            String severity
     ) {}
 
     public record Load(
