@@ -62,10 +62,24 @@ public record AdminCoachProfileOutput(
             DayOfWeek dayOfWeek,
             LocalTime startTime,
             LocalTime endTime,
+            String scheduleStatus,
+            String scheduleStatusLabel,
             UUID groupId,
             String groupName,
+            String coachName,
             LocalDate startDate,
-            LocalDate endDate
+            LocalDate endDate,
+            List<ScheduleConflictItem> conflicts
+    ) {}
+
+    public record ScheduleConflictItem(
+            DayOfWeek dayOfWeek,
+            LocalTime startTime,
+            LocalTime endTime,
+            UUID coachId,
+            String coachName,
+            UUID conflictingGroupId,
+            String conflictingGroupName
     ) {}
 
     public record UpcomingSessionItem(

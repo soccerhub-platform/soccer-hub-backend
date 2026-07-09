@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.TemporalAdjusters;
@@ -332,6 +333,7 @@ public class AdminCoachService {
         List<GroupScheduleDto> schedules = allActiveSchedules.stream()
                 .filter(schedule -> !schedule.endDate().isBefore(weekStart) && !schedule.startDate().isAfter(weekEnd))
                 .toList();
+        String coachName = formatCoachName(coach.firstName(), coach.lastName());
         List<AdminCoachProfileOutput.WeeklyScheduleItem> weeklySchedule = schedules.stream()
                 .map(schedule -> {
                     GroupDto group = groupsById.get(schedule.groupId());
@@ -341,10 +343,14 @@ public class AdminCoachService {
                             schedule.dayOfWeek(),
                             schedule.startTime(),
                             schedule.endTime(),
+                            schedule.status(),
+                            resolveScheduleStatusLabel(schedule.status()),
                             schedule.groupId(),
                             groupName,
+                            coachName,
                             schedule.startDate(),
-                            schedule.endDate()
+                            schedule.endDate(),
+                            buildScheduleConflicts(schedule, allActiveSchedules, groupsById, coachId, coachName)
                     );
                 })
                 .toList();
@@ -505,6 +511,34 @@ public class AdminCoachService {
         );
     }
 
+    private List<AdminCoachProfileOutput.ScheduleConflictItem> buildScheduleConflicts(
+            GroupScheduleDto schedule,
+            List<GroupScheduleDto> allActiveSchedules,
+            Map<UUID, GroupDto> groupsById,
+            UUID coachId,
+            String coachName
+    ) {
+        return allActiveSchedules.stream()
+                .filter(other -> !other.scheduleId().equals(schedule.scheduleId()))
+                .filter(other -> !other.groupId().equals(schedule.groupId()))
+                .filter(other -> other.dayOfWeek() == schedule.dayOfWeek())
+                .filter(other -> overlaps(schedule.startTime(), schedule.endTime(), other.startTime(), other.endTime()))
+                .filter(other -> overlaps(schedule.startDate(), schedule.endDate(), other.startDate(), other.endDate()))
+                .map(other -> {
+                    GroupDto conflictingGroup = groupsById.get(other.groupId());
+                    return new AdminCoachProfileOutput.ScheduleConflictItem(
+                            other.dayOfWeek(),
+                            other.startTime(),
+                            other.endTime(),
+                            coachId,
+                            coachName,
+                            other.groupId(),
+                            conflictingGroup == null ? "Unknown group" : conflictingGroup.name()
+                    );
+                })
+                .toList();
+    }
+
     private List<AdminCoachProfileOutput.RiskFlagItem> buildGroupRiskFlags(
             int activeStudentsCount,
             int weeklySlotsCount,
@@ -545,6 +579,35 @@ public class AdminCoachService {
 
     private boolean isActiveGroupMember(GroupMemberDto member) {
         return member.contractStatus() == null || "ACTIVE".equalsIgnoreCase(member.contractStatus());
+    }
+
+    private String formatCoachName(String firstName, String lastName) {
+        return java.util.stream.Stream.of(firstName, lastName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(part -> !part.isBlank())
+                .collect(Collectors.joining(" "));
+    }
+
+    private String resolveScheduleStatusLabel(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        return switch (status) {
+            case "ACTIVE" -> "Активно";
+            case "INACTIVE" -> "Неактивно";
+            case "CANCELLED" -> "Отменено";
+            case "DRAFT" -> "Черновик";
+            default -> status;
+        };
+    }
+
+    private boolean overlaps(LocalDate startOne, LocalDate endOne, LocalDate startTwo, LocalDate endTwo) {
+        return !startOne.isAfter(endTwo) && !startTwo.isAfter(endOne);
+    }
+
+    private boolean overlaps(LocalTime startOne, LocalTime endOne, LocalTime startTwo, LocalTime endTwo) {
+        return startOne.isBefore(endTwo) && startTwo.isBefore(endOne);
     }
 
     public AdminCoachResetPasswordOutput resetCoachPassword(UUID adminId, UUID coachId) {

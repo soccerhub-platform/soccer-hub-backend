@@ -135,6 +135,17 @@ class AdminCoachServiceTest {
                         .build(),
                 GroupScheduleDto.builder()
                         .scheduleId(UUID.randomUUID())
+                        .groupId(secondGroupId)
+                        .coachId(coachId)
+                        .dayOfWeek(DayOfWeek.MONDAY)
+                        .startTime(LocalTime.of(18, 30))
+                        .endTime(LocalTime.of(19, 30))
+                        .startDate(today.minusDays(7))
+                        .endDate(today.plusDays(30))
+                        .status("ACTIVE")
+                        .build(),
+                GroupScheduleDto.builder()
+                        .scheduleId(UUID.randomUUID())
                         .groupId(firstGroupId)
                         .coachId(coachId)
                         .dayOfWeek(DayOfWeek.WEDNESDAY)
@@ -223,6 +234,7 @@ class AdminCoachServiceTest {
         AdminCoachProfileOutput output = service.getCoachProfile(adminId, coachId);
 
         assertEquals(2, output.groups().size());
+        assertEquals(3, output.weeklySchedule().size());
 
         AdminCoachProfileOutput.GroupItem firstGroup = output.groups().stream()
                 .filter(group -> group.groupId().equals(firstGroupId))
@@ -241,6 +253,20 @@ class AdminCoachServiceTest {
         assertEquals("CONFIRMED", firstGroup.nextSession().status());
         assertEquals(List.of(), firstGroup.riskFlags());
 
+        AdminCoachProfileOutput.WeeklyScheduleItem mondayFalconsSlot = output.weeklySchedule().stream()
+                .filter(slot -> slot.groupId().equals(firstGroupId))
+                .filter(slot -> slot.dayOfWeek() == DayOfWeek.MONDAY)
+                .filter(slot -> slot.startTime().equals(LocalTime.of(18, 0)))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("ACTIVE", mondayFalconsSlot.scheduleStatus());
+        assertEquals("Активно", mondayFalconsSlot.scheduleStatusLabel());
+        assertEquals("Aibek Coach", mondayFalconsSlot.coachName());
+        assertEquals(1, mondayFalconsSlot.conflicts().size());
+        assertEquals(secondGroupId, mondayFalconsSlot.conflicts().getFirst().conflictingGroupId());
+        assertEquals("Wolves", mondayFalconsSlot.conflicts().getFirst().conflictingGroupName());
+        assertEquals("Aibek Coach", mondayFalconsSlot.conflicts().getFirst().coachName());
+
         AdminCoachProfileOutput.GroupItem secondGroup = output.groups().stream()
                 .filter(group -> group.groupId().equals(secondGroupId))
                 .findFirst()
@@ -250,10 +276,10 @@ class AdminCoachServiceTest {
         assertNull(secondGroup.role());
         assertEquals(0, secondGroup.studentsCount());
         assertEquals(0, secondGroup.activeStudentsCount());
-        assertEquals(0, secondGroup.weeklySlotsCount());
+        assertEquals(1, secondGroup.weeklySlotsCount());
         assertNull(secondGroup.nextSession());
         assertEquals(
-                List.of("NO_STUDENTS", "NO_SCHEDULE", "NO_UPCOMING_SESSIONS", "OVERDUE_REPORTS"),
+                List.of("NO_STUDENTS", "NO_UPCOMING_SESSIONS", "OVERDUE_REPORTS"),
                 secondGroup.riskFlags().stream().map(AdminCoachProfileOutput.RiskFlagItem::code).toList()
         );
     }
