@@ -100,17 +100,18 @@ jobs:
           POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
           POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          MEDIA_ACCESS_TOKEN_SECRET: ${{ secrets.MEDIA_ACCESS_TOKEN_SECRET }}
           JWT_PRIVATE_PEM_B64: ${{ secrets.JWT_PRIVATE_PEM_B64 }}
           JWT_PUBLIC_PEM_B64: ${{ secrets.JWT_PUBLIC_PEM_B64 }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: IMAGE,GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PATH,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,JWT_PRIVATE_PEM_B64,JWT_PUBLIC_PEM_B64
+          envs: IMAGE,GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PATH,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,MEDIA_ACCESS_TOKEN_SECRET,JWT_PRIVATE_PEM_B64,JWT_PUBLIC_PEM_B64
           script: |
             set -euo pipefail
           
-            mkdir -p "$DEPLOY_PATH/secrets"
+            mkdir -p "$DEPLOY_PATH/secrets" "$DEPLOY_PATH/media"
             cd "$DEPLOY_PATH"
             mv docker-compose.prod.yml docker-compose.yml
           
@@ -119,6 +120,7 @@ jobs:
             POSTGRES_DB=$POSTGRES_DB
             POSTGRES_USER=$POSTGRES_USER
             POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+            MEDIA_ACCESS_TOKEN_SECRET=$MEDIA_ACCESS_TOKEN_SECRET
             EOF
           
             sudo rm -f secrets/private.pem secrets/public.pem
@@ -128,6 +130,7 @@ jobs:
           
             sudo chown 999:999 secrets/private.pem secrets/public.pem
             sudo chmod 400 secrets/private.pem secrets/public.pem
+            sudo chown -R 999:999 media
           
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
             docker compose pull app
