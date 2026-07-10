@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.auth.security;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.annotation.Order;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -39,6 +40,19 @@ public class SecurityConfig {
     private final AppUserDetailsService appUserDetailsService;
 
     @Bean
+    @Order(1)
+    SecurityFilterChain mediaFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/api/media/**")
+                .cors(Customizer.withDefaults())
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .cors(Customizer.withDefaults())
