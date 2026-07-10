@@ -8,17 +8,20 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
-
       SPRING_LIQUIBASE_ENABLED: "true"
 
       APP_JWT_PRIVATE_CERT: file:/run/secrets/private.pem
       APP_JWT_PUBLIC_CERT: file:/run/secrets/public.pem
+
+      MEDIA_STORAGE_PATH: /data/media
+      MEDIA_ACCESS_TOKEN_SECRET: ${MEDIA_ACCESS_TOKEN_SECRET}
 
       JAVA_OPTS: ${JAVA_OPTS:-}
 
     volumes:
       - ./secrets/private.pem:/run/secrets/private.pem:ro
       - ./secrets/public.pem:/run/secrets/public.pem:ro
+      - ./media:/data/media
 
     ports:
       - "${APP_PORT:-8080}:8080"
