@@ -2,6 +2,7 @@ package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.branch.AdminBranchesOutput;
 import kz.edu.soccerhub.common.dto.coach.AdminCoachProfileOutput;
+import kz.edu.soccerhub.common.dto.coach.AdminCoachOverviewOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
@@ -23,6 +24,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -35,6 +38,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -282,5 +287,174 @@ class AdminCoachServiceTest {
                 List.of("NO_STUDENTS", "NO_UPCOMING_SESSIONS", "OVERDUE_REPORTS"),
                 secondGroup.riskFlags().stream().map(AdminCoachProfileOutput.RiskFlagItem::code).toList()
         );
+    }
+
+    @Test
+    void shouldReturnPaginatedOverviewWithSearchAndStatusFilter() {
+        UUID adminId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID activeCoachId = UUID.randomUUID();
+        UUID inactiveCoachId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        LocalDate today = LocalDate.now();
+
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(coachPort.getCoaches(Set.of(branchId), Pageable.unpaged())).thenReturn(new PageImpl<>(List.of(
+                CoachDto.builder()
+                        .id(activeCoachId)
+                        .firstName("Arsen")
+                        .lastName("Gizatov")
+                        .email("arsen@example.com")
+                        .phone("+77770000000")
+                        .specialization("U12")
+                        .active(true)
+                        .createdAt(LocalDateTime.of(2026, 7, 1, 10, 0))
+                        .build(),
+                CoachDto.builder()
+                        .id(inactiveCoachId)
+                        .firstName("Bek")
+                        .lastName("Askarov")
+                        .email("bek@example.com")
+                        .phone("+77770000001")
+                        .specialization("U10")
+                        .active(false)
+                        .createdAt(LocalDateTime.of(2026, 6, 1, 10, 0))
+                        .build()
+        )));
+        when(groupPort.getGroupsByBranch(branchId)).thenReturn(List.of(
+                GroupDto.builder().groupId(groupId).name("Falcons").branchId(branchId).status(GroupStatus.ACTIVE).build()
+        ));
+        when(groupCoachPort.getActiveAssignmentsByCoachIdsAndGroupIds(Set.of(activeCoachId, inactiveCoachId), Set.of(groupId)))
+                .thenReturn(List.of(
+                        GroupCoachDto.builder()
+                                .id(UUID.randomUUID())
+                                .groupId(groupId)
+                                .coachId(activeCoachId)
+                                .role(CoachRole.MAIN)
+                                .active(true)
+                                .build()
+                ));
+        when(coachPort.getSessions(any(), any(), any(), any())).thenReturn(List.of(
+                new CoachSessionAdminView(
+                        UUID.randomUUID(),
+                        activeCoachId,
+                        groupId,
+                        UUID.randomUUID(),
+                        "REGULAR",
+                        today,
+                        LocalDateTime.of(today, LocalTime.of(18, 0)),
+                        LocalDateTime.of(today, LocalTime.of(19, 0)),
+                        "PLANNED",
+                        false,
+                        null
+                ),
+                new CoachSessionAdminView(
+                        UUID.randomUUID(),
+                        activeCoachId,
+                        groupId,
+                        UUID.randomUUID(),
+                        "REGULAR",
+                        today.plusDays(1),
+                        LocalDateTime.of(today.plusDays(1), LocalTime.of(18, 0)),
+                        LocalDateTime.of(today.plusDays(1), LocalTime.of(19, 0)),
+                        "PLANNED",
+                        false,
+                        null
+                )
+        ));
+        when(coachPort.getOverdueReportSessions(any(), any(), any())).thenReturn(List.of());
+        when(coachPort.getReportedSessions(any(), any())).thenReturn(List.of(
+                new CoachSessionAdminView(
+                        UUID.randomUUID(),
+                        activeCoachId,
+                        groupId,
+                        UUID.randomUUID(),
+                        "REGULAR",
+                        today.minusDays(1),
+                        LocalDateTime.of(today.minusDays(1), LocalTime.of(18, 0)),
+                        LocalDateTime.of(today.minusDays(1), LocalTime.of(19, 0)),
+                        "DONE",
+                        true,
+                        LocalDateTime.of(2026, 7, 9, 10, 0)
+                )
+        ));
+
+        AdminCoachOverviewOutput output = service.getCoachesOverview(
+                adminId,
+                branchId,
+                0,
+                20,
+                "arsen",
+                "ACTIVE",
+                List.of("lastName,asc", "firstName,asc")
+        );
+
+        assertEquals(2, output.summary().total());
+        assertEquals(1, output.summary().active());
+        assertEquals(1, output.summary().inactive());
+        assertEquals(1, output.summary().withoutGroups());
+        assertEquals(1, output.summary().withSessionsToday());
+        assertEquals(1, output.coaches().getTotalElements());
+        assertEquals(1, output.coaches().getContent().size());
+        assertEquals(activeCoachId, output.coaches().getContent().getFirst().coachId());
+        assertEquals("U12", output.coaches().getContent().getFirst().specialization());
+        assertEquals("NORMAL", output.coaches().getContent().getFirst().load().status());
+        assertTrue(output.coaches().getContent().getFirst().active());
+    }
+
+    @Test
+    void shouldApplyStableSortingForOverview() {
+        UUID adminId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID coachA = UUID.randomUUID();
+        UUID coachB = UUID.randomUUID();
+        UUID coachC = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        LocalDate today = LocalDate.now();
+
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(coachPort.getCoaches(Set.of(branchId), Pageable.unpaged())).thenReturn(new PageImpl<>(List.of(
+                CoachDto.builder().id(coachB).firstName("B").lastName("Beta").email("b@example.com").phone("2").specialization("U11").active(true).createdAt(LocalDateTime.now()).build(),
+                CoachDto.builder().id(coachC).firstName("C").lastName("Gamma").email("c@example.com").phone("3").specialization("U12").active(false).createdAt(LocalDateTime.now()).build(),
+                CoachDto.builder().id(coachA).firstName("A").lastName("Alpha").email("a@example.com").phone("1").specialization("U10").active(true).createdAt(LocalDateTime.now()).build()
+        )));
+        when(groupPort.getGroupsByBranch(branchId)).thenReturn(List.of(
+                GroupDto.builder().groupId(groupId).name("Falcons").branchId(branchId).status(GroupStatus.ACTIVE).build()
+        ));
+        when(groupCoachPort.getActiveAssignmentsByCoachIdsAndGroupIds(Set.of(coachA, coachB, coachC), Set.of(groupId)))
+                .thenReturn(List.of(
+                        GroupCoachDto.builder().id(UUID.randomUUID()).groupId(groupId).coachId(coachA).role(CoachRole.MAIN).active(true).build(),
+                        GroupCoachDto.builder().id(UUID.randomUUID()).groupId(groupId).coachId(coachB).role(CoachRole.MAIN).active(true).build()
+                ));
+        when(coachPort.getSessions(any(), any(), any(), any())).thenReturn(List.of(
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today, LocalDateTime.of(today, LocalTime.of(18, 0)), LocalDateTime.of(today, LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today.plusDays(1), LocalDateTime.of(today.plusDays(1), LocalTime.of(18, 0)), LocalDateTime.of(today.plusDays(1), LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today.plusDays(2), LocalDateTime.of(today.plusDays(2), LocalTime.of(18, 0)), LocalDateTime.of(today.plusDays(2), LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today.plusDays(3), LocalDateTime.of(today.plusDays(3), LocalTime.of(18, 0)), LocalDateTime.of(today.plusDays(3), LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today.plusDays(4), LocalDateTime.of(today.plusDays(4), LocalTime.of(18, 0)), LocalDateTime.of(today.plusDays(4), LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today.plusDays(5), LocalDateTime.of(today.plusDays(5), LocalTime.of(18, 0)), LocalDateTime.of(today.plusDays(5), LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today.plusDays(6), LocalDateTime.of(today.plusDays(6), LocalTime.of(18, 0)), LocalDateTime.of(today.plusDays(6), LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today.plusDays(7), LocalDateTime.of(today.plusDays(7), LocalTime.of(18, 0)), LocalDateTime.of(today.plusDays(7), LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today.plusDays(8), LocalDateTime.of(today.plusDays(8), LocalTime.of(18, 0)), LocalDateTime.of(today.plusDays(8), LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachA, groupId, UUID.randomUUID(), "REGULAR", today.plusDays(9), LocalDateTime.of(today.plusDays(9), LocalTime.of(18, 0)), LocalDateTime.of(today.plusDays(9), LocalTime.of(19, 0)), "PLANNED", false, null),
+                new CoachSessionAdminView(UUID.randomUUID(), coachB, groupId, UUID.randomUUID(), "REGULAR", today, LocalDateTime.of(today, LocalTime.of(10, 0)), LocalDateTime.of(today, LocalTime.of(11, 0)), "PLANNED", false, null)
+        ));
+        when(coachPort.getOverdueReportSessions(any(), any(), any())).thenReturn(List.of());
+        when(coachPort.getReportedSessions(any(), any())).thenReturn(List.of());
+
+        AdminCoachOverviewOutput activeSorted = service.getCoachesOverview(
+                adminId, branchId, 0, 20, null, "ALL", List.of("active,desc")
+        );
+        assertEquals(List.of(coachA, coachB, coachC), activeSorted.coaches().getContent().stream().map(AdminCoachOverviewOutput.CoachItem::coachId).toList());
+
+        AdminCoachOverviewOutput loadStatusSorted = service.getCoachesOverview(
+                adminId, branchId, 0, 20, null, "ALL", List.of("loadStatus,desc")
+        );
+        assertEquals(List.of(coachA, coachB, coachC), loadStatusSorted.coaches().getContent().stream().map(AdminCoachOverviewOutput.CoachItem::coachId).toList());
+
+        AdminCoachOverviewOutput splitParamSorted = service.getCoachesOverview(
+                adminId, branchId, 0, 20, null, "ALL", List.of("todaySessionsCount", "asc")
+        );
+        assertEquals(List.of(coachC, coachA, coachB), splitParamSorted.coaches().getContent().stream().map(AdminCoachOverviewOutput.CoachItem::coachId).toList());
     }
 }

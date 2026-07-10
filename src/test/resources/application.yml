@@ -9,8 +9,30 @@ spring:
       ddl-auto: none
   liquibase:
     enabled: false
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
 
 app:
+  media:
+    avatar:
+      max-upload-size-bytes: 5242880
+      max-width: 10000
+      max-height: 10000
+      max-pixels: 40000000
+      thumb-size: 96
+      medium-size: 320
+      output-format: jpg
+      output-mime-type: image/jpeg
+    storage:
+      type: local
+      local:
+        root-path: ${MEDIA_STORAGE_PATH:./target/test-media}
+    access:
+      base-path: /api/media
+      token-secret: test-media-access-secret
+      url-ttl: 15m
   jwt:
     issuer: soccer-hub-test
     access-ttl: 1h

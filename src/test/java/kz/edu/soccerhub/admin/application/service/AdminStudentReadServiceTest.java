@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentDetailsOutput;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentListItemOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentRiskCode;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsPageOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsQuery;
@@ -20,7 +21,10 @@ import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.common.port.ContractPort;
 import kz.edu.soccerhub.common.port.CoachPort;
 import kz.edu.soccerhub.common.port.GroupSchedulePort;
+import kz.edu.soccerhub.common.port.MediaAccessPort;
+import kz.edu.soccerhub.common.port.MediaAvatarPort;
 import kz.edu.soccerhub.common.port.PaymentPort;
+import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
 import kz.edu.soccerhub.payments.domain.enums.PaymentMethod;
 import kz.edu.soccerhub.payments.domain.enums.PaymentStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,6 +68,10 @@ class AdminStudentReadServiceTest {
     private AdminService adminService;
     @Mock
     private AdminBranchService adminBranchService;
+    @Mock
+    private MediaAvatarPort mediaAvatarPort;
+    @Mock
+    private MediaAccessPort mediaAccessPort;
 
     private AdminStudentReadService service;
 
@@ -76,7 +84,9 @@ class AdminStudentReadServiceTest {
                 coachPort,
                 groupSchedulePort,
                 adminService,
-                adminBranchService
+                adminBranchService,
+                mediaAvatarPort,
+                mediaAccessPort
         );
     }
 
@@ -102,6 +112,8 @@ class AdminStudentReadServiceTest {
                 new PlayerAttendanceSummaryDto(debtPlayerId, 82, 9, 1, 1, 0, 1),
                 new PlayerAttendanceSummaryDto(noGroupPlayerId, 40, 2, 3, 0, 0, 3)
         ));
+        when(mediaAvatarPort.findActiveAvatars(MediaOwnerType.PLAYER, List.of(debtPlayerId, noGroupPlayerId)))
+                .thenReturn(Map.of());
         when(paymentPort.getContractPaymentSummaries(ArgumentMatchers.<List<ContractPaymentSummaryQueryInput>>any())).thenReturn(Map.of(
                 contractId,
                 new ContractPaymentSummaryOutput(
@@ -124,10 +136,48 @@ class AdminStudentReadServiceTest {
         );
 
         assertEquals(1, output.content().size());
+        assertEquals(2, output.summary().total());
+        assertEquals(0, output.summary().paid());
+        assertEquals(1, output.summary().partiallyPaid());
+        assertEquals(0, output.summary().unpaid());
+        assertEquals(1, output.summary().withDebt());
+        assertEquals(2, output.summary().withRisks());
+        assertEquals(1, output.summary().withoutGroup());
+        assertEquals(1, output.summary().lowAttendance());
+        assertEquals(0, output.summary().expiredContracts());
+        assertEquals(1, output.summary().endingSoon());
         assertEquals(debtPlayerId, output.content().getFirst().playerId());
+        assertNotNull(output.content().getFirst().createdAt());
         assertEquals(ContractPaymentStatus.PARTIALLY_PAID, output.content().getFirst().paymentStatus());
         assertEquals("Group A", output.content().getFirst().groupName());
         assertTrue(output.content().getFirst().risks().stream().anyMatch(risk -> risk.code() == AdminStudentRiskCode.DEBT));
+    }
+
+    @Test
+    void getStudentsShouldSupportCreatedAtSorting() {
+        UUID adminId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID olderPlayerId = UUID.randomUUID();
+        UUID newerPlayerId = UUID.randomUUID();
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(admin(adminId)));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(clientPort.getStudentProfilesByBranch(branchId)).thenReturn(List.of(
+                profile(branchId, olderPlayerId, "Older Student", "Parent One", LocalDateTime.of(2026, 7, 1, 10, 0)),
+                profile(branchId, newerPlayerId, "Newer Student", "Parent Two", LocalDateTime.of(2026, 7, 9, 10, 0))
+        ));
+        when(contractPort.getStudentContracts(branchId, List.of(olderPlayerId, newerPlayerId))).thenReturn(List.of());
+        when(coachPort.getAttendanceSummaries(Set.of(olderPlayerId, newerPlayerId))).thenReturn(List.of());
+        when(mediaAvatarPort.findActiveAvatars(MediaOwnerType.PLAYER, List.of(olderPlayerId, newerPlayerId))).thenReturn(Map.of());
+
+        AdminStudentsPageOutput output = service.getStudents(
+                adminId,
+                new AdminStudentsQuery(branchId, null, null, null, null, null),
+                PageRequest.of(0, 20),
+                "createdAt,desc"
+        );
+
+        assertEquals(List.of(newerPlayerId, olderPlayerId), output.content().stream().map(AdminStudentListItemOutput::playerId).toList());
     }
 
     @Test
@@ -162,6 +212,7 @@ class AdminStudentReadServiceTest {
         when(coachPort.getAttendanceSummaries(Set.of(playerId))).thenReturn(List.of(
                 new PlayerAttendanceSummaryDto(playerId, 75, 6, 2, 1, 0, 2)
         ));
+        when(mediaAvatarPort.findActiveAvatar(MediaOwnerType.PLAYER, playerId)).thenReturn(Optional.empty());
         when(coachPort.getRecentAttendance(playerId, 10)).thenReturn(List.of(
                 new PlayerAttendanceRecordDto(
                         playerId,
@@ -236,10 +287,21 @@ class AdminStudentReadServiceTest {
     }
 
     private StudentProfileDto profile(UUID branchId, UUID playerId, String playerName, String parentName) {
+        return profile(branchId, playerId, playerName, parentName, LocalDateTime.of(2026, 7, 1, 9, 0));
+    }
+
+    private StudentProfileDto profile(
+            UUID branchId,
+            UUID playerId,
+            String playerName,
+            String parentName,
+            LocalDateTime createdAt
+    ) {
         return new StudentProfileDto(
                 branchId,
                 playerId,
                 playerName,
+                createdAt,
                 LocalDate.of(2015, 5, 10),
                 UUID.randomUUID(),
                 parentName,

@@ -2,6 +2,7 @@ package kz.edu.soccerhub.admin.application.dto.student;
 
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus;
 import kz.edu.soccerhub.payments.domain.enums.PaymentMethod;
 import kz.edu.soccerhub.payments.domain.enums.PaymentStatus;
@@ -26,7 +27,8 @@ public record AdminStudentDetailsOutput(
             UUID id,
             String fullName,
             LocalDate birthDate,
-            Integer age
+            Integer age,
+            MediaAssetResponse avatar
     ) {
     }
 

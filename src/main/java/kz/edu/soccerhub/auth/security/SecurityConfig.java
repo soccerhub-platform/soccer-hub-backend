@@ -50,7 +50,8 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger-ui.html"
+                                "/swagger-ui.html",
+                                "/api/media/**"
                         ).permitAll()
                         .requestMatchers("/auth/change-password").authenticated()
                         .anyRequest().authenticated()

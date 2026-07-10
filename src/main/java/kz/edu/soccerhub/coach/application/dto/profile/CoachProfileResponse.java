@@ -13,6 +13,11 @@ public record CoachProfileResponse(
         String specialization,
         String bio,
         String status,
+        String accountStatus,
+        String workStatus,
+        java.time.LocalDate vacationFrom,
+        java.time.LocalDate vacationTo,
+        String workStatusReason,
         List<CoachBranchItem> branches,
         List<CoachGroupItem> groups,
         LocalDateTime createdAt

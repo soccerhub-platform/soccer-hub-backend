@@ -5,11 +5,13 @@ import kz.edu.soccerhub.auth.domain.repository.AppUserRepo;
 import kz.edu.soccerhub.coach.domain.model.CoachBranch;
 import kz.edu.soccerhub.coach.domain.model.CoachProfile;
 import kz.edu.soccerhub.coach.domain.model.CoachStatusHistory;
+import kz.edu.soccerhub.coach.domain.model.enums.AccountStatus;
 import kz.edu.soccerhub.coach.domain.model.TrainingSession;
 import kz.edu.soccerhub.coach.domain.model.TrainingSessionAttendance;
 import kz.edu.soccerhub.coach.domain.model.enums.CoachStatus;
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.WorkStatus;
 import kz.edu.soccerhub.coach.domain.repository.CoachBranchRepository;
 import kz.edu.soccerhub.coach.domain.repository.CoachProfileRepository;
 import kz.edu.soccerhub.coach.domain.repository.CoachStatusHistoryRepository;
@@ -64,7 +66,8 @@ public class CoachService implements CoachPort {
                 .birthDate(command.birthDate())
                 .phone(command.phone())
                 .email(command.email())
-                .status(CoachStatus.ACTIVE)
+                .accountStatus(AccountStatus.ACTIVE)
+                .workStatus(WorkStatus.AVAILABLE)
                 .build();
 
         coachProfileRepository.save(profile);
@@ -92,7 +95,7 @@ public class CoachService implements CoachPort {
         if (coachProfileOptional.isEmpty()) {
             throw new NotFoundException("Coach not found", coachId);
         }
-        if (coachProfileOptional.get().getStatus() != CoachStatus.ACTIVE) {
+        if (coachProfileOptional.get().getAccountStatus() != AccountStatus.ACTIVE) {
             throw new NotFoundException("Coach is not active", coachId);
         }
         coachBranchService.assignToBranch(coachId, branchId);
@@ -144,13 +147,24 @@ public class CoachService implements CoachPort {
     @Transactional
     public void enableCoach(UUID coachId) {
         coachProfileRepository.findById(coachId)
-                .ifPresent(coachProfile -> coachProfile.setStatus(CoachStatus.ACTIVE));
+                .ifPresent(coachProfile -> coachProfile.setAccountStatus(AccountStatus.ACTIVE));
     }
 
     @Override
     public void disableCoach(UUID coachId) {
         coachProfileRepository.findById(coachId)
-                .ifPresent(coachProfile -> coachProfile.setStatus(CoachStatus.INACTIVE));
+                .ifPresent(coachProfile -> coachProfile.setAccountStatus(AccountStatus.INACTIVE));
+    }
+
+    @Override
+    @Transactional
+    public void updateWorkStatus(UUID coachId, WorkStatus workStatus, LocalDate vacationFrom, LocalDate vacationTo, String reason) {
+        CoachProfile profile = coachProfileRepository.findById(coachId)
+                .orElseThrow(() -> new NotFoundException("Coach not found", coachId));
+        profile.setWorkStatus(workStatus);
+        profile.setVacationFrom(workStatus == WorkStatus.VACATION ? vacationFrom : null);
+        profile.setVacationTo(workStatus == WorkStatus.VACATION ? vacationTo : null);
+        profile.setWorkStatusReason(reason);
     }
 
     @Override
@@ -455,7 +469,13 @@ public class CoachService implements CoachPort {
                 .phone(coachProfile.getPhone())
                 .email(coachProfile.getEmail())
                 .specialization(coachProfile.getSpecialization())
-                .active(coachProfile.getStatus() == CoachStatus.ACTIVE)
+                .active(coachProfile.getAccountStatus() == AccountStatus.ACTIVE)
+                .accountStatus(coachProfile.getAccountStatus())
+                .workStatus(coachProfile.getWorkStatus())
+                .vacationFrom(coachProfile.getVacationFrom())
+                .vacationTo(coachProfile.getVacationTo())
+                .workStatusReason(coachProfile.getWorkStatusReason())
+                .createdAt(coachProfile.getCreatedAt())
                 .build();
     }
 

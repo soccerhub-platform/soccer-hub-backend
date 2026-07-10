@@ -2,6 +2,7 @@ package kz.edu.soccerhub.common.port;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import kz.edu.soccerhub.coach.domain.model.enums.WorkStatus;
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
@@ -32,6 +33,7 @@ public interface CoachPort {
     boolean verifyCoach(UUID coachId);
     void enableCoach(UUID coachId);
     void disableCoach(UUID coachId);
+    void updateWorkStatus(UUID coachId, WorkStatus workStatus, LocalDate vacationFrom, LocalDate vacationTo, String reason);
     Set<UUID> getBranchIds(UUID coachId);
     List<CoachSessionAdminView> getSessions(Set<UUID> coachIds, Set<UUID> groupIds, LocalDate dateFrom, LocalDate dateTo);
     List<CoachSessionAdminView> getOverdueReportSessions(Set<UUID> coachIds, Set<UUID> groupIds, LocalDate beforeDate);

@@ -1,7 +1,8 @@
 package kz.edu.soccerhub.coach.domain.model;
 
 import jakarta.persistence.*;
-import kz.edu.soccerhub.coach.domain.model.enums.CoachStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.AccountStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.WorkStatus;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import lombok.*;
 
@@ -43,9 +44,24 @@ public class CoachProfile extends AbstractAuditableEntity {
     @Column(name = "bio")
     private String bio;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
-    @Column(name = "status")
-    private CoachStatus status;
+    @Column(name = "account_status")
+    private AccountStatus accountStatus = AccountStatus.ACTIVE;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "work_status")
+    private WorkStatus workStatus = WorkStatus.AVAILABLE;
+
+    @Column(name = "vacation_from")
+    private LocalDate vacationFrom;
+
+    @Column(name = "vacation_to")
+    private LocalDate vacationTo;
+
+    @Column(name = "work_status_reason")
+    private String workStatusReason;
 
     @OneToMany(mappedBy = "coachProfile", cascade =  CascadeType.ALL, orphanRemoval = true)
     private Set<CoachBranch> coachBranches = new HashSet<>();

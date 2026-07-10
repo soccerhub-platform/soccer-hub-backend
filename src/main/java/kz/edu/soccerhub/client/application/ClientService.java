@@ -297,6 +297,7 @@ public class ClientService implements ClientPort {
                 client == null ? null : client.getBranchId(),
                 player.getId(),
                 joinName(player.getFirstName(), player.getLastName()),
+                player.getCreatedAt(),
                 player.getBirthDate(),
                 client == null ? null : client.getId(),
                 client == null ? null : joinName(client.getFirstName(), client.getLastName()),

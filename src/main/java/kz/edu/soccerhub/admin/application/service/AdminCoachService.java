@@ -1,6 +1,9 @@
 package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.coach.*;
+import kz.edu.soccerhub.coach.domain.model.enums.AccountStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.CoachStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.WorkStatus;
 import kz.edu.soccerhub.common.domain.enums.Role;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
@@ -17,12 +20,14 @@ import kz.edu.soccerhub.dispatcher.application.service.PasswordGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -34,6 +39,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class AdminCoachService {
+
+    private static final int OVERVIEW_MAX_SLOTS = 12;
+    private static final int OVERVIEW_HIGH_LOAD_PERCENT = 75;
 
     private final CoachPort coachPort;
     private final AuthPort authPort;
@@ -67,7 +75,7 @@ public class AdminCoachService {
                 .build();
 
         UUID coachId = coachPort.create(command);
-        coachPort.recordStatusHistory(coachId, kz.edu.soccerhub.coach.domain.model.enums.CoachStatus.ACTIVE, adminId);
+        coachPort.recordStatusHistory(coachId, CoachStatus.ACTIVE, adminId);
         log.info("Admin [{}] creates coach: {}", adminId, coachId);
 
         UUID branchId = input.branchId();
@@ -116,14 +124,29 @@ public class AdminCoachService {
     @Transactional
     public void updateCoachStatus(UUID adminId, UUID coachId, AdminCoachUpdateCoachStatusInput input) {
         adminService.findById(adminId).orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+        ensureAdminHasCoachAccess(adminId, coachId);
 
-        switch (input.status()) {
-            case ACTIVE -> coachPort.enableCoach(coachId);
-            case INACTIVE -> coachPort.disableCoach(coachId);
-            default -> throw new BadRequestException("Invalid coach status", input.status());
+        AccountStatus accountStatus = resolveAccountStatus(input);
+        WorkStatus workStatus = resolveWorkStatus(input);
+
+        if (accountStatus != null) {
+            switch (accountStatus) {
+                case ACTIVE -> coachPort.enableCoach(coachId);
+                case INACTIVE -> coachPort.disableCoach(coachId);
+            }
+            coachPort.recordStatusHistory(coachId, legacyStatus(accountStatus), adminId);
         }
 
-        coachPort.recordStatusHistory(coachId, input.status(), adminId);
+        if (workStatus != null) {
+            coachPort.updateWorkStatus(
+                    coachId,
+                    workStatus,
+                    input.vacationFrom(),
+                    input.vacationTo(),
+                    trimToNull(input.reason())
+            );
+            coachPort.recordStatusHistory(coachId, legacyStatus(workStatus), adminId);
+        }
     }
 
     @Transactional
@@ -155,11 +178,39 @@ public class AdminCoachService {
     }
 
     @Transactional(readOnly = true)
-    public AdminCoachOverviewOutput getCoachesOverview(UUID adminId, UUID branchId) {
+    public AdminCoachOverviewOutput     getCoachesOverview(
+            UUID adminId,
+            UUID branchId,
+            int page,
+            int size,
+            String search,
+            String status,
+            List<String> sort
+    ) {
         if (!adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)) {
             throw new BadRequestException("Admin does not have access to branch", branchId);
         }
-        return buildOverview(branchId);
+        validateOverviewPage(page, size);
+
+        AdminCoachOverviewStatus filterStatus = AdminCoachOverviewStatus.fromValue(status);
+        AdminCoachOverviewOutput overview = buildOverview(branchId);
+        List<AdminCoachOverviewOutput.CoachItem> filtered = overview.coaches().getContent().stream()
+                .filter(item -> matchesSearch(item, search))
+                .filter(item -> matchesStatus(item, filterStatus))
+                .sorted(buildOverviewComparator(sort))
+                .toList();
+
+        int fromIndex = Math.min(page * size, filtered.size());
+        int toIndex = Math.min(fromIndex + size, filtered.size());
+
+        return new AdminCoachOverviewOutput(
+                overview.summary(),
+                new PageImpl<>(
+                        filtered.subList(fromIndex, toIndex),
+                        org.springframework.data.domain.PageRequest.of(page, size),
+                        filtered.size()
+                )
+        );
     }
 
     @Transactional(readOnly = true)
@@ -187,7 +238,7 @@ public class AdminCoachService {
         if (coachIds.isEmpty()) {
             return new AdminCoachOverviewOutput(
                     new AdminCoachOverviewOutput.Summary(0, 0, 0, 0, 0, 0),
-                    List.of()
+                    Page.empty()
             );
         }
 
@@ -239,7 +290,6 @@ public class AdminCoachService {
             );
         }
 
-        int maxSlots = 12;
         List<AdminCoachOverviewOutput.CoachItem> items = new ArrayList<>();
         int active = 0;
         int withoutGroups = 0;
@@ -271,7 +321,7 @@ public class AdminCoachService {
                 withSessionsToday++;
             }
 
-            String loadStatus = weeklyCount > maxSlots ? "OVERLOADED" : "NORMAL";
+            String loadStatus = resolveOverviewLoadStatus(weeklyCount, OVERVIEW_MAX_SLOTS);
             if ("OVERLOADED".equals(loadStatus)) {
                 overloaded++;
             }
@@ -283,10 +333,17 @@ public class AdminCoachService {
                     coach.email(),
                     coach.phone(),
                     coach.active(),
+                    coach.accountStatus() == null ? null : coach.accountStatus().name(),
+                    coach.workStatus() == null ? null : coach.workStatus().name(),
+                    coach.vacationFrom(),
+                    coach.vacationTo(),
+                    coach.workStatusReason(),
+                    coach.specialization(),
+                    coach.createdAt(),
                     coachGroups,
                     weeklyCount,
                     todayCount,
-                    new AdminCoachOverviewOutput.Load(weeklyCount, maxSlots, loadStatus),
+                    new AdminCoachOverviewOutput.Load(weeklyCount, OVERVIEW_MAX_SLOTS, loadStatus),
                     new AdminCoachOverviewOutput.Reports(
                             overdueByCoach.getOrDefault(coach.id(), 0),
                             lastReportByCoach.get(coach.id())
@@ -303,8 +360,234 @@ public class AdminCoachService {
                         overloaded,
                         withSessionsToday
                 ),
-                items
+                new PageImpl<>(items)
         );
+    }
+
+    private void validateOverviewPage(int page, int size) {
+        if (page < 0) {
+            throw new BadRequestException("Page must not be negative", page);
+        }
+        if (size < 1 || size > 100) {
+            throw new BadRequestException("Size must be between 1 and 100", size);
+        }
+    }
+
+    private boolean matchesSearch(AdminCoachOverviewOutput.CoachItem item, String search) {
+        String normalized = trimToNull(search);
+        if (normalized == null) {
+            return true;
+        }
+
+        String needle = normalized.toLowerCase(Locale.ROOT);
+        String fullName = (item.firstName() + " " + item.lastName()).trim();
+        return contains(item.firstName(), needle)
+               || contains(item.lastName(), needle)
+               || contains(fullName, needle)
+               || contains(item.email(), needle)
+               || contains(item.phone(), needle);
+    }
+
+    private boolean matchesStatus(
+            AdminCoachOverviewOutput.CoachItem item,
+            AdminCoachOverviewStatus status
+    ) {
+        return switch (status) {
+            case ALL -> true;
+            case ACTIVE -> item.active();
+            case INACTIVE -> !item.active();
+            case WITHOUT_GROUPS -> item.groups().isEmpty();
+            case OVERLOADED -> "HIGH".equals(item.load().status())
+                               || "OVERLOADED".equals(item.load().status())
+                               || item.load().usedSlots() > item.load().maxSlots();
+            case TODAY -> item.todaySessionsCount() > 0;
+        };
+    }
+
+    private Comparator<AdminCoachOverviewOutput.CoachItem> buildOverviewComparator(List<String> sortParams) {
+        List<SortInstruction> instructions = parseSortInstructions(sortParams);
+        Comparator<AdminCoachOverviewOutput.CoachItem> comparator = null;
+
+        for (SortInstruction instruction : instructions) {
+            Comparator<AdminCoachOverviewOutput.CoachItem> next = comparatorFor(instruction.key());
+            if (!instruction.ascending()) {
+                next = next.reversed();
+            }
+            comparator = comparator == null ? next : comparator.thenComparing(next);
+        }
+
+        return comparator == null ? defaultOverviewComparator() : comparator;
+    }
+
+    private List<SortInstruction> parseSortInstructions(List<String> sortParams) {
+        if (sortParams == null || sortParams.isEmpty()) {
+            return List.of(
+                    new SortInstruction("active", false),
+                    new SortInstruction("lastName", true),
+                    new SortInstruction("firstName", true),
+                    new SortInstruction("coachId", true)
+            );
+        }
+
+        List<String> normalizedSortParams = normalizeSortParams(sortParams);
+        List<SortInstruction> instructions = new ArrayList<>();
+        for (String sortParam : normalizedSortParams) {
+            String value = trimToNull(sortParam);
+            if (value == null) {
+                continue;
+            }
+
+            String[] parts = value.split(",", 2);
+            String key = parts[0].trim();
+            String direction = parts.length > 1 ? parts[1].trim() : "asc";
+            if (!"asc".equalsIgnoreCase(direction) && !"desc".equalsIgnoreCase(direction)) {
+                throw new BadRequestException("Unknown sort direction", direction);
+            }
+
+            ensureSortableKey(key);
+            instructions.add(new SortInstruction(key, "asc".equalsIgnoreCase(direction)));
+        }
+
+        if (instructions.isEmpty()) {
+            return parseSortInstructions(null);
+        }
+
+        boolean hasLastName = instructions.stream().anyMatch(item -> item.key().equals("lastName"));
+        boolean hasFirstName = instructions.stream().anyMatch(item -> item.key().equals("firstName"));
+        boolean hasCoachId = instructions.stream().anyMatch(item -> item.key().equals("coachId"));
+
+        if (!hasLastName) {
+            instructions.add(new SortInstruction("lastName", true));
+        }
+        if (!hasFirstName) {
+            instructions.add(new SortInstruction("firstName", true));
+        }
+        if (!hasCoachId) {
+            instructions.add(new SortInstruction("coachId", true));
+        }
+        return List.copyOf(instructions);
+    }
+
+    private List<String> normalizeSortParams(List<String> sortParams) {
+        List<String> normalized = new ArrayList<>();
+
+        for (int index = 0; index < sortParams.size(); index++) {
+            String current = trimToNull(sortParams.get(index));
+            if (current == null) {
+                continue;
+            }
+
+            if (current.contains(",")) {
+                normalized.add(current);
+                continue;
+            }
+
+            if (index + 1 < sortParams.size()) {
+                String next = trimToNull(sortParams.get(index + 1));
+                if (next != null && isSortDirection(next)) {
+                    normalized.add(current + "," + next);
+                    index++;
+                    continue;
+                }
+            }
+
+            normalized.add(current);
+        }
+
+        return List.copyOf(normalized);
+    }
+
+    private boolean isSortDirection(String value) {
+        return "asc".equalsIgnoreCase(value) || "desc".equalsIgnoreCase(value);
+    }
+
+    private void ensureSortableKey(String key) {
+        Set<String> allowed = Set.of(
+                "coachId",
+                "firstName",
+                "lastName",
+                "email",
+                "phone",
+                "active",
+                "groupsCount",
+                "todaySessionsCount",
+                "weeklySessionsCount",
+                "loadUsed",
+                "loadMax",
+                "loadPercent",
+                "loadStatus",
+                "lastReportAt",
+                "overdueReportsCount",
+                "createdAt"
+        );
+        if (!allowed.contains(key)) {
+            throw new BadRequestException("Unknown coach overview sort key", key);
+        }
+    }
+
+    private Comparator<AdminCoachOverviewOutput.CoachItem> comparatorFor(String key) {
+        return switch (key) {
+            case "coachId" -> Comparator.comparing(AdminCoachOverviewOutput.CoachItem::coachId);
+            case "firstName" -> Comparator.comparing(AdminCoachOverviewOutput.CoachItem::firstName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
+            case "lastName" -> Comparator.comparing(AdminCoachOverviewOutput.CoachItem::lastName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
+            case "email" -> Comparator.comparing(AdminCoachOverviewOutput.CoachItem::email, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
+            case "phone" -> Comparator.comparing(AdminCoachOverviewOutput.CoachItem::phone, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
+            case "active" -> Comparator.comparing(AdminCoachOverviewOutput.CoachItem::active);
+            case "groupsCount" -> Comparator.comparingInt(item -> item.groups().size());
+            case "todaySessionsCount" -> Comparator.comparingInt(AdminCoachOverviewOutput.CoachItem::todaySessionsCount);
+            case "weeklySessionsCount" -> Comparator.comparingInt(AdminCoachOverviewOutput.CoachItem::weeklySessionsCount);
+            case "loadUsed" -> Comparator.comparingInt(item -> item.load().usedSlots());
+            case "loadMax" -> Comparator.comparingInt(item -> item.load().maxSlots());
+            case "loadPercent" -> Comparator.comparingInt(this::loadPercent);
+            case "loadStatus" -> Comparator.comparingInt(item -> loadStatusRank(item.load().status()));
+            case "lastReportAt" -> Comparator.comparing(item -> item.reports().lastReportAt(), Comparator.nullsLast(Comparator.naturalOrder()));
+            case "overdueReportsCount" -> Comparator.comparingInt(item -> item.reports().overdueCount());
+            case "createdAt" -> Comparator.comparing(this::coachCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()));
+            default -> throw new BadRequestException("Unknown coach overview sort key", key);
+        };
+    }
+
+    private Comparator<AdminCoachOverviewOutput.CoachItem> defaultOverviewComparator() {
+        return Comparator.comparing(AdminCoachOverviewOutput.CoachItem::active).reversed()
+                .thenComparing(AdminCoachOverviewOutput.CoachItem::lastName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                .thenComparing(AdminCoachOverviewOutput.CoachItem::firstName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                .thenComparing(AdminCoachOverviewOutput.CoachItem::coachId);
+    }
+
+    private int loadPercent(AdminCoachOverviewOutput.CoachItem item) {
+        if (item.load().maxSlots() <= 0) {
+            return 0;
+        }
+        return (int) Math.round(item.load().usedSlots() * 100.0 / item.load().maxSlots());
+    }
+
+    private int loadStatusRank(String status) {
+        if (status == null) {
+            return Integer.MAX_VALUE;
+        }
+
+        return switch (status) {
+            case "NORMAL" -> 0;
+            case "HIGH" -> 1;
+            case "OVERLOADED" -> 2;
+            default -> 3;
+        };
+    }
+
+    private LocalDateTime coachCreatedAt(AdminCoachOverviewOutput.CoachItem item) {
+        return item.createdAt();
+    }
+
+    private String resolveOverviewLoadStatus(int usedSlots, int maxSlots) {
+        if (usedSlots > maxSlots) {
+            return "OVERLOADED";
+        }
+
+        int percent = maxSlots <= 0 ? 0 : (int) Math.round(usedSlots * 100.0 / maxSlots);
+        if (percent >= OVERVIEW_HIGH_LOAD_PERCENT) {
+            return "HIGH";
+        }
+        return "NORMAL";
     }
 
     private AdminCoachProfileOutput buildProfile(UUID coachId, Set<UUID> allowedBranchIds) {
@@ -484,6 +767,11 @@ public class AdminCoachService {
                 coach.phone(),
                 coach.specialization(),
                 coach.active(),
+                coach.accountStatus() == null ? null : coach.accountStatus().name(),
+                coach.workStatus() == null ? null : coach.workStatus().name(),
+                coach.vacationFrom(),
+                coach.vacationTo(),
+                coach.workStatusReason(),
                 new AdminCoachProfileOutput.Load(usedSlots, maxSlots, loadStatus),
                 groups,
                 weeklySchedule,
@@ -602,12 +890,70 @@ public class AdminCoachService {
         };
     }
 
+    private boolean contains(String value, String needle) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(needle);
+    }
+
+    private AccountStatus resolveAccountStatus(AdminCoachUpdateCoachStatusInput input) {
+        if (input.accountStatus() != null) {
+            return input.accountStatus();
+        }
+        if (input.status() == null) {
+            return null;
+        }
+        return switch (input.status()) {
+            case ACTIVE -> AccountStatus.ACTIVE;
+            case INACTIVE -> AccountStatus.INACTIVE;
+            case BUSY, VACATION -> null;
+        };
+    }
+
+    private WorkStatus resolveWorkStatus(AdminCoachUpdateCoachStatusInput input) {
+        if (input.workStatus() != null) {
+            return input.workStatus();
+        }
+        if (input.status() == null) {
+            return null;
+        }
+        return switch (input.status()) {
+            case ACTIVE, INACTIVE -> null;
+            case BUSY -> WorkStatus.BUSY;
+            case VACATION -> WorkStatus.VACATION;
+        };
+    }
+
+    private CoachStatus legacyStatus(AccountStatus accountStatus) {
+        return accountStatus == AccountStatus.ACTIVE ? CoachStatus.ACTIVE : CoachStatus.INACTIVE;
+    }
+
+    private CoachStatus legacyStatus(WorkStatus workStatus) {
+        return switch (workStatus) {
+            case AVAILABLE -> CoachStatus.ACTIVE;
+            case BUSY -> CoachStatus.BUSY;
+            case VACATION -> CoachStatus.VACATION;
+        };
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private boolean overlaps(LocalDate startOne, LocalDate endOne, LocalDate startTwo, LocalDate endTwo) {
         return !startOne.isAfter(endTwo) && !startTwo.isAfter(endOne);
     }
 
     private boolean overlaps(LocalTime startOne, LocalTime endOne, LocalTime startTwo, LocalTime endTwo) {
         return startOne.isBefore(endTwo) && startTwo.isBefore(endOne);
+    }
+
+    private record SortInstruction(
+            String key,
+            boolean ascending
+    ) {
     }
 
     public AdminCoachResetPasswordOutput resetCoachPassword(UUID adminId, UUID coachId) {

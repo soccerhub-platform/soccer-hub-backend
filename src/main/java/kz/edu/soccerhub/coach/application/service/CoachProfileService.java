@@ -188,7 +188,12 @@ public class CoachProfileService {
                 profile.getPhone(),
                 profile.getSpecialization(),
                 profile.getBio(),
-                profile.getStatus() == null ? null : profile.getStatus().name(),
+                profile.getAccountStatus() == null ? null : profile.getAccountStatus().name(),
+                profile.getAccountStatus() == null ? null : profile.getAccountStatus().name(),
+                profile.getWorkStatus() == null ? null : profile.getWorkStatus().name(),
+                profile.getVacationFrom(),
+                profile.getVacationTo(),
+                profile.getWorkStatusReason(),
                 branches,
                 groups,
                 profile.getCreatedAt()
@@ -198,7 +203,7 @@ public class CoachProfileService {
     private CoachProfile getCoachProfile(UUID currentUserId) {
         CoachProfile profile = coachProfileRepository.findById(currentUserId)
                 .orElseThrow(() -> new ForbiddenException("Coach profile not found"));
-        if (profile.getStatus() == null) {
+        if (profile.getAccountStatus() == null || profile.getWorkStatus() == null) {
             throw new NotFoundException("Coach status not found", currentUserId);
         }
         return profile;

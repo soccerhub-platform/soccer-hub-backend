@@ -1,12 +1,17 @@
 package kz.edu.soccerhub.common.dto.coach;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.springframework.data.domain.Page;
+
+import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
 public record AdminCoachOverviewOutput(
         Summary summary,
-        List<CoachItem> coaches
+        Page<CoachItem> coaches
 ) {
     public record Summary(
             int total,
@@ -24,6 +29,13 @@ public record AdminCoachOverviewOutput(
             String email,
             String phone,
             boolean active,
+            String accountStatus,
+            String workStatus,
+            LocalDate vacationFrom,
+            LocalDate vacationTo,
+            String workStatusReason,
+            String specialization,
+            @JsonIgnore LocalDateTime createdAt,
             List<GroupItem> groups,
             int weeklySessionsCount,
             int todaySessionsCount,

@@ -11,8 +11,30 @@ spring:
     enabled: true
     change-log: classpath:/db/changelog/changelog-master.xml
     drop-first: false
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
 
 app:
+  media:
+    avatar:
+      max-upload-size-bytes: 5242880
+      max-width: 10000
+      max-height: 10000
+      max-pixels: 40000000
+      thumb-size: 96
+      medium-size: 320
+      output-format: jpg
+      output-mime-type: image/jpeg
+    storage:
+      type: local
+      local:
+        root-path: ${MEDIA_STORAGE_PATH:./data/media}
+    access:
+      base-path: /api/media
+      token-secret: ${MEDIA_ACCESS_TOKEN_SECRET:dev-only-media-access-secret-change-me}
+      url-ttl: 15m
   jwt:
     issuer: "soccer-hub"
     access-ttl: 1h

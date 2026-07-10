@@ -6,6 +6,8 @@ import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
 import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+import kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryQueryInput;
 import kz.edu.soccerhub.common.dto.payment.PaymentOutput;
@@ -13,6 +15,8 @@ import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
+import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
+import kz.edu.soccerhub.media.domain.model.MediaAsset;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -39,6 +43,8 @@ public class AdminStudentReadService {
     private final GroupSchedulePort groupSchedulePort;
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
+    private final MediaAvatarPort mediaAvatarPort;
+    private final MediaAccessPort mediaAccessPort;
 
     @Transactional(readOnly = true)
     public AdminStudentsPageOutput getStudents(UUID adminId, AdminStudentsQuery query, Pageable pageable, String sort) {
@@ -52,6 +58,10 @@ public class AdminStudentReadService {
                         profiles.stream().map(StudentProfileDto::playerId).collect(Collectors.toSet())
                 ).stream()
                 .collect(Collectors.toMap(PlayerAttendanceSummaryDto::playerId, item -> item));
+        Map<UUID, MediaAsset> avatarsByPlayerId = mediaAvatarPort.findActiveAvatars(
+                MediaOwnerType.PLAYER,
+                profiles.stream().map(StudentProfileDto::playerId).toList()
+        );
 
         Map<UUID, StudentContractSnapshotOutput> currentContractsByPlayerId = new HashMap<>();
         List<ContractPaymentSummaryQueryInput> paymentQueries = new ArrayList<>();
@@ -66,13 +76,19 @@ public class AdminStudentReadService {
                 ? Map.of()
                 : paymentPort.getContractPaymentSummaries(paymentQueries);
 
-        List<AdminStudentListItemOutput> items = profiles.stream()
+        List<AdminStudentListItemOutput> allItems = profiles.stream()
                 .map(profile -> toListItem(
                         profile,
                         currentContractsByPlayerId.get(profile.playerId()),
                         paymentSummaries,
-                        attendanceByPlayerId.get(profile.playerId())
+                        attendanceByPlayerId.get(profile.playerId()),
+                        toMediaAssetResponse(avatarsByPlayerId.get(profile.playerId()))
                 ))
+                .toList();
+
+        AdminStudentsPageOutput.Summary summary = buildSummary(allItems);
+
+        List<AdminStudentListItemOutput> items = allItems.stream()
                 .filter(item -> matches(item, query))
                 .sorted(resolveComparator(sort))
                 .toList();
@@ -83,6 +99,7 @@ public class AdminStudentReadService {
         int toIndex = Math.min(fromIndex + pageSize, items.size());
 
         return new AdminStudentsPageOutput(
+                summary,
                 items.subList(fromIndex, toIndex),
                 items.size(),
                 pageSize == 0 ? 0 : (int) Math.ceil(items.size() / (double) pageSize),
@@ -112,13 +129,18 @@ public class AdminStudentReadService {
                 ? List.of()
                 : paymentPort.getContractPayments(currentContract.id()).stream().limit(RECENT_PAYMENTS_LIMIT).toList();
         List<AdminStudentRiskOutput> risks = buildRisks(currentContract, paymentSummary, attendanceSummary);
+        MediaAssetResponse avatar = toMediaAssetResponse(mediaAvatarPort.findActiveAvatar(
+                MediaOwnerType.PLAYER,
+                playerId
+        ).orElse(null));
 
         return new AdminStudentDetailsOutput(
                 new AdminStudentDetailsOutput.PlayerBlock(
                         profile.playerId(),
                         profile.playerFullName(),
                         profile.birthDate(),
-                        calculateAge(profile.birthDate())
+                        calculateAge(profile.birthDate()),
+                        avatar
                 ),
                 new AdminStudentDetailsOutput.ClientBlock(
                         profile.clientId(),
@@ -163,7 +185,8 @@ public class AdminStudentReadService {
             StudentProfileDto profile,
             StudentContractSnapshotOutput currentContract,
             Map<UUID, ContractPaymentSummaryOutput> paymentSummaries,
-            PlayerAttendanceSummaryDto attendanceSummary
+            PlayerAttendanceSummaryDto attendanceSummary,
+            MediaAssetResponse avatar
     ) {
         ContractPaymentSummaryOutput paymentSummary = currentContract == null ? null : paymentSummaries.get(currentContract.id());
         PlayerAttendanceSummaryDto resolvedAttendance = attendanceSummary == null
@@ -174,6 +197,7 @@ public class AdminStudentReadService {
         return new AdminStudentListItemOutput(
                 profile.playerId(),
                 profile.playerFullName(),
+                profile.createdAt(),
                 profile.birthDate(),
                 calculateAge(profile.birthDate()),
                 profile.clientId(),
@@ -192,8 +216,78 @@ public class AdminStudentReadService {
                 paymentSummary == null ? BigDecimal.ZERO : paymentSummary.outstandingAmount(),
                 resolvedAttendance.attendanceRate(),
                 resolvedAttendance.missedLast30Days(),
+                avatar,
                 risks
         );
+    }
+
+    private MediaAssetResponse toMediaAssetResponse(MediaAsset asset) {
+        return asset == null ? null : mediaAccessPort.toResponse(asset);
+    }
+
+    private AdminStudentsPageOutput.Summary buildSummary(List<AdminStudentListItemOutput> items) {
+        int total = items.size();
+        int paid = 0;
+        int partiallyPaid = 0;
+        int unpaid = 0;
+        int withDebt = 0;
+        int withRisks = 0;
+        int withoutGroup = 0;
+        int lowAttendance = 0;
+        int expiredContracts = 0;
+        int endingSoon = 0;
+
+        for (AdminStudentListItemOutput item : items) {
+            if (item.paymentStatus() == ContractPaymentStatus.PAID) {
+                paid++;
+            } else if (item.paymentStatus() == ContractPaymentStatus.PARTIALLY_PAID) {
+                partiallyPaid++;
+            } else if (item.paymentStatus() == ContractPaymentStatus.UNPAID) {
+                unpaid++;
+            }
+
+            if (item.outstandingAmount() != null && item.outstandingAmount().compareTo(BigDecimal.ZERO) > 0) {
+                withDebt++;
+            }
+
+            if (!item.risks().isEmpty()) {
+                withRisks++;
+            }
+
+            if (item.groupId() == null) {
+                withoutGroup++;
+            }
+
+            if (hasRisk(item, AdminStudentRiskCode.LOW_ATTENDANCE)) {
+                lowAttendance++;
+            }
+            if (hasRisk(item, AdminStudentRiskCode.EXPIRED_CONTRACT)) {
+                expiredContracts++;
+            }
+            if (hasRisk(item, AdminStudentRiskCode.ENDING_SOON)) {
+                endingSoon++;
+            }
+        }
+
+        return new AdminStudentsPageOutput.Summary(
+                total,
+                paid,
+                partiallyPaid,
+                unpaid,
+                withDebt,
+                withRisks,
+                withoutGroup,
+                lowAttendance,
+                expiredContracts,
+                endingSoon
+        );
+    }
+
+    private boolean hasRisk(
+            AdminStudentListItemOutput item,
+            AdminStudentRiskCode riskCode
+    ) {
+        return item.risks().stream().anyMatch(risk -> risk.code() == riskCode);
     }
 
     private boolean matches(AdminStudentListItemOutput item, AdminStudentsQuery query) {
@@ -240,13 +334,21 @@ public class AdminStudentReadService {
         }
 
         Comparator<AdminStudentListItemOutput> comparator = switch (field) {
+            case "createdAt" -> Comparator.comparing(AdminStudentListItemOutput::createdAt, Comparator.nullsLast(Comparator.naturalOrder()));
             case "contractEndDate" -> Comparator.comparing(AdminStudentListItemOutput::contractEndDate, Comparator.nullsLast(Comparator.naturalOrder()));
             case "outstandingAmount" -> Comparator.comparing(AdminStudentListItemOutput::outstandingAmount, Comparator.nullsLast(Comparator.naturalOrder()));
+            case "paidAmount" -> Comparator.comparing(AdminStudentListItemOutput::paidAmount, Comparator.nullsLast(Comparator.naturalOrder()));
             case "attendanceRate" -> Comparator.comparing(AdminStudentListItemOutput::attendanceRate, Comparator.nullsLast(Comparator.naturalOrder()));
+            case "playerName" -> Comparator.comparing(AdminStudentListItemOutput::playerName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
             case "parentName" -> Comparator.comparing(AdminStudentListItemOutput::parentName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
             default -> Comparator.comparing(AdminStudentListItemOutput::playerName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
         };
-        return ascending ? comparator : comparator.reversed();
+        if (!Set.of("playerName", "parentName", "contractEndDate", "outstandingAmount", "paidAmount", "attendanceRate", "createdAt").contains(field)) {
+            throw new BadRequestException("Unknown student sort field", field);
+        }
+
+        Comparator<AdminStudentListItemOutput> stableComparator = ascending ? comparator : comparator.reversed();
+        return stableComparator.thenComparing(AdminStudentListItemOutput::playerId);
     }
 
     private Map<UUID, List<StudentContractSnapshotOutput>> groupContractsByPlayer(List<StudentContractSnapshotOutput> contracts) {

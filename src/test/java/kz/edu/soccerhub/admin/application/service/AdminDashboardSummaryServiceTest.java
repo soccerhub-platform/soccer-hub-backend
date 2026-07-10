@@ -117,6 +117,7 @@ class AdminDashboardSummaryServiceTest {
                         branchId,
                         playerId,
                         "Player",
+                        LocalDateTime.of(2026, 6, 1, 10, 0),
                         LocalDate.of(2015, 5, 10),
                         UUID.randomUUID(),
                         "Parent",

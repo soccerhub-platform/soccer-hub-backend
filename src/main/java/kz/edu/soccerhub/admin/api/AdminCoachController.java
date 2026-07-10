@@ -107,10 +107,23 @@ public class AdminCoachController {
     @GetMapping("/overview")
     public ResponseEntity<AdminCoachOverviewOutput> getOverview(
             @AuthenticationPrincipal Jwt jwt,
-            @RequestParam("branchId") UUID branchId
+            @RequestParam("branchId") UUID branchId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "ALL") String status,
+            @RequestParam(required = false) java.util.List<String> sort
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
-        return ResponseEntity.ok(adminCoachService.getCoachesOverview(adminId, branchId));
+        return ResponseEntity.ok(adminCoachService.getCoachesOverview(
+                adminId,
+                branchId,
+                page,
+                size,
+                search,
+                status,
+                sort
+        ));
     }
 
     @GetMapping("/{coachId}/profile")
