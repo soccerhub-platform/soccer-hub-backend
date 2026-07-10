@@ -2,17 +2,17 @@ package kz.edu.soccerhub.coach.application.service;
 
 import jakarta.validation.constraints.NotNull;
 import kz.edu.soccerhub.auth.domain.repository.AppUserRepo;
+import kz.edu.soccerhub.coach.application.dto.profile.CoachAvailabilityResponse;
+import kz.edu.soccerhub.coach.application.dto.profile.CoachAvailabilityUpdateRequest;
+import kz.edu.soccerhub.coach.domain.model.CoachAvailability;
 import kz.edu.soccerhub.coach.domain.model.CoachBranch;
 import kz.edu.soccerhub.coach.domain.model.CoachProfile;
 import kz.edu.soccerhub.coach.domain.model.CoachStatusHistory;
-import kz.edu.soccerhub.coach.domain.model.enums.AccountStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.*;
 import kz.edu.soccerhub.coach.domain.model.TrainingSession;
 import kz.edu.soccerhub.coach.domain.model.TrainingSessionAttendance;
-import kz.edu.soccerhub.coach.domain.model.enums.CoachStatus;
-import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
-import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
-import kz.edu.soccerhub.coach.domain.model.enums.WorkStatus;
 import kz.edu.soccerhub.coach.domain.repository.CoachBranchRepository;
+import kz.edu.soccerhub.coach.domain.repository.CoachAvailabilityRepository;
 import kz.edu.soccerhub.coach.domain.repository.CoachProfileRepository;
 import kz.edu.soccerhub.coach.domain.repository.CoachStatusHistoryRepository;
 import kz.edu.soccerhub.coach.domain.repository.TrainingSessionAttendanceRepository;
@@ -29,6 +29,7 @@ import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
 import kz.edu.soccerhub.common.dto.coach.SessionAttendanceSummaryDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
+import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.CoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
@@ -40,18 +41,25 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class CoachService implements CoachPort {
+    private static final String DEFAULT_TIMEZONE = "Asia/Almaty";
+    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final Set<String> ALLOWED_DAYS = Set.of("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN");
 
     private final CoachProfileRepository coachProfileRepository;
     private final CoachBranchService coachBranchService;
     private final CoachBranchRepository coachBranchRepository;
     private final TrainingSessionRepository trainingSessionRepository;
     private final TrainingSessionAttendanceRepository trainingSessionAttendanceRepository;
+    private final CoachAvailabilityRepository coachAvailabilityRepository;
     private final CoachStatusHistoryRepository coachStatusHistoryRepository;
     private final AppUserRepo appUserRepo;
     private final GroupPort groupPort;
@@ -169,6 +177,39 @@ public class CoachService implements CoachPort {
 
     @Override
     @Transactional(readOnly = true)
+    public CoachAvailabilityResponse getAvailability(UUID coachId) {
+        if (!coachProfileRepository.existsById(coachId)) {
+            throw new NotFoundException("Coach not found", coachId);
+        }
+        CoachAvailability availability = coachAvailabilityRepository.findById(coachId)
+                .orElseGet(() -> defaultAvailability(coachId));
+        return toAvailabilityResponse(availability);
+    }
+
+    @Override
+    @Transactional
+    public CoachAvailabilityResponse updateAvailability(UUID coachId, CoachAvailabilityUpdateRequest request) {
+        if (!coachProfileRepository.existsById(coachId)) {
+            throw new NotFoundException("Coach not found", coachId);
+        }
+        validateAvailabilityRequest(request);
+
+        List<String> normalizedDays = request.days().stream()
+                .map(String::trim)
+                .map(String::toUpperCase)
+                .toList();
+        CoachAvailability availability = coachAvailabilityRepository.findById(coachId)
+                .orElseGet(() -> CoachAvailability.builder().coachId(coachId).build());
+        availability.setDays(String.join(",", normalizedDays));
+        availability.setTimeFrom(LocalTime.parse(request.timeFrom().trim(), TIME_FORMAT));
+        availability.setTimeTo(LocalTime.parse(request.timeTo().trim(), TIME_FORMAT));
+        availability.setTimezone(request.timezone().trim());
+        coachAvailabilityRepository.save(availability);
+        return toAvailabilityResponse(availability);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Set<UUID> getBranchIds(UUID coachId) {
         return coachBranchRepository.findAllByCoachId(coachId).stream()
                 .map(CoachBranch::getBranchId)
@@ -258,20 +299,76 @@ public class CoachService implements CoachPort {
                 .map(item -> new CoachStatusHistoryDto(
                         item.getStatus().name(),
                         item.getChangedAt(),
-                        item.getChangedBy()
+                        item.getChangedBy(),
+                        item.getEventType() == null
+                                ? resolveHistoryEventType(item.getStatus())
+                                : item.getEventType().name(),
+                        enumName(item.getPreviousAccountStatus()),
+                        item.getNewAccountStatus() == null
+                                ? resolveHistoryAccountStatus(item.getStatus())
+                                : item.getNewAccountStatus().name(),
+                        enumName(item.getPreviousWorkStatus()),
+                        item.getNewWorkStatus() == null
+                                ? resolveHistoryWorkStatus(item.getStatus())
+                                : item.getNewWorkStatus().name(),
+                        item.getReason(),
+                        item.getVacationFrom(),
+                        item.getVacationTo()
                 ))
                 .toList();
+    }
+
+    private String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     @Override
     @Transactional
     public void recordStatusHistory(UUID coachId, CoachStatus status, UUID changedBy) {
+        recordStatusHistory(
+                coachId,
+                status,
+                changedBy,
+                CoachStatusHistoryEventType.valueOf(resolveHistoryEventType(status)),
+                null,
+                toAccountStatus(resolveHistoryAccountStatus(status)),
+                null,
+                toWorkStatus(resolveHistoryWorkStatus(status)),
+                null,
+                null,
+                null
+        );
+    }
+
+    @Override
+    @Transactional
+    public void recordStatusHistory(
+            UUID coachId,
+            CoachStatus status,
+            UUID changedBy,
+            CoachStatusHistoryEventType eventType,
+            AccountStatus previousAccountStatus,
+            AccountStatus newAccountStatus,
+            WorkStatus previousWorkStatus,
+            WorkStatus newWorkStatus,
+            String reason,
+            LocalDate vacationFrom,
+            LocalDate vacationTo
+    ) {
         coachStatusHistoryRepository.save(CoachStatusHistory.builder()
                 .id(UUID.randomUUID())
                 .coachId(coachId)
                 .status(status)
                 .changedAt(LocalDateTime.now())
                 .changedBy(changedBy)
+                .eventType(eventType)
+                .previousAccountStatus(previousAccountStatus)
+                .newAccountStatus(newAccountStatus)
+                .previousWorkStatus(previousWorkStatus)
+                .newWorkStatus(newWorkStatus)
+                .reason(reason)
+                .vacationFrom(vacationFrom)
+                .vacationTo(vacationTo)
                 .build());
     }
 
@@ -403,6 +500,14 @@ public class CoachService implements CoachPort {
         return (int) Math.round((attended * 100.0) / attendances.size());
     }
 
+    private AccountStatus toAccountStatus(String status) {
+        return status == null ? null : AccountStatus.valueOf(status);
+    }
+
+    private WorkStatus toWorkStatus(String status) {
+        return status == null ? null : WorkStatus.valueOf(status);
+    }
+
     private PlayerAttendanceSummaryDto summarizeAttendance(
             UUID playerId,
             List<TrainingSessionAttendance> attendances,
@@ -509,6 +614,85 @@ public class CoachService implements CoachPort {
                 session.isReportDone(),
                 session.getUpdatedAt()
         );
+    }
+
+    private String resolveHistoryEventType(CoachStatus status) {
+        return switch (status) {
+            case ACTIVE, INACTIVE -> "ACCOUNT_STATUS_CHANGED";
+            case BUSY, VACATION -> "WORK_STATUS_CHANGED";
+        };
+    }
+
+    private String resolveHistoryAccountStatus(CoachStatus status) {
+        return switch (status) {
+            case ACTIVE -> "ACTIVE";
+            case INACTIVE -> "INACTIVE";
+            case BUSY, VACATION -> null;
+        };
+    }
+
+    private String resolveHistoryWorkStatus(CoachStatus status) {
+        return switch (status) {
+            case ACTIVE -> "AVAILABLE";
+            case BUSY -> "BUSY";
+            case VACATION -> "VACATION";
+            case INACTIVE -> null;
+        };
+    }
+
+    private CoachAvailability defaultAvailability(UUID coachId) {
+        return CoachAvailability.builder()
+                .coachId(coachId)
+                .days("MON,TUE,WED,THU,FRI")
+                .timeFrom(LocalTime.of(10, 0))
+                .timeTo(LocalTime.of(20, 0))
+                .timezone(DEFAULT_TIMEZONE)
+                .build();
+    }
+
+    private CoachAvailabilityResponse toAvailabilityResponse(CoachAvailability availability) {
+        List<String> days = Arrays.stream(availability.getDays().split(","))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .toList();
+        return new CoachAvailabilityResponse(
+                days,
+                availability.getTimeFrom().format(TIME_FORMAT),
+                availability.getTimeTo().format(TIME_FORMAT),
+                availability.getTimezone()
+        );
+    }
+
+    private void validateAvailabilityRequest(CoachAvailabilityUpdateRequest request) {
+        List<String> normalizedDays = request.days().stream()
+                .map(String::trim)
+                .map(String::toUpperCase)
+                .toList();
+        if (normalizedDays.isEmpty()) {
+            throw new BadRequestException("days is required");
+        }
+        boolean hasInvalidDay = normalizedDays.stream().anyMatch(day -> !ALLOWED_DAYS.contains(day));
+        if (hasInvalidDay) {
+            throw new BadRequestException("days contains invalid value", request.days());
+        }
+
+        LocalTime timeFrom;
+        LocalTime timeTo;
+        try {
+            timeFrom = LocalTime.parse(request.timeFrom().trim(), TIME_FORMAT);
+            timeTo = LocalTime.parse(request.timeTo().trim(), TIME_FORMAT);
+        } catch (Exception ex) {
+            throw new BadRequestException("Invalid time format. Expected HH:mm");
+        }
+        if (!timeFrom.isBefore(timeTo)) {
+            throw new BadRequestException("timeFrom must be before timeTo", request.timeFrom(), request.timeTo());
+        }
+
+        try {
+            ZoneId.of(request.timezone().trim());
+        } catch (Exception ex) {
+            throw new BadRequestException("Invalid timezone", request.timezone());
+        }
     }
 
     private String trimToNull(String value) {

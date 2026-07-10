@@ -233,7 +233,17 @@ class AdminCoachServiceTest {
         when(coachPort.getReportedSessions(coachId)).thenReturn(List.of());
         when(coachPort.countOverdueReports(coachId, today)).thenReturn(1);
         when(coachPort.getStatusHistory(coachId)).thenReturn(List.of(
-                new CoachStatusHistoryDto("ACTIVE", LocalDateTime.of(today, LocalTime.NOON), adminId)
+                new CoachStatusHistoryDto(
+                        "ACTIVE",
+                        LocalDateTime.of(today, LocalTime.NOON),
+                        adminId,
+                        "ACCOUNT_STATUS_CHANGED",
+                        null,
+                        "ACTIVE",
+                        null,
+                        null,
+                        null
+                )
         ));
 
         AdminCoachProfileOutput output = service.getCoachProfile(adminId, coachId);
@@ -398,7 +408,7 @@ class AdminCoachServiceTest {
         assertEquals(1, output.coaches().getContent().size());
         assertEquals(activeCoachId, output.coaches().getContent().getFirst().coachId());
         assertEquals("U12", output.coaches().getContent().getFirst().specialization());
-        assertEquals("NORMAL", output.coaches().getContent().getFirst().load().status());
+        assertEquals("LOW", output.coaches().getContent().getFirst().load().status());
         assertTrue(output.coaches().getContent().getFirst().active());
     }
 

@@ -3,6 +3,7 @@ package kz.edu.soccerhub.common.port;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
@@ -10,6 +11,8 @@ import java.util.UUID;
 public interface GroupCoachPort {
 
     UUID assignCoach(UUID groupId, UUID coachId, CoachRole role);
+
+    UUID assignCoach(UUID groupId, UUID coachId, CoachRole role, LocalDate assignedFrom, LocalDate assignedTo);
 
     boolean unassignCoach(UUID groupCoachId);
 

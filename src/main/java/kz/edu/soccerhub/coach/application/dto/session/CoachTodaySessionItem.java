@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.coach.application.dto.session;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record CoachTodaySessionItem(
@@ -12,6 +13,9 @@ public record CoachTodaySessionItem(
         String status,
         String cancelReason,
         boolean reportDone,
+        String reportStatus,
+        LocalDateTime reportDeadline,
+        LocalDateTime submittedAt,
         String attendanceSummary
 ) {
 }

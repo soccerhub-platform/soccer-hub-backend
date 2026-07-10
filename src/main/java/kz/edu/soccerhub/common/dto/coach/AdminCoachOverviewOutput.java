@@ -51,11 +51,17 @@ public record AdminCoachOverviewOutput(
     public record Load(
             int usedSlots,
             int maxSlots,
-            String status
+            String status,
+            int completed,
+            int planned,
+            int used,
+            int limit,
+            int percentage
     ) {}
 
     public record Reports(
             int overdueCount,
+            int pendingCount,
             OffsetDateTime lastReportAt
     ) {}
 }

@@ -28,12 +28,25 @@ public class GroupCoachService implements GroupCoachPort {
     @Override
     @Transactional
     public UUID assignCoach(UUID groupId, UUID coachId, CoachRole role) {
+        return assignCoach(groupId, coachId, role, LocalDate.now(), null);
+    }
+
+    @Override
+    @Transactional
+    public UUID assignCoach(UUID groupId, UUID coachId, CoachRole role, LocalDate assignedFrom, LocalDate assignedTo) {
         if (groupCoachRepository.existsByGroupIdAndCoachIdAndActiveTrue(groupId, coachId)) {
             throw new BadRequestException(
                     "Coach already assigned to this group", Map.of("groupId", groupId, "coachId", coachId));
         }
 
         role = role == null ? CoachRole.ASSISTANT : role;
+        LocalDate resolvedAssignedFrom = assignedFrom == null ? LocalDate.now() : assignedFrom;
+        if (assignedTo != null && assignedTo.isBefore(resolvedAssignedFrom)) {
+            throw new BadRequestException("assignedTo must not be before assignedFrom", Map.of(
+                    "assignedFrom", resolvedAssignedFrom,
+                    "assignedTo", assignedTo
+            ));
+        }
 
         if (role == CoachRole.MAIN && groupCoachRepository.existsByGroupIdAndCoachIdAndRole(groupId, coachId, CoachRole.MAIN)) {
             throw new BadRequestException("Main coach already exist in this group", groupId);
@@ -51,8 +64,8 @@ public class GroupCoachService implements GroupCoachPort {
 
         groupCoach.setRole(role);
         groupCoach.setActive(true);
-        groupCoach.setAssignedFrom(LocalDate.now());
-        groupCoach.setAssignedTo(null);
+        groupCoach.setAssignedFrom(resolvedAssignedFrom);
+        groupCoach.setAssignedTo(assignedTo);
 
         GroupCoach saved = groupCoachRepository.save(groupCoach);
 

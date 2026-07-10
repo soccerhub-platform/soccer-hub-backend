@@ -59,7 +59,12 @@ public record AdminCoachProfileOutput(
     public record Load(
             int usedSlots,
             int maxSlots,
-            String status
+            String status,
+            int completed,
+            int planned,
+            int used,
+            int limit,
+            int percentage
     ) {}
 
     public record WeeklyScheduleItem(
@@ -116,6 +121,12 @@ public record AdminCoachProfileOutput(
     public record StatusHistoryItem(
             String status,
             LocalDateTime changedAt,
-            UUID changedBy
+            UUID changedBy,
+            String eventType,
+            String previousAccountStatus,
+            String newAccountStatus,
+            String previousWorkStatus,
+            String newWorkStatus,
+            String reason
     ) {}
 }

@@ -3,6 +3,7 @@ package kz.edu.soccerhub.coach.application.service;
 import kz.edu.soccerhub.coach.application.dto.session.*;
 import kz.edu.soccerhub.coach.domain.model.TrainingSession;
 import kz.edu.soccerhub.coach.domain.model.TrainingSessionAttendance;
+import kz.edu.soccerhub.coach.domain.model.enums.SessionReportStatus;
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
 import kz.edu.soccerhub.coach.domain.repository.CoachProfileRepository;
@@ -34,6 +35,7 @@ public class CoachSessionService {
 
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
     private static final String DEFAULT_TIMEZONE = "Asia/Almaty";
+    private static final int REPORT_DEADLINE_HOURS = 24;
 
     private final CoachProfileRepository coachProfileRepository;
     private final TrainingSessionRepository trainingSessionRepository;
@@ -69,6 +71,9 @@ public class CoachSessionService {
                             toResponseStatus(session, zoneId),
                             session.getCancelReason(),
                             session.isReportDone(),
+                            resolveReportStatus(session, zoneId).name(),
+                            reportDeadline(session),
+                            submittedAt(session),
                             summary
                     );
                 })
@@ -112,6 +117,9 @@ public class CoachSessionService {
                 toResponseStatus(session, zoneId),
                 session.getCancelReason(),
                 session.isReportDone(),
+                resolveReportStatus(session, zoneId).name(),
+                reportDeadline(session),
+                submittedAt(session),
                 calculateAttendanceSummary(session.getId(), playerIds),
                 students,
                 new CoachSessionReportView(
@@ -148,7 +156,10 @@ public class CoachSessionService {
                             session.getId(),
                             session.getScheduledStartAt().toLocalTime().format(TIME_FORMAT),
                             groupNames.getOrDefault(session.getGroupId(), "Unknown group"),
-                            toResponseStatus(session, zoneId)
+                            toResponseStatus(session, zoneId),
+                            resolveReportStatus(session, zoneId).name(),
+                            reportDeadline(session),
+                            submittedAt(session)
                     ));
         }
 
@@ -201,7 +212,10 @@ public class CoachSessionService {
                             groupNames.getOrDefault(session.getGroupId(), "Unknown group"),
                             toResponseStatus(session, zoneId),
                             calculateAttendanceSummary(session.getId(), playerIds),
-                            session.isReportDone()
+                            session.isReportDone(),
+                            resolveReportStatus(session, zoneId).name(),
+                            reportDeadline(session),
+                            submittedAt(session)
                     );
                 })
                 .toList();
@@ -461,6 +475,26 @@ public class CoachSessionService {
             return "OVERDUE";
         }
         return session.getStatus().name();
+    }
+
+    private SessionReportStatus resolveReportStatus(TrainingSession session, ZoneId zoneId) {
+        if (session.isReportDone()) {
+            return SessionReportStatus.SUBMITTED;
+        }
+        if (session.getScheduledEndAt() == null || session.getScheduledEndAt().isAfter(LocalDateTime.now(zoneId))) {
+            return SessionReportStatus.NOT_REQUIRED;
+        }
+        return LocalDateTime.now(zoneId).isAfter(reportDeadline(session))
+                ? SessionReportStatus.OVERDUE
+                : SessionReportStatus.PENDING;
+    }
+
+    private LocalDateTime reportDeadline(TrainingSession session) {
+        return session.getScheduledEndAt() == null ? null : session.getScheduledEndAt().plusHours(REPORT_DEADLINE_HOURS);
+    }
+
+    private LocalDateTime submittedAt(TrainingSession session) {
+        return session.isReportDone() ? session.getUpdatedAt() : null;
     }
 
     private boolean isOverdue(TrainingSession session, ZoneId zoneId) {

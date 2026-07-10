@@ -22,5 +22,7 @@
     <include file="/db/changelog/2026-06-23-payments.sql"/>
     <include file="/db/changelog/2026-07-09-media-assets.sql"/>
     <include file="/db/changelog/2026-07-10-coach-status-split.sql"/>
+    <include file="/db/changelog/2026-07-10-coach-status-history-details.sql"/>
+    <include file="/db/changelog/2026-07-10-coach-status-history-details-v2.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>
