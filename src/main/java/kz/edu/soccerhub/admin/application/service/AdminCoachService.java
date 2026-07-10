@@ -74,7 +74,9 @@ public class AdminCoachService {
                 .firstName(input.firstName())
                 .lastName(input.lastName())
                 .email(input.email())
+                .birthDate(input.birthDate())
                 .phone(input.phone())
+                .bio(input.description())
                 .build();
 
         UUID coachId = coachPort.create(command);
@@ -182,8 +184,10 @@ public class AdminCoachService {
                 .firstName(input.firstName())
                 .lastName(input.lastName())
                 .email(input.email())
+                .birthDate(input.birthDate())
                 .phone(input.phone())
                 .specialization(input.specialization())
+                .bio(input.description())
                 .build());
     }
 
@@ -1523,8 +1527,10 @@ public class AdminCoachService {
                 coach.firstName(),
                 coach.lastName(),
                 coach.email(),
+                coach.birthDate(),
                 coach.phone(),
                 coach.specialization(),
+                coach.bio(),
                 coach.active(),
                 coach.accountStatus() == null ? null : coach.accountStatus().name(),
                 coach.workStatus() == null ? null : coach.workStatus().name(),

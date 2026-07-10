@@ -41,15 +41,12 @@ public class CoachSessionService {
     private final TrainingSessionRepository trainingSessionRepository;
     private final TrainingSessionAttendanceRepository trainingSessionAttendanceRepository;
     private final GroupRepository groupRepository;
-    private final TrainingSessionGenerator trainingSessionGenerator;
     private final CoachRosterReader coachRosterReader;
 
     @Transactional
     public CoachTodaySessionsResponse getTodaySessions(UUID currentUserId, LocalDate date, String timezone) {
         ZoneId zoneId = validateZone(timezone);
         ensureCoachProfile(currentUserId);
-
-        trainingSessionGenerator.ensureSessionsForDate(currentUserId, date);
 
         List<TrainingSession> sessions =
                 trainingSessionRepository.findByCoachIdAndSessionDateOrderByScheduledStartAtAsc(currentUserId, date);
@@ -141,8 +138,6 @@ public class CoachSessionService {
         if (days > 31) {
             throw new BadRequestException("Schedule range cannot exceed 31 days", dateFrom, dateTo);
         }
-
-        trainingSessionGenerator.ensureSessionsForRange(currentUserId, dateFrom, dateTo);
 
         List<TrainingSession> sessions = trainingSessionRepository
                 .findByCoachIdAndSessionDateBetweenOrderBySessionDateAscScheduledStartAtAsc(currentUserId, dateFrom, dateTo);

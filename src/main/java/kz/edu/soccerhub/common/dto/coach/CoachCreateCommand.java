@@ -12,6 +12,7 @@ public record CoachCreateCommand(
         String lastName,
         LocalDate birthDate,
         String phone,
-        String email
+        String email,
+        String bio
 ) {
 }

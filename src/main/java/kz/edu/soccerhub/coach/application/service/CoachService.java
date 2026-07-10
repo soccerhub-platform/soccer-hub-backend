@@ -74,6 +74,7 @@ public class CoachService implements CoachPort {
                 .birthDate(command.birthDate())
                 .phone(command.phone())
                 .email(command.email())
+                .bio(trimToNull(command.bio()))
                 .accountStatus(AccountStatus.ACTIVE)
                 .workStatus(WorkStatus.AVAILABLE)
                 .build();
@@ -91,8 +92,14 @@ public class CoachService implements CoachPort {
         profile.setFirstName(command.firstName().trim());
         profile.setLastName(command.lastName().trim());
         profile.setEmail(command.email().trim().toLowerCase());
+        if (command.birthDate() != null) {
+            profile.setBirthDate(command.birthDate());
+        }
         profile.setPhone(trimToNull(command.phone()));
         profile.setSpecialization(trimToNull(command.specialization()));
+        if (command.bio() != null) {
+            profile.setBio(trimToNull(command.bio()));
+        }
 
         appUserRepo.findById(command.coachId()).ifPresent(user -> user.setEmail(profile.getEmail()));
     }
@@ -571,9 +578,11 @@ public class CoachService implements CoachPort {
                 .id(coachProfile.getId())
                 .firstName(coachProfile.getFirstName())
                 .lastName(coachProfile.getLastName())
+                .birthDate(coachProfile.getBirthDate())
                 .phone(coachProfile.getPhone())
                 .email(coachProfile.getEmail())
                 .specialization(coachProfile.getSpecialization())
+                .bio(coachProfile.getBio())
                 .active(coachProfile.getAccountStatus() == AccountStatus.ACTIVE)
                 .accountStatus(coachProfile.getAccountStatus())
                 .workStatus(coachProfile.getWorkStatus())

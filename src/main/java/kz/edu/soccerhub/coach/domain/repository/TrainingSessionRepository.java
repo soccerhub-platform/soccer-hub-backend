@@ -5,9 +5,13 @@ import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -19,6 +23,13 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
     Optional<TrainingSession> findByIdAndCoachId(UUID id, UUID coachId);
 
     Optional<TrainingSession> findByScheduleIdAndSessionDate(UUID scheduleId, LocalDate sessionDate);
+
+    boolean existsByGroupIdAndSessionDateAndScheduledStartAtAndStatusNot(
+            UUID groupId,
+            LocalDate sessionDate,
+            LocalDateTime scheduledStartAt,
+            TrainingSessionStatus status
+    );
 
     List<TrainingSession> findByCoachIdAndSessionDateOrderByScheduledStartAtAsc(UUID coachId, LocalDate sessionDate);
 
@@ -66,5 +77,36 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
             UUID coachId,
             LocalDate date,
             TrainingSessionStatus status
+    );
+
+    @Modifying
+    @Query("""
+        update TrainingSession ts
+        set ts.status = kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.CANCELLED,
+            ts.cancelReason = :reason
+        where ts.scheduleId in :scheduleIds
+          and ts.sessionDate >= :fromDate
+          and ts.status = kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.PLANNED
+    """)
+    int cancelFuturePlannedByScheduleIds(
+            @Param("scheduleIds") Set<UUID> scheduleIds,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("reason") String reason
+    );
+
+    @Modifying
+    @Query("""
+        update TrainingSession ts
+        set ts.status = kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.PLANNED,
+            ts.cancelReason = null
+        where ts.scheduleId in :scheduleIds
+          and ts.sessionDate >= :fromDate
+          and ts.status = kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.CANCELLED
+          and ts.cancelReason = :reason
+    """)
+    int reactivateScheduleCancelledByScheduleIds(
+            @Param("scheduleIds") Set<UUID> scheduleIds,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("reason") String reason
     );
 }

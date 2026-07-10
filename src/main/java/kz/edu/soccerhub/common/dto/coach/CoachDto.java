@@ -17,6 +17,7 @@ public record CoachDto(
         String phone,
         String email,
         String specialization,
+        String bio,
         boolean active,
         AccountStatus accountStatus,
         WorkStatus workStatus,

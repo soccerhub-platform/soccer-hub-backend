@@ -1,11 +1,17 @@
 package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.branch.AdminBranchesOutput;
+import kz.edu.soccerhub.admin.application.dto.coach.AdminCoachUpdateInput;
+import kz.edu.soccerhub.admin.application.dto.coach.AdminCreateCoachInput;
+import kz.edu.soccerhub.common.dto.admin.AdminDto;
+import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
 import kz.edu.soccerhub.common.dto.coach.AdminCoachProfileOutput;
 import kz.edu.soccerhub.common.dto.coach.AdminCoachOverviewOutput;
+import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
+import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
@@ -22,6 +28,7 @@ import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -40,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -82,6 +90,67 @@ class AdminCoachServiceTest {
     }
 
     @Test
+    void shouldPassBirthDateAndDescriptionWhenCreatingCoach() {
+        UUID adminId = UUID.randomUUID();
+        UUID coachId = UUID.randomUUID();
+        LocalDate birthDate = LocalDate.of(1990, 4, 12);
+
+        when(passwordGenerator.generate(6)).thenReturn("123456");
+        when(authPort.register(any())).thenReturn(AuthRegisterCommandOutput.builder()
+                .id(coachId)
+                .email("coach@example.com")
+                .build());
+        when(coachPort.create(any())).thenReturn(coachId);
+
+        service.createCoach(adminId, AdminCreateCoachInput.builder()
+                .firstName("Aibek")
+                .lastName("Coach")
+                .email("coach@example.com")
+                .birthDate(birthDate)
+                .phone("+77010000000")
+                .description("UEFA B licensed coach")
+                .build());
+
+        ArgumentCaptor<CoachCreateCommand> commandCaptor = ArgumentCaptor.forClass(CoachCreateCommand.class);
+        verify(coachPort).create(commandCaptor.capture());
+        CoachCreateCommand command = commandCaptor.getValue();
+        assertEquals(coachId, command.id());
+        assertEquals(birthDate, command.birthDate());
+        assertEquals("UEFA B licensed coach", command.bio());
+    }
+
+    @Test
+    void shouldPassBirthDateAndDescriptionWhenUpdatingCoach() {
+        UUID adminId = UUID.randomUUID();
+        UUID coachId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        LocalDate birthDate = LocalDate.of(1988, 9, 20);
+
+        when(adminService.findById(adminId)).thenReturn(java.util.Optional.of(AdminDto.builder().id(adminId).build()));
+        when(adminBranchService.getAdminBranches(adminId)).thenReturn(List.of(
+                AdminBranchesOutput.builder().branchId(branchId).name("Branch").build()
+        ));
+        when(coachPort.getBranchIds(coachId)).thenReturn(Set.of(branchId));
+
+        service.updateCoach(adminId, coachId, new AdminCoachUpdateInput(
+                "Aibek",
+                "Coach",
+                "coach@example.com",
+                birthDate,
+                "+77010000000",
+                "U12",
+                "Focuses on technical development"
+        ));
+
+        ArgumentCaptor<CoachUpdateCommand> commandCaptor = ArgumentCaptor.forClass(CoachUpdateCommand.class);
+        verify(coachPort).update(commandCaptor.capture());
+        CoachUpdateCommand command = commandCaptor.getValue();
+        assertEquals(coachId, command.coachId());
+        assertEquals(birthDate, command.birthDate());
+        assertEquals("Focuses on technical development", command.bio());
+    }
+
+    @Test
     void shouldExtendCoachProfileGroupsReadModel() {
         UUID adminId = UUID.randomUUID();
         UUID coachId = UUID.randomUUID();
@@ -101,8 +170,10 @@ class AdminCoachServiceTest {
                 .firstName("Aibek")
                 .lastName("Coach")
                 .email("coach@example.com")
+                .birthDate(LocalDate.of(1990, 4, 12))
                 .phone("+77010000000")
                 .specialization("U10")
+                .bio("UEFA B licensed coach")
                 .active(true)
                 .build());
         when(coachPort.getBranchIds(coachId)).thenReturn(Set.of(branchId));
@@ -250,6 +321,8 @@ class AdminCoachServiceTest {
 
         assertEquals(2, output.groups().size());
         assertEquals(3, output.weeklySchedule().size());
+        assertEquals(LocalDate.of(1990, 4, 12), output.birthDate());
+        assertEquals("UEFA B licensed coach", output.description());
 
         AdminCoachProfileOutput.GroupItem firstGroup = output.groups().stream()
                 .filter(group -> group.groupId().equals(firstGroupId))

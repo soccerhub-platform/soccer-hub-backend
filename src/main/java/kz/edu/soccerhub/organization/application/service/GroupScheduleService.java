@@ -6,6 +6,7 @@ import kz.edu.soccerhub.common.dto.group.*;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.GroupSchedulePort;
+import kz.edu.soccerhub.common.port.TrainingSessionPlanningPort;
 import kz.edu.soccerhub.organization.application.dto.ScheduleSearchCriteria;
 import kz.edu.soccerhub.organization.application.mapper.GroupScheduleMapper;
 import kz.edu.soccerhub.organization.domain.model.GroupSchedule;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,8 +32,11 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class GroupScheduleService implements GroupSchedulePort {
 
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Almaty");
+
     private final GroupScheduleRepository groupScheduleRepository;
     private final GroupScheduleValidationService groupScheduleValidationService;
+    private final TrainingSessionPlanningPort trainingSessionPlanningPort;
 
     @Override
     @Transactional
@@ -63,6 +68,7 @@ public class GroupScheduleService implements GroupSchedulePort {
                 .toList();
 
         groupScheduleRepository.saveAll(schedules);
+        trainingSessionPlanningPort.materializeSchedules(scheduleIds(schedules));
     }
 
     @Transactional(readOnly = true)
@@ -147,6 +153,11 @@ public class GroupScheduleService implements GroupSchedulePort {
         }
 
         groupSchedule.setStatus(ScheduleStatus.CANCELLED);
+        trainingSessionPlanningPort.cancelFuturePlannedSessions(
+                List.of(scheduleId),
+                today(),
+                "Schedule cancelled"
+        );
     }
 
     @Override
@@ -163,6 +174,8 @@ public class GroupScheduleService implements GroupSchedulePort {
         }
 
         groupSchedule.setStatus(ScheduleStatus.ACTIVE);
+        trainingSessionPlanningPort.reactivateScheduleCancelledSessions(List.of(scheduleId), today());
+        trainingSessionPlanningPort.materializeSchedules(List.of(scheduleId));
     }
 
     @Override
@@ -233,6 +246,11 @@ public class GroupScheduleService implements GroupSchedulePort {
                 .toList();
 
         groupScheduleRepository.saveAll(newBatch);
+        trainingSessionPlanningPort.resyncSchedules(
+                scheduleIds(currentBatch),
+                scheduleIds(newBatch),
+                today()
+        );
     }
 
     @Override
@@ -250,6 +268,11 @@ public class GroupScheduleService implements GroupSchedulePort {
         if (groupSchedule.getEndDate().isBefore(groupSchedule.getStartDate())) {
             groupSchedule.setStatus(ScheduleStatus.CANCELLED);
         }
+        trainingSessionPlanningPort.cancelFuturePlannedSessions(
+                List.of(scheduleId),
+                cancelFrom,
+                "Schedule cancelled from " + cancelFrom
+        );
     }
 
     @Transactional
@@ -272,6 +295,11 @@ public class GroupScheduleService implements GroupSchedulePort {
         }
 
         batch.forEach(s -> s.setStatus(ScheduleStatus.CANCELLED));
+        trainingSessionPlanningPort.cancelFuturePlannedSessions(
+                scheduleIds(batch),
+                today(),
+                "Schedule batch cancelled"
+        );
     }
 
     @Override
@@ -284,6 +312,11 @@ public class GroupScheduleService implements GroupSchedulePort {
                 );
 
         schedules.forEach(s -> s.setStatus(ScheduleStatus.CANCELLED));
+        trainingSessionPlanningPort.cancelFuturePlannedSessions(
+                scheduleIds(schedules),
+                today(),
+                "Group schedules cancelled"
+        );
     }
 
     @Transactional(readOnly = true)
@@ -308,7 +341,7 @@ public class GroupScheduleService implements GroupSchedulePort {
     }
 
     private LocalDateTime calculateNextSession(List<GroupSchedule> schedules) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = today();
 
         return schedules.stream()
                 .flatMap(s -> {
@@ -317,7 +350,7 @@ public class GroupScheduleService implements GroupSchedulePort {
                         date = date.plusDays(1);
                     }
                     LocalDateTime dt = LocalDateTime.of(date, s.getStartTime());
-                    if (dt.isBefore(LocalDateTime.now())) {
+                    if (dt.isBefore(LocalDateTime.now(BUSINESS_ZONE))) {
                         dt = dt.plusWeeks(1);
                     }
                     return Stream.of(dt);
@@ -334,5 +367,15 @@ public class GroupScheduleService implements GroupSchedulePort {
                     result.conflicts()
             );
         }
+    }
+
+    private List<UUID> scheduleIds(List<GroupSchedule> schedules) {
+        return schedules.stream()
+                .map(GroupSchedule::getId)
+                .toList();
+    }
+
+    private LocalDate today() {
+        return LocalDate.now(BUSINESS_ZONE);
     }
 }

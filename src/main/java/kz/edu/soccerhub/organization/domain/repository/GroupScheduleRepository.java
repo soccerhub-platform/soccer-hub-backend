@@ -57,6 +57,18 @@ public interface GroupScheduleRepository extends
         select gs
         from GroupSchedule gs
         where gs.status = 'ACTIVE'
+          and gs.startDate <= :toDate
+          and gs.endDate >= :fromDate
+    """)
+    List<GroupSchedule> findActiveSchedulesBetween(
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
+    );
+
+    @Query("""
+        select gs
+        from GroupSchedule gs
+        where gs.status = 'ACTIVE'
           and gs.dayOfWeek = :dayOfWeek
           and gs.startDate <= :targetDate
           and gs.endDate >= :targetDate

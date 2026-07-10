@@ -24,5 +24,6 @@
     <include file="/db/changelog/2026-07-10-coach-status-split.sql"/>
     <include file="/db/changelog/2026-07-10-coach-status-history-details.sql"/>
     <include file="/db/changelog/2026-07-10-coach-status-history-details-v2.sql"/>
+    <include file="/db/changelog/2026-07-10-training-session-materialization.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>
