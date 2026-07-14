@@ -1,25 +1,19 @@
 package kz.edu.soccerhub.admin.application.service;
 
-import kz.edu.soccerhub.admin.application.dto.group.AdminGroupHealthOutput;
-import kz.edu.soccerhub.admin.application.dto.group.AdminGroupMemberOutput;
-import kz.edu.soccerhub.admin.application.dto.group.AdminGroupOverviewOutput;
-import kz.edu.soccerhub.admin.application.dto.group.AdminGroupScheduleRiskOutput;
-import kz.edu.soccerhub.admin.application.dto.group.AdminCancelScheduleBatchInput;
-import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCoachOutput;
-import kz.edu.soccerhub.admin.application.dto.group.AdminGroupCreateInput;
-import kz.edu.soccerhub.admin.application.dto.group.GroupHealth;
-import kz.edu.soccerhub.admin.application.dto.group.GroupIssueCode;
+import kz.edu.soccerhub.admin.application.dto.group.*;
+import kz.edu.soccerhub.common.dto.branch.BranchDto;
+import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
-import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
-import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
 import kz.edu.soccerhub.common.dto.group.*;
+import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
 import kz.edu.soccerhub.organization.application.service.GroupScheduleValidationService;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,11 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
+import java.time.*;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -53,6 +43,7 @@ public class AdminGroupService {
 
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
+    private final BranchPort branchPort;
 
     /* ================= GROUP ================= */
 
@@ -125,6 +116,40 @@ public class AdminGroupService {
     }
 
     @Transactional(readOnly = true)
+    public AdminGroupDetailsOutput getGroupDetails(UUID adminId, UUID groupId) {
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        GroupView view = buildGroupView(group);
+        BranchDto branch = branchPort.findById(group.branchId())
+                .orElseThrow(() -> new NotFoundException("Branch not found", group.branchId()));
+
+        return new AdminGroupDetailsOutput(
+                group.groupId(),
+                group.name(),
+                group.description(),
+                group.status(),
+                group.ageFrom(),
+                group.ageTo(),
+                group.audienceType(),
+                group.level(),
+                group.capacity(),
+                new AdminGroupDetailsOutput.BranchRef(branch.id(), branch.name()),
+                new AdminGroupDetailsOutput.Summary(
+                        view.studentsCount(),
+                        view.coachesCount(),
+                        view.sessionsPerWeek(),
+                        view.occupancyPercent()
+                ),
+                view.health(),
+                view.issues(),
+                view.nextSessionAt() == null ? null : new AdminGroupDetailsOutput.NextSession(view.nextSessionAt()),
+                buildCapabilities(group.status())
+        );
+    }
+
+    @Transactional(readOnly = true)
     public Page<AdminGroupMemberOutput> getGroupMembers(UUID adminId, UUID groupId, Pageable pageable) {
         verifyAdmin(adminId);
         GroupDto group = groupPort.getGroupById(groupId);
@@ -192,6 +217,54 @@ public class AdminGroupService {
                 "Admin {} updated group status {} to {}",
                 adminId, groupId, status
         );
+    }
+
+    @Transactional
+    public void updateGroup(UUID adminId, UUID groupId, AdminGroupUpdateInput input) {
+        verifyAdmin(adminId);
+
+        GroupDto currentGroup = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, currentGroup.branchId());
+
+        UUID targetBranchId = input.branchId() != null ? input.branchId() : currentGroup.branchId();
+        verifyAdminBranchAccess(adminId, targetBranchId);
+
+        String targetName = input.name() != null ? input.name() : currentGroup.name();
+        if (targetName == null || targetName.isBlank()) {
+            throw new BadRequestException("Group name must not be blank");
+        }
+
+        GroupAudienceType targetAudienceType = input.audienceType() != null ? input.audienceType() : currentGroup.audienceType();
+        Integer targetAgeFrom = input.ageFrom() != null ? input.ageFrom() : currentGroup.ageFrom();
+        Integer targetAgeTo = input.ageTo() != null ? input.ageTo() : currentGroup.ageTo();
+        Integer targetCapacity = input.capacity() != null ? input.capacity() : currentGroup.capacity();
+        int studentsCount = countStudents(groupId);
+
+        if (targetCapacity != null && targetCapacity < studentsCount) {
+            throw new BadRequestException("Group capacity cannot be below current members count", targetCapacity, studentsCount);
+        }
+        if (targetAgeFrom != null && targetAgeTo != null && targetAgeFrom > targetAgeTo) {
+            throw new BadRequestException("Invalid age range: 'from' age cannot be greater then 'to' age.", targetAgeFrom, targetAgeTo);
+        }
+        if (targetAudienceType == null) {
+            throw new BadRequestException("Group audienceType must not be null");
+        }
+        if (input.level() == null && currentGroup.level() == null) {
+            throw new BadRequestException("Group level must not be null");
+        }
+
+        groupPort.updateGroup(groupId, UpdateGroupCommand.builder()
+                .name(targetName)
+                .description(input.description() != null ? input.description() : currentGroup.description())
+                .branchId(targetBranchId)
+                .ageFrom(targetAgeFrom)
+                .ageTo(targetAgeTo)
+                .audienceType(targetAudienceType)
+                .capacity(targetCapacity)
+                .level(input.level() != null ? input.level() : currentGroup.level())
+                .build());
+
+        log.info("Admin {} updated group {}", adminId, groupId);
     }
 
     /* ================= GROUP COACH ================= */
@@ -424,6 +497,7 @@ public class AdminGroupService {
                 group,
                 studentsCount,
                 coaches.size(),
+                schedules.size(),
                 !schedules.isEmpty(),
                 nextSessionAt,
                 health,
@@ -472,7 +546,7 @@ public class AdminGroupService {
             ));
         }
 
-        Integer capacity = Optional.ofNullable(group.capacity()).orElse(0);
+        int capacity = Optional.ofNullable(group.capacity()).orElse(0);
         if (capacity > 0 && studentsCount > capacity) {
             issues.add(new AdminGroupHealthOutput.IssueItem(
                     GroupIssueCode.OVER_CAPACITY,
@@ -516,6 +590,16 @@ public class AdminGroupService {
             actions.add("REVIEW_CAPACITY");
         }
         return actions;
+    }
+
+    private AdminGroupDetailsOutput.Capabilities buildCapabilities(GroupStatus status) {
+        return new AdminGroupDetailsOutput.Capabilities(
+                true,
+                status == GroupStatus.ACTIVE,
+                status == GroupStatus.PAUSED,
+                status != GroupStatus.STOPPED,
+                status != GroupStatus.STOPPED
+        );
     }
 
     private int countScheduleConflicts(UUID groupId, List<GroupScheduleDto> schedules) {
@@ -598,6 +682,7 @@ public class AdminGroupService {
             GroupDto group,
             int studentsCount,
             int coachesCount,
+            int sessionsPerWeek,
             boolean scheduleActive,
             OffsetDateTime nextSessionAt,
             GroupHealth health,
@@ -606,6 +691,14 @@ public class AdminGroupService {
         private boolean overCapacity() {
             int capacity = Optional.ofNullable(group.capacity()).orElse(0);
             return capacity > 0 && studentsCount > capacity;
+        }
+
+        private int occupancyPercent() {
+            int capacity = Optional.ofNullable(group.capacity()).orElse(0);
+            if (capacity <= 0) {
+                return 0;
+            }
+            return Math.min(100, (int) Math.round((studentsCount * 100.0) / capacity));
         }
 
         private AdminGroupOverviewOutput.GroupItem toOverviewItem() {

@@ -73,6 +73,48 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
 
     List<TrainingSession> findByGroupId(UUID groupId);
 
+    List<TrainingSession> findByGroupIdAndSessionDateBetweenOrderBySessionDateAscScheduledStartAtAsc(
+            UUID groupId,
+            LocalDate from,
+            LocalDate to
+    );
+
+    @Query("""
+        select count(ts) > 0
+        from TrainingSession ts
+        where ts.coachId = :coachId
+          and ts.sessionDate = :sessionDate
+          and ts.id <> :sessionId
+          and ts.status <> kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.CANCELLED
+          and ts.scheduledStartAt < :endsAt
+          and ts.scheduledEndAt > :startsAt
+    """)
+    boolean existsCoachConflict(
+            @Param("coachId") UUID coachId,
+            @Param("sessionDate") LocalDate sessionDate,
+            @Param("startsAt") LocalDateTime startsAt,
+            @Param("endsAt") LocalDateTime endsAt,
+            @Param("sessionId") UUID sessionId
+    );
+
+    @Query("""
+        select count(ts) > 0
+        from TrainingSession ts
+        where ts.locationId = :locationId
+          and ts.sessionDate = :sessionDate
+          and ts.id <> :sessionId
+          and ts.status <> kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.CANCELLED
+          and ts.scheduledStartAt < :endsAt
+          and ts.scheduledEndAt > :startsAt
+    """)
+    boolean existsLocationConflict(
+            @Param("locationId") UUID locationId,
+            @Param("sessionDate") LocalDate sessionDate,
+            @Param("startsAt") LocalDateTime startsAt,
+            @Param("endsAt") LocalDateTime endsAt,
+            @Param("sessionId") UUID sessionId
+    );
+
     int countByCoachIdAndSessionDateBeforeAndReportDoneFalseAndStatusNot(
             UUID coachId,
             LocalDate date,

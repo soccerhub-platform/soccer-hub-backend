@@ -66,6 +66,15 @@ public class AdminGroupController {
         return ResponseEntity.ok(adminGroupService.getGroupHealth(adminId, groupId));
     }
 
+    @GetMapping("/{groupId}")
+    public ResponseEntity<AdminGroupDetailsOutput> getGroupDetails(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupService.getGroupDetails(adminId, groupId));
+    }
+
     @GetMapping("/{groupId}/members")
     public ResponseEntity<Page<AdminGroupMemberOutput>> getGroupMembers(
             @AuthenticationPrincipal Jwt jwt,
@@ -94,6 +103,17 @@ public class AdminGroupController {
 
         adminGroupService.updateGroupStatus(adminId, groupId, request.status());
 
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{groupId}")
+    public ResponseEntity<Void> updateGroup(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @RequestBody @Valid AdminGroupUpdateInput input
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        adminGroupService.updateGroup(adminId, groupId, input);
         return ResponseEntity.noContent().build();
     }
 

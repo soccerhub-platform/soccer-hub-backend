@@ -2,6 +2,7 @@ package kz.edu.soccerhub.organization.application.service;
 
 import kz.edu.soccerhub.common.dto.group.CreateGroupCommand;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
+import kz.edu.soccerhub.common.dto.group.UpdateGroupCommand;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.GroupPort;
@@ -86,6 +87,26 @@ public class GroupService implements GroupPort {
                 .orElseThrow(() -> new NotFoundException("Group not found", Map.of("groupId", groupId)));
 
         group.setStatus(status);
+        groupRepository.saveAndFlush(group);
+    }
+
+    @Override
+    @Transactional
+    public void updateGroup(UUID groupId, UpdateGroupCommand command) {
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new NotFoundException("Group not found", Map.of("groupId", groupId)));
+
+        validateAgeConstraints(command.audienceType(), command.ageFrom(), command.ageTo());
+
+        group.setName(command.name());
+        group.setDescription(command.description());
+        group.setBranchId(command.branchId());
+        group.setAgeFrom(command.ageFrom());
+        group.setAgeTo(command.ageTo());
+        group.setAudienceType(command.audienceType());
+        group.setCapacity(command.capacity());
+        group.setLevel(command.level());
+
         groupRepository.saveAndFlush(group);
     }
 
