@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -144,7 +145,94 @@ class AdminSessionServiceTest {
         assertEquals("Поле №2", item.location().name());
         assertTrue(item.capabilities().canCancel());
         assertTrue(item.capabilities().canReschedule());
-        assertFalse(item.capabilities().canOpenAttendance());
+        assertTrue(item.capabilities().canOpenAttendance());
+    }
+
+    @Test
+    void shouldReturnGroupAttendanceForDateRange() {
+        UUID adminId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID coachId = UUID.randomUUID();
+        UUID sessionOneId = UUID.randomUUID();
+        UUID sessionTwoId = UUID.randomUUID();
+        LocalDate from = LocalDate.now().minusDays(1);
+        LocalDate to = LocalDate.now().plusDays(7);
+        LocalDate sessionOneDate = LocalDate.now();
+        LocalDate sessionTwoDate = LocalDate.now().plusDays(1);
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(groupPort.getGroupById(groupId)).thenReturn(GroupDto.builder()
+                .groupId(groupId)
+                .branchId(branchId)
+                .name("Adal")
+                .status(GroupStatus.ACTIVE)
+                .build());
+        when(trainingSessionRepository.findByGroupIdAndSessionDateBetweenOrderBySessionDateAscScheduledStartAtAsc(groupId, from, to))
+                .thenReturn(List.of(
+                        TrainingSession.builder()
+                                .id(sessionOneId)
+                                .groupId(groupId)
+                                .coachId(coachId)
+                                .sessionDate(sessionOneDate)
+                                .scheduledStartAt(LocalDateTime.of(sessionOneDate, java.time.LocalTime.of(20, 0)))
+                                .scheduledEndAt(LocalDateTime.of(sessionOneDate, java.time.LocalTime.of(21, 0)))
+                                .status(TrainingSessionStatus.IN_PROGRESS)
+                                .reportDone(false)
+                                .build(),
+                        TrainingSession.builder()
+                                .id(sessionTwoId)
+                                .groupId(groupId)
+                                .coachId(coachId)
+                                .sessionDate(sessionTwoDate)
+                                .scheduledStartAt(LocalDateTime.of(sessionTwoDate, java.time.LocalTime.of(20, 0)))
+                                .scheduledEndAt(LocalDateTime.of(sessionTwoDate, java.time.LocalTime.of(21, 0)))
+                                .status(TrainingSessionStatus.PLANNED)
+                                .reportDone(false)
+                                .build()
+                ));
+        when(trainingSessionAttendanceRepository.findBySessionIdIn(Set.of(sessionOneId, sessionTwoId))).thenReturn(List.of(
+                TrainingSessionAttendance.builder()
+                        .id(UUID.randomUUID())
+                        .sessionId(sessionOneId)
+                        .playerId(UUID.randomUUID())
+                        .status(TrainingSessionAttendanceStatus.PRESENT)
+                        .build(),
+                TrainingSessionAttendance.builder()
+                        .id(UUID.randomUUID())
+                        .sessionId(sessionOneId)
+                        .playerId(UUID.randomUUID())
+                        .status(TrainingSessionAttendanceStatus.EXCUSED)
+                        .build()
+        ));
+        when(coachRosterReader.getActivePlayersByGroupAndDate(groupId, sessionOneDate)).thenReturn(List.of(
+                new CoachRosterReader.ActivePlayerView(UUID.randomUUID(), "A", "B"),
+                new CoachRosterReader.ActivePlayerView(UUID.randomUUID(), "C", "D"),
+                new CoachRosterReader.ActivePlayerView(UUID.randomUUID(), "E", "F")
+        ));
+        when(coachRosterReader.getActivePlayersByGroupAndDate(groupId, sessionTwoDate)).thenReturn(List.of(
+                new CoachRosterReader.ActivePlayerView(UUID.randomUUID(), "G", "H"),
+                new CoachRosterReader.ActivePlayerView(UUID.randomUUID(), "I", "J")
+        ));
+
+        AdminGroupAttendanceOutput output = service.getGroupAttendance(adminId, groupId, from, to);
+
+        assertEquals(groupId, output.groupId());
+        assertEquals(2, output.summary().sessionsCount());
+        assertEquals(1, output.summary().recordedSessionsCount());
+        assertEquals(5, output.summary().totalParticipants());
+        assertEquals(2, output.summary().totalMarked());
+        assertEquals(1, output.summary().totalPresent());
+        assertEquals(1, output.summary().totalExcused());
+        assertEquals(3, output.summary().totalUnmarked());
+        assertEquals(1, output.summary().totalPresentLike());
+        assertEquals(20, output.summary().averageAttendanceRate());
+        assertEquals(2, output.sessions().size());
+        assertTrue(output.sessions().getFirst().capabilities().canOpenAttendance());
+        assertTrue(output.sessions().getFirst().capabilities().canEditAttendance());
+        assertTrue(output.sessions().get(1).capabilities().canOpenAttendance());
+        assertFalse(output.sessions().get(1).capabilities().canEditAttendance());
     }
 
     @Test
@@ -216,7 +304,193 @@ class AdminSessionServiceTest {
         assertEquals("Поле №1", output.location().name());
         assertFalse(output.capabilities().canCancel());
         assertFalse(output.capabilities().canReschedule());
-        assertFalse(output.capabilities().canOpenAttendance());
+        assertTrue(output.capabilities().canOpenAttendance());
+    }
+
+    @Test
+    void shouldAllowOpeningAttendanceForCompletedSessionButKeepReadOnly() {
+        UUID adminId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID coachId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        LocalDate sessionDate = LocalDate.now().minusDays(2);
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(trainingSessionRepository.findById(sessionId)).thenReturn(Optional.of(TrainingSession.builder()
+                .id(sessionId)
+                .groupId(groupId)
+                .coachId(coachId)
+                .sessionDate(sessionDate)
+                .scheduledStartAt(LocalDateTime.of(sessionDate, java.time.LocalTime.of(20, 0)))
+                .scheduledEndAt(LocalDateTime.of(sessionDate, java.time.LocalTime.of(21, 0)))
+                .status(TrainingSessionStatus.COMPLETED)
+                .reportDone(true)
+                .build()));
+        when(groupPort.getGroupById(groupId)).thenReturn(GroupDto.builder()
+                .groupId(groupId)
+                .branchId(branchId)
+                .name("Adal")
+                .status(GroupStatus.ACTIVE)
+                .build());
+        when(groupCoachPort.getActiveCoaches(groupId)).thenReturn(List.of(
+                GroupCoachDto.builder().groupId(groupId).coachId(coachId).role(CoachRole.MAIN).active(true).build()
+        ));
+        when(coachPort.getCoaches(Set.of(coachId))).thenReturn(List.of(
+                CoachDto.builder().id(coachId).firstName("Арсен").lastName("Рахметулы").active(true).build()
+        ));
+        when(coachRosterReader.getActivePlayersByGroupAndDate(groupId, sessionDate)).thenReturn(List.of(
+                new CoachRosterReader.ActivePlayerView(UUID.randomUUID(), "A", "B")
+        ));
+        when(trainingSessionAttendanceRepository.findBySessionId(sessionId)).thenReturn(List.of(
+                TrainingSessionAttendance.builder()
+                        .id(UUID.randomUUID())
+                        .sessionId(sessionId)
+                        .playerId(UUID.randomUUID())
+                        .status(TrainingSessionAttendanceStatus.PRESENT)
+                        .build()
+        ));
+
+        AdminSessionDetailsOutput details = service.getSessionDetails(adminId, sessionId);
+        AdminSessionAttendanceOutput attendance = service.getSessionAttendance(adminId, sessionId);
+
+        assertTrue(details.capabilities().canOpenAttendance());
+        assertFalse(attendance.capabilities().canEdit());
+    }
+
+    @Test
+    void shouldReturnSessionAttendanceForActiveRoster() {
+        UUID adminId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        UUID coachId = UUID.randomUUID();
+        UUID playerPresent = UUID.randomUUID();
+        UUID playerLate = UUID.randomUUID();
+        UUID playerUnmarked = UUID.randomUUID();
+        LocalDate sessionDate = LocalDate.now();
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(trainingSessionRepository.findById(sessionId)).thenReturn(Optional.of(TrainingSession.builder()
+                .id(sessionId)
+                .groupId(groupId)
+                .coachId(coachId)
+                .sessionDate(sessionDate)
+                .scheduledStartAt(LocalDateTime.of(sessionDate, java.time.LocalTime.of(20, 0)))
+                .scheduledEndAt(LocalDateTime.of(sessionDate, java.time.LocalTime.of(21, 0)))
+                .status(TrainingSessionStatus.IN_PROGRESS)
+                .reportDone(false)
+                .build()));
+        when(groupPort.getGroupById(groupId)).thenReturn(GroupDto.builder()
+                .groupId(groupId)
+                .branchId(branchId)
+                .name("Adal")
+                .status(GroupStatus.ACTIVE)
+                .build());
+        when(coachRosterReader.getActivePlayersByGroupAndDate(groupId, sessionDate)).thenReturn(List.of(
+                new CoachRosterReader.ActivePlayerView(playerPresent, "Alihan", "Serikov"),
+                new CoachRosterReader.ActivePlayerView(playerLate, "Miras", "Akhmetov"),
+                new CoachRosterReader.ActivePlayerView(playerUnmarked, "Dias", "Nurlybek")
+        ));
+        when(trainingSessionAttendanceRepository.findBySessionId(sessionId)).thenReturn(List.of(
+                TrainingSessionAttendance.builder()
+                        .id(UUID.randomUUID())
+                        .sessionId(sessionId)
+                        .playerId(playerPresent)
+                        .status(TrainingSessionAttendanceStatus.PRESENT)
+                        .comment(null)
+                        .build(),
+                TrainingSessionAttendance.builder()
+                        .id(UUID.randomUUID())
+                        .sessionId(sessionId)
+                        .playerId(playerLate)
+                        .status(TrainingSessionAttendanceStatus.LATE)
+                        .comment("10 минут")
+                        .build()
+        ));
+
+        AdminSessionAttendanceOutput output = service.getSessionAttendance(adminId, sessionId);
+
+        assertEquals(sessionId, output.sessionId());
+        assertEquals(groupId, output.group().id());
+        assertEquals(3, output.summary().total());
+        assertEquals(2, output.summary().marked());
+        assertEquals(1, output.summary().present());
+        assertEquals(1, output.summary().late());
+        assertEquals(0, output.summary().absent());
+        assertEquals(0, output.summary().excused());
+        assertEquals(1, output.summary().unmarked());
+        assertEquals(2, output.summary().presentLike());
+        assertTrue(output.capabilities().canEdit());
+        assertEquals(3, output.participants().size());
+        assertNull(output.participants().stream()
+                .filter(item -> item.playerId().equals(playerUnmarked))
+                .findFirst()
+                .orElseThrow()
+                .status());
+    }
+
+    @Test
+    void shouldUpdateSessionAttendanceForManagedSession() {
+        UUID adminId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID coachId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        LocalDate sessionDate = LocalDate.now();
+
+        TrainingSession session = TrainingSession.builder()
+                .id(sessionId)
+                .groupId(groupId)
+                .coachId(coachId)
+                .sessionDate(sessionDate)
+                .scheduledStartAt(LocalDateTime.of(sessionDate, java.time.LocalTime.of(20, 0)))
+                .scheduledEndAt(LocalDateTime.now().minusMinutes(5))
+                .status(TrainingSessionStatus.PLANNED)
+                .reportDone(false)
+                .build();
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(trainingSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(groupPort.getGroupById(groupId)).thenReturn(GroupDto.builder()
+                .groupId(groupId)
+                .branchId(branchId)
+                .name("Adal")
+                .status(GroupStatus.ACTIVE)
+                .build());
+        when(coachRosterReader.getActivePlayersByGroupAndDate(groupId, sessionDate)).thenReturn(List.of(
+                new CoachRosterReader.ActivePlayerView(playerId, "Alihan", "Serikov")
+        ));
+        when(trainingSessionAttendanceRepository.findBySessionId(sessionId))
+                .thenReturn(List.of())
+                .thenReturn(List.of(
+                        TrainingSessionAttendance.builder()
+                                .id(UUID.randomUUID())
+                                .sessionId(sessionId)
+                                .playerId(playerId)
+                                .status(TrainingSessionAttendanceStatus.EXCUSED)
+                                .comment("Болел")
+                                .build()
+                ));
+        when(trainingSessionAttendanceRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AdminSessionAttendanceOutput output = service.updateSessionAttendance(
+                adminId,
+                sessionId,
+                new AdminSessionAttendanceUpdateInput(List.of(
+                        new AdminSessionAttendanceUpdateInput.Entry(playerId, TrainingSessionAttendanceStatus.EXCUSED, "Болел")
+                ))
+        );
+
+        assertEquals(1, output.summary().marked());
+        assertEquals(1, output.summary().excused());
+        assertEquals(0, output.summary().unmarked());
+        assertEquals(TrainingSessionAttendanceStatus.EXCUSED, output.participants().getFirst().status());
+        assertEquals("Болел", output.participants().getFirst().comment());
     }
 
     @Test

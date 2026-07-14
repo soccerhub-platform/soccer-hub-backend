@@ -2,7 +2,10 @@ package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.session.AdminGroupSessionsOutput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminCancelSessionInput;
+import kz.edu.soccerhub.admin.application.dto.session.AdminGroupAttendanceOutput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminRescheduleSessionInput;
+import kz.edu.soccerhub.admin.application.dto.session.AdminSessionAttendanceOutput;
+import kz.edu.soccerhub.admin.application.dto.session.AdminSessionAttendanceUpdateInput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminSessionDetailsOutput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminSubstituteCoachInput;
 import kz.edu.soccerhub.coach.application.service.CoachRosterReader;
@@ -30,8 +33,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -107,6 +112,98 @@ public class AdminSessionService {
     }
 
     @Transactional(readOnly = true)
+    public AdminGroupAttendanceOutput getGroupAttendance(
+            UUID adminId,
+            UUID groupId,
+            LocalDate from,
+            LocalDate to
+    ) {
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
+        validateDateRange(from, to);
+
+        List<TrainingSession> sessions = trainingSessionRepository
+                .findByGroupIdAndSessionDateBetweenOrderBySessionDateAscScheduledStartAtAsc(groupId, from, to);
+
+        if (sessions.isEmpty()) {
+            return new AdminGroupAttendanceOutput(
+                    groupId,
+                    from,
+                    to,
+                    new AdminGroupAttendanceOutput.Summary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                    List.of()
+            );
+        }
+
+        Map<UUID, List<TrainingSessionAttendance>> attendanceBySessionId = trainingSessionAttendanceRepository.findBySessionIdIn(
+                        sessions.stream().map(TrainingSession::getId).collect(Collectors.toSet()))
+                .stream()
+                .collect(Collectors.groupingBy(TrainingSessionAttendance::getSessionId));
+
+        List<AdminGroupAttendanceOutput.SessionItem> items = sessions.stream()
+                .map(session -> {
+                    int participantsCount = coachRosterReader
+                            .getActivePlayersByGroupAndDate(session.getGroupId(), session.getSessionDate())
+                            .size();
+                    AdminSessionAttendanceOutput.Summary summary = toDetailedAttendanceSummary(
+                            attendanceBySessionId.getOrDefault(session.getId(), List.of()),
+                            participantsCount
+                    );
+                    return new AdminGroupAttendanceOutput.SessionItem(
+                            session.getId(),
+                            session.getSessionDate(),
+                            session.getScheduledStartAt(),
+                            session.getScheduledEndAt(),
+                            session.getStatus().name(),
+                            resolveEffectiveStatus(session),
+                            summary,
+                            new AdminGroupAttendanceOutput.Capabilities(
+                                    canOpenAttendance(session),
+                                    canEditAttendance(session)
+                            )
+                    );
+                })
+                .toList();
+
+        int sessionsCount = items.size();
+        int recordedSessionsCount = (int) items.stream()
+                .filter(item -> item.summary().marked() > 0)
+                .count();
+        int totalParticipants = items.stream().mapToInt(item -> item.summary().total()).sum();
+        int totalMarked = items.stream().mapToInt(item -> item.summary().marked()).sum();
+        int totalPresent = items.stream().mapToInt(item -> item.summary().present()).sum();
+        int totalAbsent = items.stream().mapToInt(item -> item.summary().absent()).sum();
+        int totalExcused = items.stream().mapToInt(item -> item.summary().excused()).sum();
+        int totalLate = items.stream().mapToInt(item -> item.summary().late()).sum();
+        int totalUnmarked = items.stream().mapToInt(item -> item.summary().unmarked()).sum();
+        int totalPresentLike = items.stream().mapToInt(item -> item.summary().presentLike()).sum();
+        int averageAttendanceRate = totalParticipants == 0
+                ? 0
+                : (int) Math.round((double) totalPresentLike * 100 / totalParticipants);
+
+        return new AdminGroupAttendanceOutput(
+                groupId,
+                from,
+                to,
+                new AdminGroupAttendanceOutput.Summary(
+                        sessionsCount,
+                        recordedSessionsCount,
+                        totalParticipants,
+                        totalMarked,
+                        totalPresent,
+                        totalAbsent,
+                        totalExcused,
+                        totalLate,
+                        totalUnmarked,
+                        totalPresentLike,
+                        averageAttendanceRate
+                ),
+                items
+        );
+    }
+
+    @Transactional(readOnly = true)
     public AdminSessionDetailsOutput getSessionDetails(UUID adminId, UUID sessionId) {
         verifyAdmin(adminId);
 
@@ -141,6 +238,44 @@ public class AdminSessionService {
                 participantsCount,
                 attendance,
                 buildCapabilities(session)
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public AdminSessionAttendanceOutput getSessionAttendance(UUID adminId, UUID sessionId) {
+        TrainingSession session = getManagedSession(adminId, sessionId);
+        GroupDto group = groupPort.getGroupById(session.getGroupId());
+
+        List<CoachRosterReader.ActivePlayerView> activePlayers =
+                coachRosterReader.getActivePlayersByGroupAndDate(session.getGroupId(), session.getSessionDate());
+        Map<UUID, TrainingSessionAttendance> attendanceByPlayerId = trainingSessionAttendanceRepository.findBySessionId(sessionId)
+                .stream()
+                .collect(Collectors.toMap(TrainingSessionAttendance::getPlayerId, Function.identity()));
+
+        List<AdminSessionAttendanceOutput.ParticipantItem> participants = activePlayers.stream()
+                .sorted(Comparator.comparing(player -> StreamUtil.joinNonBlank(player.firstName(), player.lastName())))
+                .map(player -> {
+                    TrainingSessionAttendance attendance = attendanceByPlayerId.get(player.id());
+                    return new AdminSessionAttendanceOutput.ParticipantItem(
+                            player.id(),
+                            StreamUtil.joinNonBlank(player.firstName(), player.lastName()),
+                            attendance == null ? null : attendance.getStatus(),
+                            attendance == null ? null : attendance.getComment()
+                    );
+                })
+                .toList();
+
+        return new AdminSessionAttendanceOutput(
+                session.getId(),
+                new AdminSessionAttendanceOutput.GroupRef(group.groupId(), group.name()),
+                session.getSessionDate(),
+                session.getScheduledStartAt(),
+                session.getScheduledEndAt(),
+                session.getStatus().name(),
+                resolveEffectiveStatus(session),
+                toDetailedAttendanceSummary(attendanceByPlayerId.values(), participants.size()),
+                participants,
+                new AdminSessionAttendanceOutput.Capabilities(canEditAttendance(session))
         );
     }
 
@@ -218,6 +353,60 @@ public class AdminSessionService {
         return getSessionDetails(adminId, sessionId);
     }
 
+    @Transactional
+    public AdminSessionAttendanceOutput updateSessionAttendance(
+            UUID adminId,
+            UUID sessionId,
+            AdminSessionAttendanceUpdateInput input
+    ) {
+        TrainingSession session = getManagedSession(adminId, sessionId);
+        if (!canEditAttendance(session)) {
+            throw new BadRequestException("Attendance can be updated only for IN_PROGRESS or OVERDUE sessions", sessionId);
+        }
+
+        List<CoachRosterReader.ActivePlayerView> activePlayers =
+                coachRosterReader.getActivePlayersByGroupAndDate(session.getGroupId(), session.getSessionDate());
+        Set<UUID> activePlayerIds = activePlayers.stream()
+                .map(CoachRosterReader.ActivePlayerView::id)
+                .collect(Collectors.toSet());
+
+        Set<UUID> duplicateCheck = new HashSet<>();
+        for (AdminSessionAttendanceUpdateInput.Entry entry : input.entries()) {
+            if (!duplicateCheck.add(entry.playerId())) {
+                throw new BadRequestException("Duplicate player in attendance update", entry.playerId());
+            }
+            if (!activePlayerIds.contains(entry.playerId())) {
+                throw new BadRequestException("Player does not belong to active group roster", entry.playerId());
+            }
+        }
+
+        Map<UUID, TrainingSessionAttendance> existing = trainingSessionAttendanceRepository.findBySessionId(sessionId)
+                .stream()
+                .collect(Collectors.toMap(TrainingSessionAttendance::getPlayerId, Function.identity()));
+
+        LocalDateTime now = LocalDateTime.now();
+        List<TrainingSessionAttendance> toSave = input.entries().stream()
+                .map(entry -> {
+                    TrainingSessionAttendance item = existing.get(entry.playerId());
+                    if (item == null) {
+                        item = TrainingSessionAttendance.builder()
+                                .id(UUID.randomUUID())
+                                .sessionId(sessionId)
+                                .playerId(entry.playerId())
+                                .build();
+                    }
+                    item.setStatus(entry.status());
+                    item.setComment(normalizeComment(entry.comment()));
+                    item.setMarkedBy(adminId);
+                    item.setMarkedAt(now);
+                    return item;
+                })
+                .toList();
+
+        trainingSessionAttendanceRepository.saveAll(toSave);
+        return getSessionAttendance(adminId, sessionId);
+    }
+
     private AdminGroupSessionsOutput.SessionItem toSessionItem(
             TrainingSession session,
             Map<UUID, CoachDto> coachById,
@@ -276,12 +465,48 @@ public class AdminSessionService {
         return new AdminGroupSessionsOutput.AttendanceSummary(participantsCount, marked, presentLike);
     }
 
+    private AdminSessionAttendanceOutput.Summary toDetailedAttendanceSummary(
+            Collection<TrainingSessionAttendance> attendanceEntries,
+            int participantsCount
+    ) {
+        int marked = attendanceEntries.size();
+        int present = 0;
+        int absent = 0;
+        int excused = 0;
+        int late = 0;
+
+        for (TrainingSessionAttendance entry : attendanceEntries) {
+            if (entry.getStatus() == null) {
+                continue;
+            }
+            switch (entry.getStatus()) {
+                case PRESENT -> present++;
+                case ABSENT -> absent++;
+                case EXCUSED -> excused++;
+                case LATE -> late++;
+            }
+        }
+
+        int presentLike = present + late;
+        int unmarked = Math.max(participantsCount - marked, 0);
+        return new AdminSessionAttendanceOutput.Summary(
+                participantsCount,
+                marked,
+                present,
+                absent,
+                excused,
+                late,
+                unmarked,
+                presentLike
+        );
+    }
+
     private AdminGroupSessionsOutput.Capabilities buildCapabilities(TrainingSession session) {
         return new AdminGroupSessionsOutput.Capabilities(
                 canCancel(session),
                 canReschedule(session),
                 canSubstituteCoach(session),
-                false
+                canOpenAttendance(session)
         );
     }
 
@@ -333,11 +558,28 @@ public class AdminSessionService {
                 && (session.getStatus() == TrainingSessionStatus.PLANNED || session.getStatus() == TrainingSessionStatus.IN_PROGRESS);
     }
 
+    private boolean canEditAttendance(TrainingSession session) {
+        return session.getStatus() != TrainingSessionStatus.CANCELLED
+                && (session.getStatus() == TrainingSessionStatus.IN_PROGRESS || isOverdue(session));
+    }
+
+    private boolean canOpenAttendance(TrainingSession session) {
+        return session.getStatus() != TrainingSessionStatus.CANCELLED;
+    }
+
     private String buildCancelReason(String reasonCode, String comment) {
         if (comment == null || comment.isBlank()) {
             return reasonCode;
         }
         return reasonCode + ": " + comment.trim();
+    }
+
+    private String normalizeComment(String comment) {
+        if (comment == null) {
+            return null;
+        }
+        String normalized = comment.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 
     private TrainingSession getManagedSession(UUID adminId, UUID sessionId) {
@@ -378,7 +620,9 @@ public class AdminSessionService {
 
         private static String joinNonBlank(String first, String second) {
             return java.util.stream.Stream.of(first, second)
-                    .filter(value -> value != null && !value.isBlank())
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(value -> !value.isBlank())
                     .collect(Collectors.joining(" "));
         }
     }

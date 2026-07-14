@@ -1,11 +1,15 @@
 package kz.edu.soccerhub.admin.api;
 
 import kz.edu.soccerhub.admin.application.dto.session.AdminCancelSessionInput;
+import kz.edu.soccerhub.admin.application.dto.session.AdminGroupAttendanceOutput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminGroupSessionsOutput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminRescheduleSessionInput;
+import kz.edu.soccerhub.admin.application.dto.session.AdminSessionAttendanceOutput;
+import kz.edu.soccerhub.admin.application.dto.session.AdminSessionAttendanceUpdateInput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminSessionDetailsOutput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminSubstituteCoachInput;
 import kz.edu.soccerhub.admin.application.service.AdminSessionService;
+import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -72,6 +76,39 @@ class AdminSessionControllerTest {
     }
 
     @Test
+    void shouldReturnGroupAttendance() {
+        UUID adminId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        LocalDate from = LocalDate.of(2026, 7, 1);
+        LocalDate to = LocalDate.of(2026, 7, 31);
+
+        Jwt jwt = Mockito.mock(Jwt.class);
+        when(jwt.getSubject()).thenReturn(adminId.toString());
+
+        AdminGroupAttendanceOutput output = new AdminGroupAttendanceOutput(
+                groupId,
+                from,
+                to,
+                new AdminGroupAttendanceOutput.Summary(2, 1, 40, 12, 10, 1, 1, 0, 28, 10, 25),
+                List.of(new AdminGroupAttendanceOutput.SessionItem(
+                        UUID.randomUUID(),
+                        LocalDate.of(2026, 7, 12),
+                        LocalDateTime.of(2026, 7, 12, 20, 0),
+                        LocalDateTime.of(2026, 7, 12, 21, 0),
+                        "IN_PROGRESS",
+                        "IN_PROGRESS",
+                        new AdminSessionAttendanceOutput.Summary(20, 12, 10, 1, 1, 0, 8, 10),
+                        new AdminGroupAttendanceOutput.Capabilities(true, true)
+                ))
+        );
+
+        when(adminSessionService.getGroupAttendance(eq(adminId), eq(groupId), eq(from), eq(to))).thenReturn(output);
+
+        assertSame(output, controller.getGroupAttendance(jwt, groupId, from, to).getBody());
+        verify(adminSessionService).getGroupAttendance(eq(adminId), eq(groupId), eq(from), eq(to));
+    }
+
+    @Test
     void shouldReturnSessionDetails() {
         UUID adminId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
@@ -103,6 +140,39 @@ class AdminSessionControllerTest {
 
         assertSame(output, controller.getSessionDetails(jwt, sessionId).getBody());
         verify(adminSessionService).getSessionDetails(eq(adminId), eq(sessionId));
+    }
+
+    @Test
+    void shouldReturnSessionAttendance() {
+        UUID adminId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        Jwt jwt = Mockito.mock(Jwt.class);
+        when(jwt.getSubject()).thenReturn(adminId.toString());
+
+        AdminSessionAttendanceOutput output = new AdminSessionAttendanceOutput(
+                sessionId,
+                new AdminSessionAttendanceOutput.GroupRef(groupId, "Adal"),
+                LocalDate.of(2026, 7, 12),
+                LocalDateTime.of(2026, 7, 12, 20, 0),
+                LocalDateTime.of(2026, 7, 12, 21, 0),
+                "IN_PROGRESS",
+                "IN_PROGRESS",
+                new AdminSessionAttendanceOutput.Summary(20, 12, 10, 1, 1, 0, 8, 10),
+                List.of(new AdminSessionAttendanceOutput.ParticipantItem(
+                        UUID.randomUUID(),
+                        "Алихан Сериков",
+                        TrainingSessionAttendanceStatus.PRESENT,
+                        null
+                )),
+                new AdminSessionAttendanceOutput.Capabilities(true)
+        );
+
+        when(adminSessionService.getSessionAttendance(eq(adminId), eq(sessionId))).thenReturn(output);
+
+        assertSame(output, controller.getSessionAttendance(jwt, sessionId).getBody());
+        verify(adminSessionService).getSessionAttendance(eq(adminId), eq(sessionId));
     }
 
     @Test
@@ -204,5 +274,38 @@ class AdminSessionControllerTest {
 
         assertSame(output, controller.substituteCoach(jwt, sessionId, input).getBody());
         verify(adminSessionService).substituteCoach(eq(adminId), eq(sessionId), eq(input));
+    }
+
+    @Test
+    void shouldForwardAttendanceUpdate() {
+        UUID adminId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        Jwt jwt = Mockito.mock(Jwt.class);
+        when(jwt.getSubject()).thenReturn(adminId.toString());
+
+        AdminSessionAttendanceUpdateInput input = new AdminSessionAttendanceUpdateInput(List.of(
+                new AdminSessionAttendanceUpdateInput.Entry(UUID.randomUUID(), TrainingSessionAttendanceStatus.EXCUSED, "Болел")
+        ));
+        AdminSessionAttendanceOutput output = new AdminSessionAttendanceOutput(
+                sessionId,
+                new AdminSessionAttendanceOutput.GroupRef(UUID.randomUUID(), "Adal"),
+                LocalDate.of(2026, 7, 12),
+                LocalDateTime.of(2026, 7, 12, 20, 0),
+                LocalDateTime.of(2026, 7, 12, 21, 0),
+                "IN_PROGRESS",
+                "IN_PROGRESS",
+                new AdminSessionAttendanceOutput.Summary(20, 1, 0, 0, 1, 0, 19, 0),
+                List.of(new AdminSessionAttendanceOutput.ParticipantItem(
+                        input.entries().getFirst().playerId(),
+                        "Алихан Сериков",
+                        TrainingSessionAttendanceStatus.EXCUSED,
+                        "Болел"
+                )),
+                new AdminSessionAttendanceOutput.Capabilities(true)
+        );
+        when(adminSessionService.updateSessionAttendance(eq(adminId), eq(sessionId), eq(input))).thenReturn(output);
+
+        assertSame(output, controller.updateSessionAttendance(jwt, sessionId, input).getBody());
+        verify(adminSessionService).updateSessionAttendance(eq(adminId), eq(sessionId), eq(input));
     }
 }
