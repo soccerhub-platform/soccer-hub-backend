@@ -17,9 +17,12 @@ import kz.edu.soccerhub.common.port.BranchPort;
 import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.common.port.CoachAvailabilityPort;
 import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupActivityPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.GroupSchedulePort;
+import kz.edu.soccerhub.common.port.MediaAccessPort;
+import kz.edu.soccerhub.common.port.MediaAvatarPort;
 import kz.edu.soccerhub.organization.application.service.GroupScheduleValidationService;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
@@ -73,6 +76,12 @@ class AdminGroupServiceTest {
     private AdminBranchService adminBranchService;
     @Mock
     private BranchPort branchPort;
+    @Mock
+    private GroupActivityPort groupActivityPort;
+    @Mock
+    private MediaAvatarPort mediaAvatarPort;
+    @Mock
+    private MediaAccessPort mediaAccessPort;
 
     private AdminGroupService service;
 
@@ -88,7 +97,10 @@ class AdminGroupServiceTest {
                 groupScheduleValidationService,
                 adminService,
                 adminBranchService,
-                branchPort
+                branchPort,
+                groupActivityPort,
+                mediaAvatarPort,
+                mediaAccessPort
         );
     }
 
@@ -142,8 +154,8 @@ class AdminGroupServiceTest {
                         .build()
         ));
         when(clientPort.getGroupMembers(groupId)).thenReturn(List.of(
-                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "A", LocalDate.of(2015, 1, 1), "ACTIVE", LocalDate.now().minusDays(10), null),
-                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "B", LocalDate.of(2014, 1, 1), "ACTIVE", LocalDate.now().minusDays(8), null)
+                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "A", LocalDate.of(2015, 1, 1), "ACTIVE", "ACTIVE", LocalDate.now().minusDays(10), null),
+                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "B", LocalDate.of(2014, 1, 1), "ACTIVE", "ACTIVE", LocalDate.now().minusDays(8), null)
         ));
 
         AdminGroupDetailsOutput result = service.getGroupDetails(adminId, groupId);
@@ -184,7 +196,7 @@ class AdminGroupServiceTest {
                 .level(GroupLevel.BEGINNER)
                 .build());
         when(clientPort.getGroupMembers(groupId)).thenReturn(List.of(
-                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "A", LocalDate.of(2015, 1, 1), "ACTIVE", LocalDate.now(), null)
+                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "A", LocalDate.of(2015, 1, 1), "ACTIVE", "ACTIVE", LocalDate.now(), null)
         ));
 
         service.updateGroup(adminId, groupId, new AdminGroupUpdateInput(
@@ -232,8 +244,8 @@ class AdminGroupServiceTest {
                 .level(GroupLevel.PRO)
                 .build());
         when(clientPort.getGroupMembers(groupId)).thenReturn(List.of(
-                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "A", LocalDate.of(2015, 1, 1), "ACTIVE", LocalDate.now(), null),
-                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "B", LocalDate.of(2015, 1, 1), "ACTIVE", LocalDate.now(), null)
+                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "A", LocalDate.of(2015, 1, 1), "ACTIVE", "ACTIVE", LocalDate.now(), null),
+                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "B", LocalDate.of(2015, 1, 1), "ACTIVE", "ACTIVE", LocalDate.now(), null)
         ));
 
         assertThrows(BadRequestException.class, () -> service.updateGroup(
@@ -273,6 +285,7 @@ class AdminGroupServiceTest {
                         "Алихан Сериков",
                         LocalDate.of(2015, 4, 12),
                         "ACTIVE",
+                        "ACTIVE",
                         LocalDate.of(2026, 7, 1),
                         null
                 )
@@ -280,6 +293,8 @@ class AdminGroupServiceTest {
         when(coachPort.getAttendanceRates(groupId, java.util.Set.of(playerId))).thenReturn(List.of(
                 new PlayerAttendanceRateDto(playerId, 83)
         ));
+        when(mediaAvatarPort.findActiveAvatars(eq(kz.edu.soccerhub.media.domain.enums.MediaOwnerType.PLAYER), eq(java.util.Set.of(playerId))))
+                .thenReturn(java.util.Map.of());
 
         Page<AdminGroupMemberOutput> result = service.getGroupMembers(adminId, groupId, PageRequest.of(0, 20));
 
@@ -291,6 +306,14 @@ class AdminGroupServiceTest {
         assertEquals("ACTIVE", item.membershipStatus());
         assertEquals("ACTIVE", item.contractStatus());
         assertEquals(83, item.attendanceRate());
+        assertEquals(11, item.age());
+        assertEquals(playerId, item.player().id());
+        assertEquals("Алихан Сериков", item.player().fullName());
+        assertEquals(membershipId, item.membership().id());
+        assertEquals("ACTIVE", item.membership().status());
+        assertEquals(83, item.stats().attendanceRate());
+        assertTrue(item.capabilities().canOpenProfile());
+        assertTrue(item.capabilities().canAddToAnotherGroup());
         assertTrue(item.capabilities().canTransfer());
         assertTrue(item.capabilities().canRemove());
     }
@@ -322,11 +345,14 @@ class AdminGroupServiceTest {
                         "Удаленный ученик",
                         LocalDate.of(2015, 4, 12),
                         "REMOVED",
+                        "ACTIVE",
                         LocalDate.of(2026, 7, 1),
                         LocalDate.of(2026, 7, 15)
                 )
         ));
         when(coachPort.getAttendanceRates(eq(groupId), org.mockito.ArgumentMatchers.anySet())).thenReturn(List.of());
+        when(mediaAvatarPort.findActiveAvatars(eq(kz.edu.soccerhub.media.domain.enums.MediaOwnerType.PLAYER), org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(java.util.Map.of());
 
         Page<AdminGroupMemberOutput> result = service.getGroupMembers(adminId, groupId, PageRequest.of(0, 20));
 

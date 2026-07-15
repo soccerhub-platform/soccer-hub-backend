@@ -13,8 +13,11 @@ import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupActivityPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
+import kz.edu.soccerhub.common.port.MediaAccessPort;
+import kz.edu.soccerhub.common.port.MediaAvatarPort;
 import kz.edu.soccerhub.organization.domain.model.Location;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
@@ -57,6 +60,12 @@ class AdminSessionServiceTest {
     private CoachRosterReader coachRosterReader;
     @Mock
     private LocationRepository locationRepository;
+    @Mock
+    private GroupActivityPort groupActivityPort;
+    @Mock
+    private MediaAvatarPort mediaAvatarPort;
+    @Mock
+    private MediaAccessPort mediaAccessPort;
 
     private AdminSessionService service;
 
@@ -71,7 +80,10 @@ class AdminSessionServiceTest {
                 trainingSessionRepository,
                 trainingSessionAttendanceRepository,
                 coachRosterReader,
-                locationRepository
+                locationRepository,
+                groupActivityPort,
+                mediaAvatarPort,
+                mediaAccessPort
         );
     }
 

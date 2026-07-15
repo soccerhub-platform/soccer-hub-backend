@@ -1,5 +1,6 @@
 package kz.edu.soccerhub.admin.application.dto.group;
 
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupLevel;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
@@ -11,6 +12,7 @@ import java.util.UUID;
 public record AdminGroupDetailsOutput(
         UUID id,
         String name,
+        MediaAssetResponse avatar,
         String description,
         GroupStatus status,
         Integer ageFrom,
@@ -25,6 +27,43 @@ public record AdminGroupDetailsOutput(
         NextSession nextSession,
         Capabilities capabilities
 ) {
+    public AdminGroupDetailsOutput(
+            UUID id,
+            String name,
+            String description,
+            GroupStatus status,
+            Integer ageFrom,
+            Integer ageTo,
+            GroupAudienceType audienceType,
+            GroupLevel level,
+            Integer capacity,
+            BranchRef branch,
+            Summary summary,
+            GroupHealth health,
+            List<AdminGroupHealthOutput.IssueItem> issues,
+            NextSession nextSession,
+            Capabilities capabilities
+    ) {
+        this(
+                id,
+                name,
+                null,
+                description,
+                status,
+                ageFrom,
+                ageTo,
+                audienceType,
+                level,
+                capacity,
+                branch,
+                summary,
+                health,
+                issues,
+                nextSession,
+                capabilities
+        );
+    }
+
     public record BranchRef(
             UUID id,
             String name

@@ -6,16 +6,19 @@ import kz.edu.soccerhub.admin.application.dto.group.AdminGroupMembershipOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupMembershipTransferOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminRemoveGroupMembershipInput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminTransferGroupMembershipInput;
-import kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus;
-import kz.edu.soccerhub.client.domain.model.GroupMembership;
 import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
 import kz.edu.soccerhub.common.exception.ConflictException;
 import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.GroupActivityPort;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
 import kz.edu.soccerhub.common.port.GroupPort;
+import kz.edu.soccerhub.common.port.MediaAccessPort;
+import kz.edu.soccerhub.common.port.MediaAvatarPort;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
+import kz.edu.soccerhub.organization.domain.model.GroupMembership;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupLevel;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +35,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -51,6 +55,12 @@ class AdminGroupMembershipServiceTest {
     private AdminService adminService;
     @Mock
     private AdminBranchService adminBranchService;
+    @Mock
+    private GroupActivityPort groupActivityPort;
+    @Mock
+    private MediaAvatarPort mediaAvatarPort;
+    @Mock
+    private MediaAccessPort mediaAccessPort;
 
     private AdminGroupMembershipService service;
 
@@ -61,7 +71,10 @@ class AdminGroupMembershipServiceTest {
                 groupPort,
                 clientPort,
                 adminService,
-                adminBranchService
+                adminBranchService,
+                groupActivityPort,
+                mediaAvatarPort,
+                mediaAccessPort
         );
     }
 
@@ -94,6 +107,7 @@ class AdminGroupMembershipServiceTest {
         ArgumentCaptor<GroupMembership> captor = ArgumentCaptor.forClass(GroupMembership.class);
         verify(groupMembershipPort).save(captor.capture());
         assertEquals("NEW_ENROLLMENT", captor.getValue().getJoinReason());
+        verify(groupActivityPort).recordGroupActivity(eq(groupId), eq(adminId), eq("STUDENT_ADDED"), any());
     }
 
     @Test
@@ -199,6 +213,8 @@ class AdminGroupMembershipServiceTest {
         assertEquals("TRANSFERRED", output.previousMembership().status());
         assertEquals(LocalDate.of(2026, 7, 31), output.previousMembership().leftAt());
         assertEquals(targetGroupId, output.newMembership().group().id());
+        verify(groupActivityPort).recordGroupActivity(eq(sourceGroupId), eq(adminId), eq("STUDENT_TRANSFERRED"), any(), any());
+        verify(groupActivityPort).recordGroupActivity(eq(targetGroupId), eq(adminId), eq("STUDENT_TRANSFERRED"), any(), any());
     }
 
     @Test
@@ -231,6 +247,7 @@ class AdminGroupMembershipServiceTest {
 
         assertEquals("REMOVED", output.status());
         assertEquals(LocalDate.of(2026, 8, 1), output.leftAt());
+        verify(groupActivityPort).recordGroupActivity(eq(groupId), eq(adminId), eq("STUDENT_REMOVED"), any());
     }
 
     @Test
@@ -241,6 +258,7 @@ class AdminGroupMembershipServiceTest {
         UUID branchId = UUID.randomUUID();
         UUID firstPlayerId = UUID.randomUUID();
         UUID secondPlayerId = UUID.randomUUID();
+        UUID blockedPlayerId = UUID.randomUUID();
         UUID otherMembershipId = UUID.randomUUID();
 
         when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
@@ -258,7 +276,8 @@ class AdminGroupMembershipServiceTest {
                 .build());
         when(clientPort.getStudentProfilesByBranch(branchId)).thenReturn(List.of(
                 new StudentProfileDto(branchId, firstPlayerId, "Алихан Сериков", null, LocalDate.of(2015, 4, 12), UUID.randomUUID(), "Parent One", "+7701", "a@test.com", "ACTIVE"),
-                new StudentProfileDto(branchId, secondPlayerId, "Диас Ахметов", null, LocalDate.of(2018, 2, 10), UUID.randomUUID(), "Parent Two", "+7702", "b@test.com", "ACTIVE")
+                new StudentProfileDto(branchId, secondPlayerId, "Диас Ахметов", null, LocalDate.of(2018, 2, 10), UUID.randomUUID(), "Parent Two", "+7702", "b@test.com", "ACTIVE"),
+                new StudentProfileDto(branchId, blockedPlayerId, "Елена Садыкова", null, LocalDate.of(2015, 8, 20), UUID.randomUUID(), "Parent Three", "+7703", "c@test.com", "ACTIVE")
         ));
         when(groupMembershipPort.findActiveByPlayerIdInAsOfDate(any(), any())).thenReturn(List.of(
                 GroupMembership.builder()
@@ -285,6 +304,13 @@ class AdminGroupMembershipServiceTest {
                         .status(GroupMembershipStatus.REMOVED)
                         .joinedAt(LocalDate.now().minusDays(1))
                         .leftAt(LocalDate.now())
+                        .build(),
+                GroupMembership.builder()
+                        .id(UUID.randomUUID())
+                        .groupId(groupId)
+                        .playerId(blockedPlayerId)
+                        .status(GroupMembershipStatus.REMOVED)
+                        .joinedAt(LocalDate.now().minusDays(20))
                         .build()
         ));
         when(groupPort.getGroupsByIds(Set.of(groupId, otherGroupId))).thenReturn(List.of(
@@ -294,14 +320,24 @@ class AdminGroupMembershipServiceTest {
 
         AdminGroupMemberCandidatesOutput output = service.getMemberCandidates(adminId, groupId, null, 0, 20);
 
-        assertEquals(1, output.total());
-        assertEquals(secondPlayerId, output.items().getFirst().playerId());
-        assertEquals(otherMembershipId, output.items().getFirst().currentMemberships().getFirst().membershipId());
-        assertEquals("Tangy Football", output.items().getFirst().currentMemberships().getFirst().groupName());
-        assertEquals(LocalDate.now().plusDays(30), output.items().getFirst().currentMemberships().getFirst().leftAt());
-        assertEquals("PLAYER_AGE_OUTSIDE_GROUP_RANGE", output.items().getFirst().warnings().getFirst().code());
-        assertEquals(LocalDate.now().plusDays(1), output.items().getFirst().earliestAvailableJoinDate());
-        assertEquals("MEMBERSHIP_AVAILABLE_FROM", output.items().getFirst().warnings().get(1).code());
+        assertEquals(2, output.total());
+        AdminGroupMemberCandidatesOutput.Item available = output.items().stream()
+                .filter(item -> secondPlayerId.equals(item.playerId()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(otherMembershipId, available.currentMemberships().getFirst().membershipId());
+        assertEquals("Tangy Football", available.currentMemberships().getFirst().groupName());
+        assertEquals(LocalDate.now().plusDays(30), available.currentMemberships().getFirst().leftAt());
+        assertEquals("PLAYER_AGE_OUTSIDE_GROUP_RANGE", available.warnings().getFirst().code());
+        assertEquals(LocalDate.now().plusDays(1), available.earliestAvailableJoinDate());
+        assertEquals("MEMBERSHIP_AVAILABLE_FROM", available.warnings().get(1).code());
+
+        AdminGroupMemberCandidatesOutput.Item blocked = output.items().stream()
+                .filter(item -> blockedPlayerId.equals(item.playerId()))
+                .findFirst()
+                .orElseThrow();
+        assertFalse(blocked.eligible());
+        assertEquals("PLAYER_ALREADY_IN_GROUP", blocked.warnings().getFirst().code());
     }
 
     private StudentProfileDto player(UUID playerId, UUID branchId) {

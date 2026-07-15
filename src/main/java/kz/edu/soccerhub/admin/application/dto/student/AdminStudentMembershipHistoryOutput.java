@@ -1,5 +1,7 @@
 package kz.edu.soccerhub.admin.application.dto.student;
 
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -29,7 +31,8 @@ public record AdminStudentMembershipHistoryOutput(
 
     public record Group(
             UUID id,
-            String name
+            String name,
+            MediaAssetResponse avatar
     ) {
     }
 }

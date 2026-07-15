@@ -281,9 +281,9 @@ class AdminCoachServiceTest {
                 )
         ));
         when(clientPort.getGroupMembers(firstGroupId)).thenReturn(List.of(
-                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "Player 1", LocalDate.of(2015, 1, 1), "ACTIVE", today.minusDays(10), null),
-                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "Player 2", LocalDate.of(2014, 1, 1), "CANCELLED", today.minusDays(20), null),
-                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "Player 3", LocalDate.of(2013, 1, 1), null, today.minusDays(30), null)
+                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "Player 1", LocalDate.of(2015, 1, 1), "ACTIVE", "ACTIVE", today.minusDays(10), null),
+                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "Player 2", LocalDate.of(2014, 1, 1), "ACTIVE", "CANCELLED", today.minusDays(20), null),
+                new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "Player 3", LocalDate.of(2013, 1, 1), "ACTIVE", null, today.minusDays(30), null)
         ));
         when(clientPort.getGroupMembers(secondGroupId)).thenReturn(List.of());
         when(coachPort.getOverdueReportSessions(Set.of(coachId), Set.of(firstGroupId, secondGroupId), today)).thenReturn(List.of(

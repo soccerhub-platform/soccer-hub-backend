@@ -7,9 +7,14 @@ import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
 import kz.edu.soccerhub.common.dto.group.*;
 import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+import kz.edu.soccerhub.common.dto.media.MediaDownloadUrlResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
+import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
+import kz.edu.soccerhub.media.domain.enums.MediaVariant;
+import kz.edu.soccerhub.media.domain.model.MediaAsset;
 import kz.edu.soccerhub.organization.application.dto.CoachBusySlotView;
 import kz.edu.soccerhub.organization.application.service.GroupScheduleValidationService;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
@@ -22,6 +27,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.*;
 import java.util.*;
@@ -32,6 +38,11 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class AdminGroupService {
+
+    private static final String ACTIVITY_GROUP_UPDATED = "GROUP_UPDATED";
+    private static final String ACTIVITY_GROUP_STATUS_CHANGED = "GROUP_STATUS_CHANGED";
+    private static final String ACTIVITY_COACH_ASSIGNED = "COACH_ASSIGNED";
+    private static final String ACTIVITY_COACH_UNASSIGNED = "COACH_UNASSIGNED";
 
     private final GroupPort groupPort;
     private final CoachPort coachPort;
@@ -44,6 +55,9 @@ public class AdminGroupService {
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
     private final BranchPort branchPort;
+    private final GroupActivityPort groupActivityPort;
+    private final MediaAvatarPort mediaAvatarPort;
+    private final MediaAccessPort mediaAccessPort;
 
     /* ================= GROUP ================= */
 
@@ -82,6 +96,14 @@ public class AdminGroupService {
         List<GroupView> views = groups.stream()
                 .map(this::buildGroupView)
                 .toList();
+        Map<UUID, MediaAsset> avatarsByGroupId = mediaAvatarPort.findActiveAvatars(
+                MediaOwnerType.GROUP,
+                groups.stream().map(GroupDto::groupId).toList()
+        );
+        if (avatarsByGroupId == null) {
+            avatarsByGroupId = Map.of();
+        }
+        Map<UUID, MediaAsset> groupAvatars = avatarsByGroupId;
 
         return new AdminGroupOverviewOutput(
                 new AdminGroupOverviewOutput.Summary(
@@ -94,7 +116,7 @@ public class AdminGroupService {
                         (int) views.stream().filter(GroupView::overCapacity).count()
                 ),
                 views.stream()
-                        .map(GroupView::toOverviewItem)
+                        .map(view -> view.toOverviewItem(toMediaAssetResponse(groupAvatars.get(view.group().groupId()))))
                         .toList()
         );
     }
@@ -128,6 +150,7 @@ public class AdminGroupService {
         return new AdminGroupDetailsOutput(
                 group.groupId(),
                 group.name(),
+                getGroupAvatar(group.groupId()),
                 group.description(),
                 group.status(),
                 group.ageFrom(),
@@ -149,6 +172,44 @@ public class AdminGroupService {
         );
     }
 
+    @Transactional
+    public MediaAssetResponse uploadGroupAvatar(UUID adminId, UUID groupId, MultipartFile file) {
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        MediaAsset avatar = mediaAvatarPort.uploadAvatar(
+                MediaOwnerType.GROUP,
+                groupId,
+                adminId,
+                file
+        );
+        return mediaAccessPort.toResponse(avatar);
+    }
+
+    @Transactional
+    public void deleteGroupAvatar(UUID adminId, UUID groupId) {
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        mediaAvatarPort.deleteAvatar(MediaOwnerType.GROUP, groupId, adminId);
+    }
+
+    @Transactional(readOnly = true)
+    public MediaDownloadUrlResponse getGroupAvatarDownloadUrl(UUID adminId, UUID groupId) {
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        MediaAsset avatar = mediaAvatarPort.findActiveAvatar(MediaOwnerType.GROUP, groupId)
+                .orElseThrow(() -> new NotFoundException("Group avatar not found", groupId));
+
+        return new MediaDownloadUrlResponse(
+                mediaAccessPort.createContentUrl(avatar, MediaVariant.ORIGINAL)
+        );
+    }
+
     @Transactional(readOnly = true)
     public Page<AdminGroupMemberOutput> getGroupMembers(UUID adminId, UUID groupId, Pageable pageable) {
         verifyAdmin(adminId);
@@ -165,20 +226,20 @@ public class AdminGroupService {
                 .collect(Collectors.toSet());
         Map<UUID, Integer> attendanceRateByPlayer = coachPort.getAttendanceRates(groupId, playerIds).stream()
                 .collect(Collectors.toMap(PlayerAttendanceRateDto::playerId, PlayerAttendanceRateDto::attendanceRate));
+        Map<UUID, MediaAsset> avatarsByPlayerId = mediaAvatarPort.findActiveAvatars(
+                MediaOwnerType.PLAYER,
+                playerIds
+        );
+        if (avatarsByPlayerId == null) {
+            avatarsByPlayerId = Map.of();
+        }
+        Map<UUID, MediaAsset> playerAvatars = avatarsByPlayerId;
 
         List<AdminGroupMemberOutput> members = groupMembers.stream()
-                .map(member -> new AdminGroupMemberOutput(
-                        member.membershipId(),
-                        member.clientId(),
-                        member.playerId(),
-                        member.childName(),
-                        member.birthDate(),
+                .map(member -> toGroupMemberOutput(
+                        member,
                         attendanceRateByPlayer.getOrDefault(member.playerId(), 0),
-                        member.contractStatus(),
-                        member.contractStatus(),
-                        member.joinedAt(),
-                        member.leftAt(),
-                        buildMemberCapabilities(member)
+                        toMediaAssetResponse(playerAvatars.get(member.playerId()))
                 ))
                 .toList();
 
@@ -213,9 +274,20 @@ public class AdminGroupService {
     @Transactional
     public void updateGroupStatus(UUID adminId, UUID groupId, GroupStatus status) {
         verifyAdmin(adminId);
-        verifyAdminBranchAccess(adminId, groupPort.getGroupById(groupId).branchId());
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
 
         groupPort.updateStatus(groupId, status);
+        groupActivityPort.recordGroupActivity(
+                groupId,
+                adminId,
+                ACTIVITY_GROUP_STATUS_CHANGED,
+                activityPayload()
+                        .put("groupId", groupId)
+                        .put("previousStatus", group.status())
+                        .put("newStatus", status)
+                        .build()
+        );
 
         log.info(
                 "Admin {} updated group status {} to {}",
@@ -267,6 +339,30 @@ public class AdminGroupService {
                 .capacity(targetCapacity)
                 .level(input.level() != null ? input.level() : currentGroup.level())
                 .build());
+        groupActivityPort.recordGroupActivity(
+                groupId,
+                adminId,
+                ACTIVITY_GROUP_UPDATED,
+                activityPayload()
+                        .put("groupId", groupId)
+                        .put("previousName", currentGroup.name())
+                        .put("newName", targetName)
+                        .put("previousDescription", currentGroup.description())
+                        .put("newDescription", input.description() != null ? input.description() : currentGroup.description())
+                        .put("previousBranchId", currentGroup.branchId())
+                        .put("newBranchId", targetBranchId)
+                        .put("previousAgeFrom", currentGroup.ageFrom())
+                        .put("newAgeFrom", targetAgeFrom)
+                        .put("previousAgeTo", currentGroup.ageTo())
+                        .put("newAgeTo", targetAgeTo)
+                        .put("previousAudienceType", currentGroup.audienceType())
+                        .put("newAudienceType", targetAudienceType)
+                        .put("previousCapacity", currentGroup.capacity())
+                        .put("newCapacity", targetCapacity)
+                        .put("previousLevel", currentGroup.level())
+                        .put("newLevel", input.level() != null ? input.level() : currentGroup.level())
+                        .build()
+        );
 
         log.info("Admin {} updated group {}", adminId, groupId);
     }
@@ -280,6 +376,16 @@ public class AdminGroupService {
         verifyCoach(coachId);
 
         UUID assignmentId = groupCoachPort.assignCoach(groupId, coachId, role);
+        groupActivityPort.recordGroupActivity(
+                groupId,
+                adminId,
+                ACTIVITY_COACH_ASSIGNED,
+                activityPayload()
+                        .put("groupCoachId", assignmentId)
+                        .put("coachId", coachId)
+                        .put("role", role == null ? CoachRole.ASSISTANT : role)
+                        .build()
+        );
 
         log.info(
                 "Admin {} assigned coach {} to group {}",
@@ -293,8 +399,23 @@ public class AdminGroupService {
     public void unassignCoachFromGroup(UUID adminId, UUID groupCoachId) {
 
         verifyAdmin(adminId);
+        GroupCoachDto assignment = groupCoachPort.findAssignmentById(groupCoachId)
+                .orElseThrow(() -> new NotFoundException("Group coach data not found", groupCoachId));
+        verifyAdminBranchAccess(adminId, groupPort.getGroupById(assignment.groupId()).branchId());
 
-        groupCoachPort.unassignCoach(groupCoachId);
+        boolean changed = groupCoachPort.unassignCoach(groupCoachId);
+        if (changed) {
+            groupActivityPort.recordGroupActivity(
+                    assignment.groupId(),
+                    adminId,
+                    ACTIVITY_COACH_UNASSIGNED,
+                    activityPayload()
+                            .put("groupCoachId", groupCoachId)
+                            .put("coachId", assignment.coachId())
+                            .put("role", assignment.role())
+                            .build()
+            );
+        }
 
         log.info(
                 "Admin {} unassigned coach from group {}",
@@ -520,13 +641,94 @@ public class AdminGroupService {
     }
 
     private AdminGroupMemberOutput.Capabilities buildMemberCapabilities(GroupMemberDto member) {
-        boolean mutableMembership = member.contractStatus() != null
-                && ("ACTIVE".equalsIgnoreCase(member.contractStatus())
-                || "UPCOMING".equalsIgnoreCase(member.contractStatus()));
+        boolean mutableMembership = member.membershipStatus() != null
+                && ("ACTIVE".equalsIgnoreCase(member.membershipStatus())
+                || "UPCOMING".equalsIgnoreCase(member.membershipStatus()));
         return new AdminGroupMemberOutput.Capabilities(
+                true,
+                true,
                 mutableMembership,
                 mutableMembership
         );
+    }
+
+    private AdminGroupMemberOutput toGroupMemberOutput(
+            GroupMemberDto member,
+            int attendanceRate,
+            MediaAssetResponse avatar
+    ) {
+        Integer age = calculateAge(member.birthDate());
+        AdminGroupMemberOutput.Player player = new AdminGroupMemberOutput.Player(
+                member.playerId(),
+                member.childName(),
+                member.birthDate(),
+                age,
+                avatar
+        );
+        AdminGroupMemberOutput.Membership membership = new AdminGroupMemberOutput.Membership(
+                member.membershipId(),
+                member.membershipStatus(),
+                member.joinedAt(),
+                member.leftAt()
+        );
+        AdminGroupMemberOutput.Contract contract = new AdminGroupMemberOutput.Contract(
+                member.contractId(),
+                member.contractNumber(),
+                member.contractStatus(),
+                member.contractStartDate(),
+                member.contractEndDate()
+        );
+        AdminGroupMemberOutput.Stats stats = new AdminGroupMemberOutput.Stats(attendanceRate);
+
+        return new AdminGroupMemberOutput(
+                member.membershipId(),
+                member.clientId(),
+                member.playerId(),
+                member.childName(),
+                member.birthDate(),
+                age,
+                avatar,
+                attendanceRate,
+                member.membershipStatus(),
+                member.contractStatus(),
+                member.joinedAt(),
+                member.leftAt(),
+                player,
+                membership,
+                contract,
+                stats,
+                buildMemberCapabilities(member)
+        );
+    }
+
+    private Integer calculateAge(LocalDate birthDate) {
+        return birthDate == null ? null : Period.between(birthDate, LocalDate.now()).getYears();
+    }
+
+    private MediaAssetResponse toMediaAssetResponse(MediaAsset asset) {
+        return asset == null ? null : mediaAccessPort.toResponse(asset);
+    }
+
+    private MediaAssetResponse getGroupAvatar(UUID groupId) {
+        Optional<MediaAsset> avatar = mediaAvatarPort.findActiveAvatar(MediaOwnerType.GROUP, groupId);
+        return toMediaAssetResponse(avatar == null ? null : avatar.orElse(null));
+    }
+
+    private ActivityPayloadBuilder activityPayload() {
+        return new ActivityPayloadBuilder();
+    }
+
+    private static final class ActivityPayloadBuilder {
+        private final java.util.LinkedHashMap<String, Object> values = new java.util.LinkedHashMap<>();
+
+        private ActivityPayloadBuilder put(String key, Object value) {
+            values.put(key, value == null ? null : value.toString());
+            return this;
+        }
+
+        private Map<String, Object> build() {
+            return values;
+        }
     }
 
     private List<AdminGroupHealthOutput.IssueItem> buildIssues(
@@ -715,10 +917,11 @@ public class AdminGroupService {
             return Math.min(100, (int) Math.round((studentsCount * 100.0) / capacity));
         }
 
-        private AdminGroupOverviewOutput.GroupItem toOverviewItem() {
+        private AdminGroupOverviewOutput.GroupItem toOverviewItem(MediaAssetResponse avatar) {
             return new AdminGroupOverviewOutput.GroupItem(
                     group.groupId(),
                     group.name(),
+                    avatar,
                     group.status(),
                     group.ageFrom(),
                     group.ageTo(),

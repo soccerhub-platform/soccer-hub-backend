@@ -1,5 +1,6 @@
 package kz.edu.soccerhub.admin.application.dto.group;
 
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupLevel;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 
@@ -24,6 +25,7 @@ public record AdminGroupOverviewOutput(
     public record GroupItem(
             UUID groupId,
             String name,
+            MediaAssetResponse avatar,
             GroupStatus status,
             Integer ageFrom,
             Integer ageTo,

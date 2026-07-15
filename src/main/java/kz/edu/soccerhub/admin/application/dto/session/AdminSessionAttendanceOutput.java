@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.admin.application.dto.session;
 
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -21,8 +22,13 @@ public record AdminSessionAttendanceOutput(
 ) {
     public record GroupRef(
             UUID id,
-            String name
-    ) {}
+            String name,
+            MediaAssetResponse avatar
+    ) {
+        public GroupRef(UUID id, String name) {
+            this(id, name, null);
+        }
+    }
 
     public record Summary(
             int total,

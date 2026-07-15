@@ -7,8 +7,6 @@ import kz.edu.soccerhub.admin.application.dto.student.AdminStudentRiskCode;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsPageOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsQuery;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
-import kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus;
-import kz.edu.soccerhub.client.domain.model.GroupMembership;
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
 import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
@@ -25,6 +23,8 @@ import kz.edu.soccerhub.common.port.ContractPort;
 import kz.edu.soccerhub.common.port.CoachPort;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
 import kz.edu.soccerhub.common.port.GroupPort;
+import kz.edu.soccerhub.organization.domain.model.GroupMembership;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import kz.edu.soccerhub.common.port.GroupSchedulePort;
 import kz.edu.soccerhub.common.port.MediaAccessPort;
 import kz.edu.soccerhub.common.port.MediaAvatarPort;
@@ -54,6 +54,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -86,6 +87,8 @@ class AdminStudentReadServiceTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(mediaAvatarPort.findActiveAvatars(ArgumentMatchers.any(), ArgumentMatchers.anyCollection()))
+                .thenReturn(Map.of());
         service = new AdminStudentReadService(
                 clientPort,
                 contractPort,

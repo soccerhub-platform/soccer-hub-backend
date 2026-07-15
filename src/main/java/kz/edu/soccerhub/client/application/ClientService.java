@@ -3,15 +3,12 @@ package kz.edu.soccerhub.client.application;
 import kz.edu.soccerhub.client.application.dto.ClientDto;
 import kz.edu.soccerhub.client.domain.model.Client;
 import kz.edu.soccerhub.client.domain.model.Contract;
-import kz.edu.soccerhub.client.domain.model.GroupMembership;
 import kz.edu.soccerhub.client.domain.model.Player;
 import kz.edu.soccerhub.client.domain.repository.ClientRepository;
 import kz.edu.soccerhub.client.domain.repository.ContractRepository;
-import kz.edu.soccerhub.client.domain.repository.GroupMembershipRepository;
 import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
 import kz.edu.soccerhub.client.domain.enums.ClientStatus;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
-import kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus;
 import kz.edu.soccerhub.common.domain.enums.Role;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
@@ -25,6 +22,10 @@ import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.BranchPort;
 import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.GroupMembershipPort;
+import kz.edu.soccerhub.organization.application.service.GroupMembershipSyncService;
+import kz.edu.soccerhub.organization.domain.model.GroupMembership;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -49,9 +50,9 @@ public class ClientService implements ClientPort {
     private final ClientRepository clientRepository;
     private final PlayerRepository playerRepository;
     private final ContractRepository contractRepository;
-    private final GroupMembershipRepository groupMembershipRepository;
     private final BranchPort branchPort;
     private final AuthPort authPort;
+    private final GroupMembershipPort groupMembershipPort;
     private final GroupMembershipSyncService groupMembershipSyncService;
 
     @Override
@@ -129,7 +130,7 @@ public class ClientService implements ClientPort {
     @Override
     @Transactional(readOnly = true)
     public List<GroupMemberDto> getGroupMembers(UUID groupId) {
-        List<GroupMembership> memberships = groupMembershipRepository.findActiveByGroupIdAsOfDate(groupId, LocalDate.now());
+        List<GroupMembership> memberships = groupMembershipPort.findActiveByGroupIdAsOfDate(groupId, LocalDate.now());
         if (memberships.isEmpty()) {
             return List.of();
         }
@@ -138,9 +139,15 @@ public class ClientService implements ClientPort {
                 .collect(Collectors.groupingBy(GroupMembership::getPlayerId));
         Map<UUID, Player> playersById = playerRepository.findByIdIn(membershipsByPlayerId.keySet()).stream()
                 .collect(Collectors.toMap(Player::getId, Function.identity()));
+        Map<UUID, List<Contract>> contractsByPlayerId = contractRepository.findByPlayerIdIn(membershipsByPlayerId.keySet()).stream()
+                .collect(Collectors.groupingBy(Contract::getPlayerId));
 
         return membershipsByPlayerId.entrySet().stream()
-                .map(entry -> toGroupMember(entry.getValue(), playersById.get(entry.getKey())))
+                .map(entry -> toGroupMember(
+                        entry.getValue(),
+                        playersById.get(entry.getKey()),
+                        contractsByPlayerId.getOrDefault(entry.getKey(), List.of())
+                ))
                 .filter(java.util.Objects::nonNull)
                 .sorted(Comparator.comparing(GroupMemberDto::childName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -315,7 +322,11 @@ public class ClientService implements ClientPort {
         );
     }
 
-    private GroupMemberDto toGroupMember(List<GroupMembership> memberships, Player player) {
+    private GroupMemberDto toGroupMember(
+            List<GroupMembership> memberships,
+            Player player,
+            List<Contract> contracts
+    ) {
         if (player == null) {
             return null;
         }
@@ -326,6 +337,7 @@ public class ClientService implements ClientPort {
 
         GroupMembership latestMembership = sortedMemberships.getLast();
         LocalDate joinedAt = sortedMemberships.getFirst().getJoinedAt();
+        Contract currentContract = selectCurrentContract(contracts, latestMembership.getGroupId());
 
         return new GroupMemberDto(
                 latestMembership.getId(),
@@ -334,9 +346,36 @@ public class ClientService implements ClientPort {
                 buildPlayerName(player),
                 player.getBirthDate(),
                 resolveMembershipStatus(latestMembership),
+                currentContract == null || currentContract.getStatus() == null ? null : currentContract.getStatus().name(),
+                currentContract == null ? null : currentContract.getId(),
+                currentContract == null ? null : currentContract.getContractNumber(),
+                currentContract == null ? null : currentContract.getStartDate(),
+                currentContract == null ? null : currentContract.getEndDate(),
                 joinedAt,
                 latestMembership.getLeftAt()
         );
+    }
+
+    private Contract selectCurrentContract(List<Contract> contracts, UUID groupId) {
+        if (contracts == null || contracts.isEmpty()) {
+            return null;
+        }
+
+        LocalDate today = LocalDate.now();
+        return contracts.stream()
+                .filter(contract -> groupId.equals(contract.getGroupId()))
+                .filter(contract -> contract.getStatus() != ContractStatus.CANCELLED)
+                .sorted(Comparator
+                        .comparing((Contract contract) -> isContractActiveOn(contract, today)).reversed()
+                        .thenComparing(Contract::getStartDate, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(Contract::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean isContractActiveOn(Contract contract, LocalDate date) {
+        return (contract.getStartDate() == null || !contract.getStartDate().isAfter(date))
+                && (contract.getEndDate() == null || !contract.getEndDate().isBefore(date));
     }
 
     private String resolveMembershipStatus(GroupMembership membership) {

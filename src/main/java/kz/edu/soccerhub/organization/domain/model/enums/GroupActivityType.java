@@ -1,0 +1,15 @@
+package kz.edu.soccerhub.organization.domain.model.enums;
+
+public enum GroupActivityType {
+    STUDENT_ADDED,
+    STUDENT_TRANSFERRED,
+    STUDENT_REMOVED,
+    GROUP_UPDATED,
+    GROUP_STATUS_CHANGED,
+    COACH_ASSIGNED,
+    COACH_UNASSIGNED,
+    SESSION_CANCELLED,
+    SESSION_RESCHEDULED,
+    SESSION_COACH_SUBSTITUTED,
+    ATTENDANCE_UPDATED
+}

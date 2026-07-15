@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.client.domain.model;
+package kz.edu.soccerhub.organization.domain.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -8,8 +8,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
-import kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;

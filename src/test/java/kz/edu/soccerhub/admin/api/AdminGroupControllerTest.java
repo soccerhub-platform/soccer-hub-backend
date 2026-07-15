@@ -5,10 +5,12 @@ import kz.edu.soccerhub.admin.application.dto.group.AdminAddGroupMemberInput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupMemberCandidatesOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupMembershipOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupMembershipTransferOutput;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupActivityOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminRemoveGroupMembershipInput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminTransferGroupMembershipInput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupUpdateInput;
 import kz.edu.soccerhub.admin.application.dto.group.GroupHealth;
+import kz.edu.soccerhub.admin.application.service.AdminGroupActivityService;
 import kz.edu.soccerhub.admin.application.service.AdminGroupMembershipService;
 import kz.edu.soccerhub.admin.application.service.AdminGroupService;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
@@ -17,9 +19,13 @@ import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,12 +39,13 @@ class AdminGroupControllerTest {
 
     private final AdminGroupService adminGroupService = Mockito.mock(AdminGroupService.class);
     private final AdminGroupMembershipService adminGroupMembershipService = Mockito.mock(AdminGroupMembershipService.class);
+    private final AdminGroupActivityService adminGroupActivityService = Mockito.mock(AdminGroupActivityService.class);
 
     private AdminGroupController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AdminGroupController(adminGroupService, adminGroupMembershipService);
+        controller = new AdminGroupController(adminGroupService, adminGroupMembershipService, adminGroupActivityService);
     }
 
     @Test
@@ -146,6 +153,37 @@ class AdminGroupControllerTest {
 
         assertSame(output, controller.getGroupMemberCandidates(jwt, groupId, "Ali", 0, 20).getBody());
         verify(adminGroupMembershipService).getMemberCandidates(eq(adminId), eq(groupId), eq("Ali"), eq(0), eq(20));
+    }
+
+    @Test
+    void shouldForwardGroupActivityToService() {
+        UUID adminId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        Jwt jwt = Mockito.mock(Jwt.class);
+        when(jwt.getSubject()).thenReturn(adminId.toString());
+
+        PageRequest pageable = PageRequest.of(0, 5);
+        PageImpl<AdminGroupActivityOutput> output = new PageImpl<>(List.of(
+                new AdminGroupActivityOutput(
+                        UUID.randomUUID(),
+                        "STUDENT_ADDED",
+                        LocalDateTime.of(2026, 7, 15, 10, 0),
+                        new AdminGroupActivityOutput.ActorRef(adminId, "Admin"),
+                        Map.of("playerName", "Алихан Сериков")
+                )
+        ), pageable, 1);
+
+        when(adminGroupActivityService.getGroupActivity(eq(adminId), eq(groupId), eq(pageable))).thenReturn(output);
+
+        org.springframework.data.domain.Page<AdminGroupActivityOutput> response =
+                controller.getGroupActivity(jwt, groupId, pageable).getBody();
+        assertEquals(1, response.getTotalElements());
+        AdminGroupActivityOutput item = response.getContent().getFirst();
+        assertEquals("STUDENT_ADDED", item.type());
+        assertEquals("Admin", item.actor().fullName());
+        assertEquals("Алихан Сериков", item.payload().get("playerName"));
+        verify(adminGroupActivityService).getGroupActivity(eq(adminId), eq(groupId), eq(pageable));
     }
 
     @Test

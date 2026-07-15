@@ -11,6 +11,7 @@ import javax.imageio.stream.ImageInputStream;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -119,19 +120,24 @@ public class AvatarImageProcessor {
                     );
                 }
 
-                int width = reader.getWidth(0);
-                int height = reader.getHeight(0);
-                validateDimensions(width, height);
+                int storedWidth = reader.getWidth(0);
+                int storedHeight = reader.getHeight(0);
+                validateDimensions(storedWidth, storedHeight);
 
                 BufferedImage image = reader.read(0);
                 if (image == null) {
                     throw invalidImage();
                 }
 
-                return new DecodedImage(
+                BufferedImage orientedImage = applyExifOrientation(
                         image,
-                        width,
-                        height,
+                        readExifOrientation(bytes)
+                );
+
+                return new DecodedImage(
+                        orientedImage,
+                        orientedImage.getWidth(),
+                        orientedImage.getHeight(),
                         toMimeType(formatName)
                 );
 
@@ -145,6 +151,161 @@ public class AvatarImageProcessor {
         } catch (IOException | RuntimeException exception) {
             throw invalidImage();
         }
+    }
+
+    private int readExifOrientation(byte[] bytes) {
+        if (bytes.length < 4 || unsigned(bytes[0]) != 0xFF || unsigned(bytes[1]) != 0xD8) {
+            return 1;
+        }
+
+        int offset = 2;
+        while (offset + 4 <= bytes.length) {
+            if (unsigned(bytes[offset]) != 0xFF) {
+                break;
+            }
+
+            int marker = unsigned(bytes[offset + 1]);
+            if (marker == 0xDA || marker == 0xD9) {
+                break;
+            }
+
+            int segmentLength = readUnsignedShort(bytes, offset + 2, false);
+            if (segmentLength < 2 || offset + 2 + segmentLength > bytes.length) {
+                break;
+            }
+
+            int segmentStart = offset + 4;
+            if (marker == 0xE1 && hasExifHeader(bytes, segmentStart, segmentLength - 2)) {
+                int orientation = readTiffOrientation(bytes, segmentStart + 6, offset + 2 + segmentLength);
+                if (orientation >= 1 && orientation <= 8) {
+                    return orientation;
+                }
+            }
+
+            offset += 2 + segmentLength;
+        }
+
+        return 1;
+    }
+
+    private boolean hasExifHeader(byte[] bytes, int offset, int available) {
+        return available >= 14
+                && bytes[offset] == 'E'
+                && bytes[offset + 1] == 'x'
+                && bytes[offset + 2] == 'i'
+                && bytes[offset + 3] == 'f'
+                && bytes[offset + 4] == 0
+                && bytes[offset + 5] == 0;
+    }
+
+    private int readTiffOrientation(byte[] bytes, int tiffStart, int segmentEnd) {
+        if (tiffStart + 8 > segmentEnd) {
+            return 1;
+        }
+
+        boolean littleEndian;
+        if (bytes[tiffStart] == 'I' && bytes[tiffStart + 1] == 'I') {
+            littleEndian = true;
+        } else if (bytes[tiffStart] == 'M' && bytes[tiffStart + 1] == 'M') {
+            littleEndian = false;
+        } else {
+            return 1;
+        }
+
+        if (readUnsignedShort(bytes, tiffStart + 2, littleEndian) != 42) {
+            return 1;
+        }
+
+        long firstIfdOffset = readUnsignedInt(bytes, tiffStart + 4, littleEndian);
+        long ifdPosition = tiffStart + firstIfdOffset;
+        if (firstIfdOffset < 0 || ifdPosition < tiffStart || ifdPosition + 2 > segmentEnd) {
+            return 1;
+        }
+
+        int entryCount = readUnsignedShort(bytes, (int) ifdPosition, littleEndian);
+        int entryOffset = (int) ifdPosition + 2;
+        for (int index = 0; index < entryCount; index++) {
+            int entry = entryOffset + index * 12;
+            if (entry + 12 > segmentEnd) {
+                return 1;
+            }
+
+            int tag = readUnsignedShort(bytes, entry, littleEndian);
+            if (tag == 0x0112) {
+                int type = readUnsignedShort(bytes, entry + 2, littleEndian);
+                long count = readUnsignedInt(bytes, entry + 4, littleEndian);
+                if (type == 3 && count >= 1) {
+                    return readUnsignedShort(bytes, entry + 8, littleEndian);
+                }
+                return 1;
+            }
+        }
+
+        return 1;
+    }
+
+    private int readUnsignedShort(byte[] bytes, int offset, boolean littleEndian) {
+        if (offset < 0 || offset + 2 > bytes.length) {
+            return 0;
+        }
+        int first = unsigned(bytes[offset]);
+        int second = unsigned(bytes[offset + 1]);
+        return littleEndian ? first | (second << 8) : (first << 8) | second;
+    }
+
+    private long readUnsignedInt(byte[] bytes, int offset, boolean littleEndian) {
+        if (offset < 0 || offset + 4 > bytes.length) {
+            return -1;
+        }
+        if (littleEndian) {
+            return unsigned(bytes[offset])
+                    | ((long) unsigned(bytes[offset + 1]) << 8)
+                    | ((long) unsigned(bytes[offset + 2]) << 16)
+                    | ((long) unsigned(bytes[offset + 3]) << 24);
+        }
+        return ((long) unsigned(bytes[offset]) << 24)
+                | ((long) unsigned(bytes[offset + 1]) << 16)
+                | ((long) unsigned(bytes[offset + 2]) << 8)
+                | unsigned(bytes[offset + 3]);
+    }
+
+    private int unsigned(byte value) {
+        return value & 0xFF;
+    }
+
+    private BufferedImage applyExifOrientation(BufferedImage source, int orientation) {
+        if (orientation <= 1 || orientation > 8) {
+            return source;
+        }
+
+        int width = source.getWidth();
+        int height = source.getHeight();
+        boolean swapsDimensions = orientation >= 5;
+        BufferedImage target = new BufferedImage(
+                swapsDimensions ? height : width,
+                swapsDimensions ? width : height,
+                source.getColorModel().hasAlpha() ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB
+        );
+
+        AffineTransform transform = switch (orientation) {
+            case 2 -> new AffineTransform(-1, 0, 0, 1, width, 0);
+            case 3 -> new AffineTransform(-1, 0, 0, -1, width, height);
+            case 4 -> new AffineTransform(1, 0, 0, -1, 0, height);
+            case 5 -> new AffineTransform(0, 1, 1, 0, 0, 0);
+            case 6 -> new AffineTransform(0, 1, -1, 0, height, 0);
+            case 7 -> new AffineTransform(0, -1, -1, 0, height, width);
+            case 8 -> new AffineTransform(0, -1, 1, 0, 0, width);
+            default -> new AffineTransform();
+        };
+
+        Graphics2D graphics = target.createGraphics();
+        try {
+            configureQuality(graphics);
+            graphics.drawImage(source, transform, null);
+        } finally {
+            graphics.dispose();
+        }
+        return target;
     }
 
     private void validateDimensions(

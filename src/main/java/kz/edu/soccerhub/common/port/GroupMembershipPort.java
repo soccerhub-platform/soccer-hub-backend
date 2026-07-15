@@ -1,6 +1,6 @@
 package kz.edu.soccerhub.common.port;
 
-import kz.edu.soccerhub.client.domain.model.GroupMembership;
+import kz.edu.soccerhub.organization.domain.model.GroupMembership;
 
 import java.time.LocalDate;
 import java.util.Collection;

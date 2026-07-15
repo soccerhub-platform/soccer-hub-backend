@@ -100,6 +100,13 @@ public class GroupCoachService implements GroupCoachPort {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<GroupCoachDto> findAssignmentById(UUID groupCoachId) {
+        return groupCoachRepository.findById(groupCoachId)
+                .map(GroupCoachMapper::toDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Collection<GroupCoachDto> getActiveCoaches(UUID groupId) {
         return groupCoachRepository.findByGroupIdAndActiveTrue(groupId)
                 .stream()

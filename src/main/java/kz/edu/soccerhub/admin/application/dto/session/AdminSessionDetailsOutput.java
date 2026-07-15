@@ -1,5 +1,7 @@
 package kz.edu.soccerhub.admin.application.dto.session;
 
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,6 +27,11 @@ public record AdminSessionDetailsOutput(
 ) {
     public record GroupRef(
             UUID id,
-            String name
-    ) {}
+            String name,
+            MediaAssetResponse avatar
+    ) {
+        public GroupRef(UUID id, String name) {
+            this(id, name, null);
+        }
+    }
 }

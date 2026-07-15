@@ -2,8 +2,6 @@ package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.student.*;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
-import kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus;
-import kz.edu.soccerhub.client.domain.model.GroupMembership;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
 import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
@@ -20,6 +18,8 @@ import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
 import kz.edu.soccerhub.media.domain.model.MediaAsset;
+import kz.edu.soccerhub.organization.domain.model.GroupMembership;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -74,6 +74,18 @@ public class AdminStudentReadService {
                         .filter(Objects::nonNull)
                         .collect(Collectors.toSet())
         );
+        Map<UUID, MediaAsset> currentGroupAvatarsById = mediaAvatarPort.findActiveAvatars(
+                MediaOwnerType.GROUP,
+                currentMembershipsByPlayerId.values().stream()
+                        .filter(Objects::nonNull)
+                        .map(GroupMembership::getGroupId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet())
+        );
+        if (currentGroupAvatarsById == null) {
+            currentGroupAvatarsById = Map.of();
+        }
+        Map<UUID, MediaAsset> currentGroupAvatars = currentGroupAvatarsById;
         Map<UUID, PlayerAttendanceSummaryDto> attendanceByPlayerId = coachPort.getAttendanceSummaries(
                         new HashSet<>(playerIds)
                 ).stream()
@@ -82,6 +94,10 @@ public class AdminStudentReadService {
                 MediaOwnerType.PLAYER,
                 playerIds
         );
+        if (avatarsByPlayerId == null) {
+            avatarsByPlayerId = Map.of();
+        }
+        Map<UUID, MediaAsset> playerAvatars = avatarsByPlayerId;
 
         Map<UUID, StudentContractSnapshotOutput> currentContractsByPlayerId = new HashMap<>();
         List<ContractPaymentSummaryQueryInput> paymentQueries = new ArrayList<>();
@@ -101,10 +117,11 @@ public class AdminStudentReadService {
                         profile,
                         currentMembershipsByPlayerId.get(profile.playerId()),
                         currentGroupNamesById,
+                        currentGroupAvatars,
                         currentContractsByPlayerId.get(profile.playerId()),
                         paymentSummaries,
                         attendanceByPlayerId.get(profile.playerId()),
-                        toMediaAssetResponse(avatarsByPlayerId.get(profile.playerId()))
+                        toMediaAssetResponse(playerAvatars.get(profile.playerId()))
                 ))
                 .toList();
 
@@ -224,6 +241,11 @@ public class AdminStudentReadService {
                 : groupPort.getGroupsByIds(groupIds).stream()
                 .collect(Collectors.toMap(kz.edu.soccerhub.common.dto.group.GroupDto::groupId,
                         kz.edu.soccerhub.common.dto.group.GroupDto::name));
+        Map<UUID, MediaAsset> groupAvatarsById = mediaAvatarPort.findActiveAvatars(MediaOwnerType.GROUP, groupIds);
+        if (groupAvatarsById == null) {
+            groupAvatarsById = Map.of();
+        }
+        Map<UUID, MediaAsset> groupAvatars = groupAvatarsById;
 
         return new AdminStudentMembershipHistoryOutput(
                 new AdminStudentMembershipHistoryOutput.Player(profile.playerId(), profile.playerFullName()),
@@ -232,7 +254,8 @@ public class AdminStudentReadService {
                                 item.getId(),
                                 new AdminStudentMembershipHistoryOutput.Group(
                                         item.getGroupId(),
-                                        groupNamesById.get(item.getGroupId())
+                                        groupNamesById.get(item.getGroupId()),
+                                        toMediaAssetResponse(groupAvatars.get(item.getGroupId()))
                                 ),
                                 item.getStatus().name(),
                                 item.getJoinedAt(),
@@ -250,6 +273,7 @@ public class AdminStudentReadService {
             StudentProfileDto profile,
             GroupMembership currentMembership,
             Map<UUID, String> currentGroupNamesById,
+            Map<UUID, MediaAsset> currentGroupAvatarsById,
             StudentContractSnapshotOutput currentContract,
             Map<UUID, ContractPaymentSummaryOutput> paymentSummaries,
             PlayerAttendanceSummaryDto attendanceSummary,
@@ -261,6 +285,9 @@ public class AdminStudentReadService {
                 : attendanceSummary;
         UUID currentGroupId = currentMembership == null ? null : currentMembership.getGroupId();
         String currentGroupName = currentMembership == null ? null : currentGroupNamesById.get(currentMembership.getGroupId());
+        MediaAssetResponse currentGroupAvatar = currentMembership == null
+                ? null
+                : toMediaAssetResponse(currentGroupAvatarsById.get(currentMembership.getGroupId()));
         String currentCoachName = currentContract != null && Objects.equals(currentContract.groupId(), currentGroupId)
                 ? currentContract.coachName()
                 : null;
@@ -278,6 +305,7 @@ public class AdminStudentReadService {
                 profile.email(),
                 currentGroupId,
                 currentGroupName,
+                currentGroupAvatar,
                 currentCoachName,
                 currentContract == null ? null : currentContract.id(),
                 currentContract == null ? null : currentContract.contractNumber(),
@@ -567,6 +595,7 @@ public class AdminStudentReadService {
         return new AdminStudentDetailsOutput.CurrentGroupBlock(
                 groupId,
                 groupName,
+                getGroupAvatar(groupId),
                 coachName,
                 buildScheduleLabel(schedules),
                 resolveNextSessionAt(schedules)
@@ -673,6 +702,11 @@ public class AdminStudentReadService {
             return null;
         }
         return Period.between(birthDate, LocalDate.now()).getYears();
+    }
+
+    private MediaAssetResponse getGroupAvatar(UUID groupId) {
+        Optional<MediaAsset> avatar = mediaAvatarPort.findActiveAvatar(MediaOwnerType.GROUP, groupId);
+        return toMediaAssetResponse(avatar == null ? null : avatar.orElse(null));
     }
 
     private boolean contains(String value, String needle) {

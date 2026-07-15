@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.client.domain.enums;
+package kz.edu.soccerhub.organization.domain.model.enums;
 
 public enum GroupMembershipStatus {
     UPCOMING,

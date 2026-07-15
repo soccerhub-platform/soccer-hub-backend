@@ -5,6 +5,7 @@ import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -15,6 +16,8 @@ public interface GroupCoachPort {
     UUID assignCoach(UUID groupId, UUID coachId, CoachRole role, LocalDate assignedFrom, LocalDate assignedTo);
 
     boolean unassignCoach(UUID groupCoachId);
+
+    Optional<GroupCoachDto> findAssignmentById(UUID groupCoachId);
 
     Collection<GroupCoachDto> getActiveCoaches(UUID groupId);
 

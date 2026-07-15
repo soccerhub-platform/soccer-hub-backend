@@ -22,6 +22,7 @@ public record AdminStudentListItemOutput(
         String email,
         UUID groupId,
         String groupName,
+        MediaAssetResponse groupAvatar,
         String coachName,
         UUID contractId,
         String contractNumber,

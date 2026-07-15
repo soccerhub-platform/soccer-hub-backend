@@ -1,8 +1,8 @@
-package kz.edu.soccerhub.client.application;
+package kz.edu.soccerhub.organization.application.service;
 
-import kz.edu.soccerhub.client.domain.model.GroupMembership;
-import kz.edu.soccerhub.client.domain.repository.GroupMembershipRepository;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
+import kz.edu.soccerhub.organization.domain.model.GroupMembership;
+import kz.edu.soccerhub.organization.domain.repository.GroupMembershipRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

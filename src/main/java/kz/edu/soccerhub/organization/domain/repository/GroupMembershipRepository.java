@@ -1,6 +1,6 @@
-package kz.edu.soccerhub.client.domain.repository;
+package kz.edu.soccerhub.organization.domain.repository;
 
-import kz.edu.soccerhub.client.domain.model.GroupMembership;
+import kz.edu.soccerhub.organization.domain.model.GroupMembership;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -31,8 +31,8 @@ public interface GroupMembershipRepository extends JpaRepository<GroupMembership
             from GroupMembership gm
             where gm.groupId = :groupId
               and gm.status in (
-                  kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus.ACTIVE,
-                  kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus.UPCOMING
+                  kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus.ACTIVE,
+                  kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus.UPCOMING
               )
               and gm.joinedAt <= :asOfDate
               and (gm.leftAt is null or gm.leftAt >= :asOfDate)
@@ -44,8 +44,8 @@ public interface GroupMembershipRepository extends JpaRepository<GroupMembership
             from GroupMembership gm
             where gm.groupId = :groupId
               and gm.status in (
-                  kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus.ACTIVE,
-                  kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus.UPCOMING
+                  kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus.ACTIVE,
+                  kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus.UPCOMING
               )
               and gm.joinedAt <= :asOfDate
               and (gm.leftAt is null or gm.leftAt >= :asOfDate)
@@ -58,8 +58,8 @@ public interface GroupMembershipRepository extends JpaRepository<GroupMembership
             where gm.groupId = :groupId
               and gm.playerId = :playerId
               and gm.status in (
-                  kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus.ACTIVE,
-                  kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus.UPCOMING
+                  kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus.ACTIVE,
+                  kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus.UPCOMING
               )
               and gm.joinedAt <= :asOfDate
               and (gm.leftAt is null or gm.leftAt >= :asOfDate)
@@ -71,8 +71,8 @@ public interface GroupMembershipRepository extends JpaRepository<GroupMembership
             from GroupMembership gm
             where gm.playerId in :playerIds
               and gm.status in (
-                  kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus.ACTIVE,
-                  kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus.UPCOMING
+                  kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus.ACTIVE,
+                  kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus.UPCOMING
               )
               and gm.joinedAt <= :asOfDate
               and (gm.leftAt is null or gm.leftAt >= :asOfDate)

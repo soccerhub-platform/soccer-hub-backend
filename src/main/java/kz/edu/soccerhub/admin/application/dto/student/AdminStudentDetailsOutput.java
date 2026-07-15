@@ -44,6 +44,7 @@ public record AdminStudentDetailsOutput(
     public record CurrentGroupBlock(
             UUID id,
             String name,
+            MediaAssetResponse avatar,
             String coachName,
             String scheduleLabel,
             LocalDateTime nextSessionAt

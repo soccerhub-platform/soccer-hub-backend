@@ -6,19 +6,25 @@ import kz.edu.soccerhub.admin.application.dto.group.AdminGroupMembershipOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminGroupMembershipTransferOutput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminRemoveGroupMembershipInput;
 import kz.edu.soccerhub.admin.application.dto.group.AdminTransferGroupMembershipInput;
-import kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus;
-import kz.edu.soccerhub.client.domain.model.GroupMembership;
 import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.ConflictException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.GroupActivityPort;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
 import kz.edu.soccerhub.common.port.GroupPort;
+import kz.edu.soccerhub.common.port.MediaAccessPort;
+import kz.edu.soccerhub.common.port.MediaAvatarPort;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
+import kz.edu.soccerhub.organization.domain.model.GroupMembership;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
+import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
+import kz.edu.soccerhub.media.domain.model.MediaAsset;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,11 +43,18 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminGroupMembershipService {
 
+    private static final String ACTIVITY_STUDENT_ADDED = "STUDENT_ADDED";
+    private static final String ACTIVITY_STUDENT_TRANSFERRED = "STUDENT_TRANSFERRED";
+    private static final String ACTIVITY_STUDENT_REMOVED = "STUDENT_REMOVED";
+
     private final GroupMembershipPort groupMembershipPort;
     private final GroupPort groupPort;
     private final ClientPort clientPort;
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
+    private final GroupActivityPort groupActivityPort;
+    private final MediaAvatarPort mediaAvatarPort;
+    private final MediaAccessPort mediaAccessPort;
 
     @Transactional(readOnly = true)
     public AdminGroupMemberCandidatesOutput getMemberCandidates(UUID adminId, UUID groupId, String search, int page, int size) {
@@ -80,6 +93,14 @@ public class AdminGroupMembershipService {
                 ));
         Map<UUID, GroupDto> groupsById = groupPort.getGroupsByIds(relatedGroupIds).stream()
                 .collect(Collectors.toMap(GroupDto::groupId, value -> value));
+        Map<UUID, MediaAsset> groupAvatarsById = mediaAvatarPort.findActiveAvatars(
+                MediaOwnerType.GROUP,
+                relatedGroupIds
+        );
+        if (groupAvatarsById == null) {
+            groupAvatarsById = Map.of();
+        }
+        Map<UUID, MediaAsset> groupAvatars = groupAvatarsById;
 
         List<AdminGroupMemberCandidatesOutput.Item> items = profiles.stream()
                 .filter(profile -> matchesSearch(profile, normalizedSearch))
@@ -90,7 +111,8 @@ public class AdminGroupMembershipService {
                         profile,
                         membershipsByPlayerId.get(profile.playerId()),
                         recentTargetMembershipsByPlayerId.get(profile.playerId()),
-                        groupsById
+                        groupsById,
+                        groupAvatars
                 ))
                 .toList();
 
@@ -144,7 +166,19 @@ public class AdminGroupMembershipService {
                 .comment(trimToNull(input.comment()))
                 .build());
 
-        return toOutput(membership, lockedGroup.name(), player);
+        groupActivityPort.recordGroupActivity(
+                groupId,
+                adminId,
+                ACTIVITY_STUDENT_ADDED,
+                activityPayload()
+                        .put("membershipId", membership.getId())
+                        .put("playerId", player.playerId())
+                        .put("playerName", player.playerFullName())
+                        .put("joinedAt", membership.getJoinedAt())
+                        .build()
+        );
+
+        return toOutput(membership, lockedGroup.name(), getGroupAvatar(lockedGroup.groupId()), player);
     }
 
     @Transactional
@@ -202,9 +236,37 @@ public class AdminGroupMembershipService {
                 .comment(trimToNull(input.comment()))
                 .build());
 
+        UUID correlationId = UUID.randomUUID();
+        Map<String, Object> transferPayload = activityPayload()
+                .put("previousMembershipId", currentMembership.getId())
+                .put("newMembershipId", newMembership.getId())
+                .put("playerId", player.playerId())
+                .put("playerName", player.playerFullName())
+                .put("sourceGroupId", sourceGroup.groupId())
+                .put("sourceGroupName", sourceGroup.name())
+                .put("targetGroupId", targetGroup.groupId())
+                .put("targetGroupName", targetGroup.name())
+                .put("transferDate", input.transferDate())
+                .put("reason", trimToNull(input.reason()))
+                .build();
+        groupActivityPort.recordGroupActivity(
+                sourceGroup.groupId(),
+                adminId,
+                ACTIVITY_STUDENT_TRANSFERRED,
+                withDirection(transferPayload, "OUT"),
+                correlationId
+        );
+        groupActivityPort.recordGroupActivity(
+                targetGroup.groupId(),
+                adminId,
+                ACTIVITY_STUDENT_TRANSFERRED,
+                withDirection(transferPayload, "IN"),
+                correlationId
+        );
+
         return new AdminGroupMembershipTransferOutput(
-                toOutput(currentMembership, sourceGroup.name(), player),
-                toOutput(newMembership, targetGroup.name(), player)
+                toOutput(currentMembership, sourceGroup.name(), getGroupAvatar(sourceGroup.groupId()), player),
+                toOutput(newMembership, targetGroup.name(), getGroupAvatar(targetGroup.groupId()), player)
         );
     }
 
@@ -236,7 +298,43 @@ public class AdminGroupMembershipService {
         membership.setLeaveReason(trimToNull(input.reason()));
         membership.setComment(trimToNull(input.comment()));
 
-        return toOutput(membership, group.name(), player);
+        groupActivityPort.recordGroupActivity(
+                membership.getGroupId(),
+                adminId,
+                ACTIVITY_STUDENT_REMOVED,
+                activityPayload()
+                        .put("membershipId", membership.getId())
+                        .put("playerId", player.playerId())
+                        .put("playerName", player.playerFullName())
+                        .put("leftAt", membership.getLeftAt())
+                        .put("reason", trimToNull(input.reason()))
+                        .build()
+        );
+
+        return toOutput(membership, group.name(), getGroupAvatar(group.groupId()), player);
+    }
+
+    private Map<String, Object> withDirection(Map<String, Object> payload, String direction) {
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>(payload);
+        result.put("direction", direction);
+        return result;
+    }
+
+    private ActivityPayloadBuilder activityPayload() {
+        return new ActivityPayloadBuilder();
+    }
+
+    private static final class ActivityPayloadBuilder {
+        private final java.util.LinkedHashMap<String, Object> values = new java.util.LinkedHashMap<>();
+
+        private ActivityPayloadBuilder put(String key, Object value) {
+            values.put(key, value == null ? null : value.toString());
+            return this;
+        }
+
+        private Map<String, Object> build() {
+            return values;
+        }
     }
 
     private void ensureCapacityAvailable(GroupDto group, LocalDate asOfDate) {
@@ -283,11 +381,18 @@ public class AdminGroupMembershipService {
             StudentProfileDto profile,
             List<GroupMembership> activeMemberships,
             GroupMembership recentTargetMembership,
-            Map<UUID, GroupDto> groupsById
+            Map<UUID, GroupDto> groupsById,
+            Map<UUID, MediaAsset> groupAvatarsById
     ) {
         Integer age = calculateAge(profile.birthDate());
         LocalDate earliestAvailableJoinDate = resolveEarliestAvailableJoinDate(recentTargetMembership);
-        List<AdminGroupMemberCandidatesOutput.Warning> warnings = buildWarnings(targetGroup, age, earliestAvailableJoinDate);
+        boolean eligible = recentTargetMembership == null || recentTargetMembership.getLeftAt() != null;
+        List<AdminGroupMemberCandidatesOutput.Warning> warnings = buildWarnings(
+                targetGroup,
+                age,
+                earliestAvailableJoinDate,
+                recentTargetMembership
+        );
         List<AdminGroupMemberCandidatesOutput.CurrentMembership> currentMemberships = activeMemberships == null
                 ? List.of()
                 : activeMemberships.stream()
@@ -296,6 +401,7 @@ public class AdminGroupMembershipService {
                         membership.getId(),
                         membership.getGroupId(),
                         resolveGroupName(groupsById, membership.getGroupId()),
+                        toMediaAssetResponse(groupAvatarsById.get(membership.getGroupId())),
                         membership.getStatus().name(),
                         membership.getJoinedAt(),
                         membership.getLeftAt()
@@ -307,14 +413,19 @@ public class AdminGroupMembershipService {
                 profile.playerFullName(),
                 profile.birthDate(),
                 age,
-                true,
+                eligible,
                 earliestAvailableJoinDate,
                 warnings,
                 currentMemberships
         );
     }
 
-    private List<AdminGroupMemberCandidatesOutput.Warning> buildWarnings(GroupDto group, Integer age, LocalDate earliestAvailableJoinDate) {
+    private List<AdminGroupMemberCandidatesOutput.Warning> buildWarnings(
+            GroupDto group,
+            Integer age,
+            LocalDate earliestAvailableJoinDate,
+            GroupMembership recentTargetMembership
+    ) {
         List<AdminGroupMemberCandidatesOutput.Warning> warnings = new java.util.ArrayList<>();
         if (group.audienceType() != GroupAudienceType.CHILDREN || age == null) {
         } else if (group.ageFrom() != null && age < group.ageFrom()) {
@@ -332,6 +443,11 @@ public class AdminGroupMembershipService {
             warnings.add(new AdminGroupMemberCandidatesOutput.Warning(
                     "MEMBERSHIP_AVAILABLE_FROM",
                     "Повторное добавление возможно с " + earliestAvailableJoinDate
+            ));
+        } else if (recentTargetMembership != null && recentTargetMembership.getLeftAt() == null) {
+            warnings.add(new AdminGroupMemberCandidatesOutput.Warning(
+                    "PLAYER_ALREADY_IN_GROUP",
+                    "Ученик уже состоит в этой группе"
             ));
         }
         return List.copyOf(warnings);
@@ -401,10 +517,15 @@ public class AdminGroupMembershipService {
         return Period.between(birthDate, LocalDate.now()).getYears();
     }
 
-    private AdminGroupMembershipOutput toOutput(GroupMembership membership, String groupName, StudentProfileDto player) {
+    private AdminGroupMembershipOutput toOutput(
+            GroupMembership membership,
+            String groupName,
+            MediaAssetResponse groupAvatar,
+            StudentProfileDto player
+    ) {
         return new AdminGroupMembershipOutput(
                 membership.getId(),
-                new AdminGroupMembershipOutput.GroupRef(membership.getGroupId(), groupName),
+                new AdminGroupMembershipOutput.GroupRef(membership.getGroupId(), groupName, groupAvatar),
                 new AdminGroupMembershipOutput.PlayerRef(player.playerId(), player.playerFullName(), player.birthDate()),
                 membership.getStatus().name(),
                 membership.getJoinedAt(),
@@ -414,6 +535,15 @@ public class AdminGroupMembershipService {
                 membership.getComment(),
                 membership.getSourceContractId()
         );
+    }
+
+    private MediaAssetResponse getGroupAvatar(UUID groupId) {
+        Optional<MediaAsset> avatar = mediaAvatarPort.findActiveAvatar(MediaOwnerType.GROUP, groupId);
+        return toMediaAssetResponse(avatar == null ? null : avatar.orElse(null));
+    }
+
+    private MediaAssetResponse toMediaAssetResponse(MediaAsset asset) {
+        return asset == null ? null : mediaAccessPort.toResponse(asset);
     }
 
     private String joinName(String firstName, String lastName) {

@@ -1,0 +1,116 @@
+package kz.edu.soccerhub.client.application;
+
+import kz.edu.soccerhub.client.domain.enums.ClientStatus;
+import kz.edu.soccerhub.client.domain.enums.ContractStatus;
+import kz.edu.soccerhub.client.domain.model.Client;
+import kz.edu.soccerhub.client.domain.model.Contract;
+import kz.edu.soccerhub.client.domain.model.Player;
+import kz.edu.soccerhub.client.domain.repository.ClientRepository;
+import kz.edu.soccerhub.client.domain.repository.ContractRepository;
+import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
+import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
+import kz.edu.soccerhub.common.port.AuthPort;
+import kz.edu.soccerhub.common.port.BranchPort;
+import kz.edu.soccerhub.common.port.GroupMembershipPort;
+import kz.edu.soccerhub.organization.application.service.GroupMembershipSyncService;
+import kz.edu.soccerhub.organization.domain.model.GroupMembership;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ClientServiceTest {
+
+    @Mock
+    private ClientRepository clientRepository;
+    @Mock
+    private PlayerRepository playerRepository;
+    @Mock
+    private ContractRepository contractRepository;
+    @Mock
+    private BranchPort branchPort;
+    @Mock
+    private AuthPort authPort;
+    @Mock
+    private GroupMembershipPort groupMembershipPort;
+    @Mock
+    private GroupMembershipSyncService groupMembershipSyncService;
+
+    @Test
+    void shouldBuildGroupMembersFromMembershipAndContractSeparately() {
+        UUID groupId = UUID.randomUUID();
+        UUID membershipId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        UUID clientId = UUID.randomUUID();
+        UUID contractId = UUID.randomUUID();
+
+        Client parent = Client.builder()
+                .id(clientId)
+                .firstName("Parent")
+                .lastName("One")
+                .status(ClientStatus.ACTIVE)
+                .build();
+        Player player = Player.builder()
+                .id(playerId)
+                .firstName("UX")
+                .lastName("Test Child")
+                .birthDate(LocalDate.of(2015, 6, 1))
+                .parent(parent)
+                .build();
+        GroupMembership membership = GroupMembership.builder()
+                .id(membershipId)
+                .groupId(groupId)
+                .playerId(playerId)
+                .status(GroupMembershipStatus.ACTIVE)
+                .joinedAt(LocalDate.of(2026, 6, 24))
+                .leftAt(LocalDate.of(2026, 8, 31))
+                .build();
+        Contract contract = Contract.builder()
+                .id(contractId)
+                .playerId(playerId)
+                .groupId(groupId)
+                .contractNumber("CNT-2026-00001")
+                .status(ContractStatus.ACTIVE)
+                .startDate(LocalDate.of(2026, 6, 24))
+                .endDate(LocalDate.of(2026, 8, 31))
+                .currency("KZT")
+                .build();
+
+        when(groupMembershipPort.findActiveByGroupIdAsOfDate(groupId, LocalDate.now())).thenReturn(List.of(membership));
+        when(playerRepository.findByIdIn(any())).thenReturn(List.of(player));
+        when(contractRepository.findByPlayerIdIn(any())).thenReturn(List.of(contract));
+
+        ClientService service = new ClientService(
+                clientRepository,
+                playerRepository,
+                contractRepository,
+                branchPort,
+                authPort,
+                groupMembershipPort,
+                groupMembershipSyncService
+        );
+
+        List<GroupMemberDto> result = service.getGroupMembers(groupId);
+
+        assertEquals(1, result.size());
+        GroupMemberDto item = result.getFirst();
+        assertEquals(membershipId, item.membershipId());
+        assertEquals(playerId, item.playerId());
+        assertEquals("ACTIVE", item.membershipStatus());
+        assertEquals(contractId, item.contractId());
+        assertEquals("CNT-2026-00001", item.contractNumber());
+        assertEquals("ACTIVE", item.contractStatus());
+        assertEquals(LocalDate.of(2026, 6, 24), item.contractStartDate());
+        assertEquals(LocalDate.of(2026, 8, 31), item.contractEndDate());
+    }
+}

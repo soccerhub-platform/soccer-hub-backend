@@ -1,9 +1,9 @@
-package kz.edu.soccerhub.client.application;
+package kz.edu.soccerhub.organization.application.service;
 
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
-import kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus;
 import kz.edu.soccerhub.client.domain.model.Contract;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
+import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

@@ -2,8 +2,11 @@ package kz.edu.soccerhub.admin.api;
 
 import jakarta.validation.Valid;
 import kz.edu.soccerhub.admin.application.dto.group.*;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+import kz.edu.soccerhub.common.dto.media.MediaDownloadUrlResponse;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleValidationCommand;
 import kz.edu.soccerhub.common.dto.group.ScheduleValidationResult;
+import kz.edu.soccerhub.admin.application.service.AdminGroupActivityService;
 import kz.edu.soccerhub.admin.application.service.AdminGroupService;
 import kz.edu.soccerhub.admin.application.service.AdminGroupMembershipService;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
@@ -19,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
 import java.time.LocalDate;
@@ -35,6 +39,7 @@ public class AdminGroupController {
 
     private final AdminGroupService adminGroupService;
     private final AdminGroupMembershipService adminGroupMembershipService;
+    private final AdminGroupActivityService adminGroupActivityService;
 
     /* ================= GROUP ================= */
     @PostMapping("/create")
@@ -77,6 +82,35 @@ public class AdminGroupController {
         return ResponseEntity.ok(adminGroupService.getGroupDetails(adminId, groupId));
     }
 
+    @PostMapping("/{groupId}/avatar")
+    public ResponseEntity<MediaAssetResponse> uploadGroupAvatar(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @RequestPart("file") MultipartFile file
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupService.uploadGroupAvatar(adminId, groupId, file));
+    }
+
+    @DeleteMapping("/{groupId}/avatar")
+    public ResponseEntity<Void> deleteGroupAvatar(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        adminGroupService.deleteGroupAvatar(adminId, groupId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{groupId}/avatar/download-url")
+    public ResponseEntity<MediaDownloadUrlResponse> getGroupAvatarDownloadUrl(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupService.getGroupAvatarDownloadUrl(adminId, groupId));
+    }
+
     @GetMapping("/{groupId}/members")
     public ResponseEntity<Page<AdminGroupMemberOutput>> getGroupMembers(
             @AuthenticationPrincipal Jwt jwt,
@@ -97,6 +131,16 @@ public class AdminGroupController {
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(adminGroupMembershipService.getMemberCandidates(adminId, groupId, search, page, size));
+    }
+
+    @GetMapping("/{groupId}/activity")
+    public ResponseEntity<Page<AdminGroupActivityOutput>> getGroupActivity(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @PageableDefault(size = 20) Pageable pageable
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupActivityService.getGroupActivity(adminId, groupId, pageable));
     }
 
     @PostMapping("/{groupId}/members")

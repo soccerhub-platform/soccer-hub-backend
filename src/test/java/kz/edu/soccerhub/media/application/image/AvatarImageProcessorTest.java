@@ -9,6 +9,7 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -68,6 +69,30 @@ class AvatarImageProcessorTest {
         );
     }
 
+    @Test
+    void processShouldApplyExifOrientationBeforeCreatingVariants() throws Exception {
+        byte[] jpeg = splitColorImageBytes(120, 80);
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "phone-photo.jpg",
+                "image/jpeg",
+                withExifOrientation(jpeg, 6)
+        );
+
+        ProcessedAvatar avatar = processor.process(file);
+
+        assertEquals(80, avatar.originalWidth());
+        assertEquals(120, avatar.originalHeight());
+
+        BufferedImage normalized = ImageIO.read(
+                new java.io.ByteArrayInputStream(avatar.original().content())
+        );
+        Color top = new Color(normalized.getRGB(40, 20));
+        Color bottom = new Color(normalized.getRGB(40, 100));
+        org.junit.jupiter.api.Assertions.assertTrue(top.getRed() > top.getBlue());
+        org.junit.jupiter.api.Assertions.assertTrue(bottom.getBlue() > bottom.getRed());
+    }
+
     private byte[] imageBytes(
             int width,
             int height,
@@ -91,5 +116,43 @@ class AvatarImageProcessorTest {
             ImageIO.write(image, format, outputStream);
             return outputStream.toByteArray();
         }
+    }
+
+    private byte[] splitColorImageBytes(int width, int height) throws Exception {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = image.createGraphics();
+        try {
+            graphics.setColor(Color.RED);
+            graphics.fillRect(0, 0, width / 2, height);
+            graphics.setColor(Color.BLUE);
+            graphics.fillRect(width / 2, 0, width - width / 2, height);
+        } finally {
+            graphics.dispose();
+        }
+
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            ImageIO.write(image, "jpg", outputStream);
+            return outputStream.toByteArray();
+        }
+    }
+
+    private byte[] withExifOrientation(byte[] jpeg, int orientation) {
+        byte[] exifSegment = new byte[] {
+                (byte) 0xFF, (byte) 0xE1, 0x00, 0x22,
+                'E', 'x', 'i', 'f', 0x00, 0x00,
+                'I', 'I', 0x2A, 0x00,
+                0x08, 0x00, 0x00, 0x00,
+                0x01, 0x00,
+                0x12, 0x01,
+                0x03, 0x00,
+                0x01, 0x00, 0x00, 0x00,
+                (byte) orientation, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00
+        };
+
+        byte[] result = Arrays.copyOf(jpeg, jpeg.length + exifSegment.length);
+        System.arraycopy(exifSegment, 0, result, 2, exifSegment.length);
+        System.arraycopy(jpeg, 2, result, 2 + exifSegment.length, jpeg.length - 2);
+        return result;
     }
 }

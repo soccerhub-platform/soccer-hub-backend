@@ -20,6 +20,7 @@ import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
+import kz.edu.soccerhub.organization.application.service.GroupMembershipSyncService;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupAudienceType;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import org.junit.jupiter.api.BeforeEach;

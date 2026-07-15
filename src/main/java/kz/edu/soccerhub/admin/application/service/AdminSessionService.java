@@ -18,11 +18,17 @@ import kz.edu.soccerhub.coach.domain.repository.TrainingSessionRepository;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupActivityPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
+import kz.edu.soccerhub.common.port.MediaAccessPort;
+import kz.edu.soccerhub.common.port.MediaAvatarPort;
+import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
+import kz.edu.soccerhub.media.domain.model.MediaAsset;
 import kz.edu.soccerhub.organization.domain.model.Location;
 import kz.edu.soccerhub.organization.domain.repository.LocationRepository;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +53,10 @@ import java.util.stream.Collectors;
 public class AdminSessionService {
 
     private static final long MAX_RANGE_DAYS = 31;
+    private static final String ACTIVITY_SESSION_CANCELLED = "SESSION_CANCELLED";
+    private static final String ACTIVITY_SESSION_RESCHEDULED = "SESSION_RESCHEDULED";
+    private static final String ACTIVITY_SESSION_COACH_SUBSTITUTED = "SESSION_COACH_SUBSTITUTED";
+    private static final String ACTIVITY_ATTENDANCE_UPDATED = "ATTENDANCE_UPDATED";
 
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
@@ -57,6 +67,9 @@ public class AdminSessionService {
     private final TrainingSessionAttendanceRepository trainingSessionAttendanceRepository;
     private final CoachRosterReader coachRosterReader;
     private final LocationRepository locationRepository;
+    private final GroupActivityPort groupActivityPort;
+    private final MediaAvatarPort mediaAvatarPort;
+    private final MediaAccessPort mediaAccessPort;
 
     @Transactional(readOnly = true)
     public AdminGroupSessionsOutput getGroupSessions(
@@ -223,7 +236,7 @@ public class AdminSessionService {
 
         return new AdminSessionDetailsOutput(
                 session.getId(),
-                new AdminSessionDetailsOutput.GroupRef(group.groupId(), group.name()),
+                new AdminSessionDetailsOutput.GroupRef(group.groupId(), group.name(), getGroupAvatar(group.groupId())),
                 session.getScheduleId(),
                 session.getSessionDate(),
                 session.getScheduledStartAt(),
@@ -267,7 +280,7 @@ public class AdminSessionService {
 
         return new AdminSessionAttendanceOutput(
                 session.getId(),
-                new AdminSessionAttendanceOutput.GroupRef(group.groupId(), group.name()),
+                new AdminSessionAttendanceOutput.GroupRef(group.groupId(), group.name(), getGroupAvatar(group.groupId())),
                 session.getSessionDate(),
                 session.getScheduledStartAt(),
                 session.getScheduledEndAt(),
@@ -288,6 +301,19 @@ public class AdminSessionService {
         session.setStatus(TrainingSessionStatus.CANCELLED);
         session.setCancelReason(buildCancelReason(input.reasonCode(), input.comment()));
         session.setCancelledBy(adminId);
+        groupActivityPort.recordGroupActivity(
+                session.getGroupId(),
+                adminId,
+                ACTIVITY_SESSION_CANCELLED,
+                activityPayload()
+                        .put("sessionId", session.getId())
+                        .put("sessionDate", session.getSessionDate())
+                        .put("startsAt", session.getScheduledStartAt())
+                        .put("endsAt", session.getScheduledEndAt())
+                        .put("reasonCode", input.reasonCode())
+                        .put("comment", normalizeComment(input.comment()))
+                        .build()
+        );
         return getSessionDetails(adminId, sessionId);
     }
 
@@ -311,10 +337,32 @@ public class AdminSessionService {
             throw new BadRequestException("Location has a conflicting session", input.locationId(), input.startsAt(), input.endsAt());
         }
 
+        LocalDate previousSessionDate = session.getSessionDate();
+        LocalDateTime previousStartsAt = session.getScheduledStartAt();
+        LocalDateTime previousEndsAt = session.getScheduledEndAt();
+        UUID previousLocationId = session.getLocationId();
+
         session.setSessionDate(newSessionDate);
         session.setScheduledStartAt(input.startsAt());
         session.setScheduledEndAt(input.endsAt());
         session.setLocationId(input.locationId());
+        groupActivityPort.recordGroupActivity(
+                session.getGroupId(),
+                adminId,
+                ACTIVITY_SESSION_RESCHEDULED,
+                activityPayload()
+                        .put("sessionId", session.getId())
+                        .put("previousSessionDate", previousSessionDate)
+                        .put("previousStartsAt", previousStartsAt)
+                        .put("previousEndsAt", previousEndsAt)
+                        .put("previousLocationId", previousLocationId)
+                        .put("newSessionDate", session.getSessionDate())
+                        .put("newStartsAt", session.getScheduledStartAt())
+                        .put("newEndsAt", session.getScheduledEndAt())
+                        .put("newLocationId", session.getLocationId())
+                        .put("reason", normalizeComment(input.reason()))
+                        .build()
+        );
         return getSessionDetails(adminId, sessionId);
     }
 
@@ -349,7 +397,21 @@ public class AdminSessionService {
             throw new BadRequestException("Substitute coach has a conflicting session", input.substituteCoachId(), session.getSessionDate());
         }
 
+        UUID previousCoachId = session.getCoachId();
         session.setCoachId(input.substituteCoachId());
+        groupActivityPort.recordGroupActivity(
+                session.getGroupId(),
+                adminId,
+                ACTIVITY_SESSION_COACH_SUBSTITUTED,
+                activityPayload()
+                        .put("sessionId", session.getId())
+                        .put("sessionDate", session.getSessionDate())
+                        .put("startsAt", session.getScheduledStartAt())
+                        .put("replacedCoachId", previousCoachId)
+                        .put("substituteCoachId", input.substituteCoachId())
+                        .put("reason", normalizeComment(input.reason()))
+                        .build()
+        );
         return getSessionDetails(adminId, sessionId);
     }
 
@@ -404,7 +466,41 @@ public class AdminSessionService {
                 .toList();
 
         trainingSessionAttendanceRepository.saveAll(toSave);
+        AdminSessionAttendanceOutput.Summary summary = toDetailedAttendanceSummary(
+                trainingSessionAttendanceRepository.findBySessionId(sessionId),
+                activePlayers.size()
+        );
+        groupActivityPort.recordGroupActivity(
+                session.getGroupId(),
+                adminId,
+                ACTIVITY_ATTENDANCE_UPDATED,
+                activityPayload()
+                        .put("sessionId", session.getId())
+                        .put("sessionDate", session.getSessionDate())
+                        .put("startsAt", session.getScheduledStartAt())
+                        .put("total", summary.total())
+                        .put("marked", summary.marked())
+                        .put("presentLike", summary.presentLike())
+                        .build()
+        );
         return getSessionAttendance(adminId, sessionId);
+    }
+
+    private ActivityPayloadBuilder activityPayload() {
+        return new ActivityPayloadBuilder();
+    }
+
+    private static final class ActivityPayloadBuilder {
+        private final java.util.LinkedHashMap<String, Object> values = new java.util.LinkedHashMap<>();
+
+        private ActivityPayloadBuilder put(String key, Object value) {
+            values.put(key, value == null ? null : value.toString());
+            return this;
+        }
+
+        private Map<String, Object> build() {
+            return values;
+        }
     }
 
     private AdminGroupSessionsOutput.SessionItem toSessionItem(
@@ -535,6 +631,12 @@ public class AdminSessionService {
         }
         return locationRepository.findAllById(locationIds).stream()
                 .collect(Collectors.toMap(Location::getId, Location::getName));
+    }
+
+    private MediaAssetResponse getGroupAvatar(UUID groupId) {
+        java.util.Optional<MediaAsset> activeAvatar = mediaAvatarPort.findActiveAvatar(MediaOwnerType.GROUP, groupId);
+        MediaAsset avatar = activeAvatar == null ? null : activeAvatar.orElse(null);
+        return avatar == null ? null : mediaAccessPort.toResponse(avatar);
     }
 
     private AdminGroupSessionsOutput.LocationRef toLocationRef(UUID locationId, Map<UUID, String> locationNames) {
