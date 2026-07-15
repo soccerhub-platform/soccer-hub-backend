@@ -62,6 +62,14 @@ public class GroupService implements GroupPort {
     }
 
     @Override
+    @Transactional
+    public GroupDto getGroupByIdForUpdate(UUID groupId) {
+        return groupRepository.findByIdForUpdate(groupId)
+                .map(GroupMapper::toDto)
+                .orElseThrow(() -> new NotFoundException("Group not found", Map.of("groupId", groupId)));
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public Collection<GroupDto> getGroupsByIds(Set<UUID> groupIds) {
         if (groupIds == null || groupIds.isEmpty()) {

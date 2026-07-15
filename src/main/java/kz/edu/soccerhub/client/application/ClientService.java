@@ -3,12 +3,15 @@ package kz.edu.soccerhub.client.application;
 import kz.edu.soccerhub.client.application.dto.ClientDto;
 import kz.edu.soccerhub.client.domain.model.Client;
 import kz.edu.soccerhub.client.domain.model.Contract;
+import kz.edu.soccerhub.client.domain.model.GroupMembership;
 import kz.edu.soccerhub.client.domain.model.Player;
 import kz.edu.soccerhub.client.domain.repository.ClientRepository;
 import kz.edu.soccerhub.client.domain.repository.ContractRepository;
+import kz.edu.soccerhub.client.domain.repository.GroupMembershipRepository;
 import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
 import kz.edu.soccerhub.client.domain.enums.ClientStatus;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
+import kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus;
 import kz.edu.soccerhub.common.domain.enums.Role;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
@@ -46,8 +49,10 @@ public class ClientService implements ClientPort {
     private final ClientRepository clientRepository;
     private final PlayerRepository playerRepository;
     private final ContractRepository contractRepository;
+    private final GroupMembershipRepository groupMembershipRepository;
     private final BranchPort branchPort;
     private final AuthPort authPort;
+    private final GroupMembershipSyncService groupMembershipSyncService;
 
     @Override
     @Transactional
@@ -124,17 +129,17 @@ public class ClientService implements ClientPort {
     @Override
     @Transactional(readOnly = true)
     public List<GroupMemberDto> getGroupMembers(UUID groupId) {
-        List<Contract> contracts = contractRepository.findByGroupId(groupId);
-        if (contracts.isEmpty()) {
+        List<GroupMembership> memberships = groupMembershipRepository.findActiveByGroupIdAsOfDate(groupId, LocalDate.now());
+        if (memberships.isEmpty()) {
             return List.of();
         }
 
-        Map<UUID, List<Contract>> contractsByPlayerId = contracts.stream()
-                .collect(Collectors.groupingBy(Contract::getPlayerId));
-        Map<UUID, Player> playersById = playerRepository.findByIdIn(contractsByPlayerId.keySet()).stream()
+        Map<UUID, List<GroupMembership>> membershipsByPlayerId = memberships.stream()
+                .collect(Collectors.groupingBy(GroupMembership::getPlayerId));
+        Map<UUID, Player> playersById = playerRepository.findByIdIn(membershipsByPlayerId.keySet()).stream()
                 .collect(Collectors.toMap(Player::getId, Function.identity()));
 
-        return contractsByPlayerId.entrySet().stream()
+        return membershipsByPlayerId.entrySet().stream()
                 .map(entry -> toGroupMember(entry.getValue(), playersById.get(entry.getKey())))
                 .filter(java.util.Objects::nonNull)
                 .sorted(Comparator.comparing(GroupMemberDto::childName, String.CASE_INSENSITIVE_ORDER))
@@ -245,7 +250,7 @@ public class ClientService implements ClientPort {
     }
 
     private Contract resolveOrCreateContract(UUID playerId, ClientConversionCommand command) {
-        return contractRepository.findFirstByPlayerIdAndGroupIdAndStartDateAndEndDate(
+        Contract contract = contractRepository.findFirstByPlayerIdAndGroupIdAndStartDateAndEndDate(
                         playerId,
                         command.groupId(),
                         command.contractStartDate(),
@@ -265,6 +270,9 @@ public class ClientService implements ClientPort {
                         .currency("KZT")
                         .notes(command.comments())
                         .build()));
+
+        groupMembershipSyncService.syncFromContract(contract);
+        return contract;
     }
 
     private String resolveClientEmail(String email, String phone) {
@@ -307,37 +315,34 @@ public class ClientService implements ClientPort {
         );
     }
 
-    private GroupMemberDto toGroupMember(List<Contract> contracts, Player player) {
+    private GroupMemberDto toGroupMember(List<GroupMembership> memberships, Player player) {
         if (player == null) {
             return null;
         }
 
-        List<Contract> sortedContracts = contracts.stream()
-                .sorted(Comparator.comparing(Contract::getStartDate))
+        List<GroupMembership> sortedMemberships = memberships.stream()
+                .sorted(Comparator.comparing(GroupMembership::getJoinedAt))
                 .toList();
 
-        Contract latestContract = sortedContracts.getLast();
-        LocalDate joinedAt = sortedContracts.getFirst().getStartDate();
+        GroupMembership latestMembership = sortedMemberships.getLast();
+        LocalDate joinedAt = sortedMemberships.getFirst().getJoinedAt();
 
         return new GroupMemberDto(
+                latestMembership.getId(),
                 player.getParent() == null ? null : player.getParent().getId(),
                 player.getId(),
                 buildPlayerName(player),
                 player.getBirthDate(),
-                resolveContractStatus(latestContract),
-                joinedAt
+                resolveMembershipStatus(latestMembership),
+                joinedAt,
+                latestMembership.getLeftAt()
         );
     }
 
-    private String resolveContractStatus(Contract contract) {
-        LocalDate today = LocalDate.now();
-        if (contract.getStartDate() != null && contract.getStartDate().isAfter(today)) {
-            return "UPCOMING";
-        }
-        if (contract.getEndDate() == null || !contract.getEndDate().isBefore(today)) {
-            return "ACTIVE";
-        }
-        return "EXPIRED";
+    private String resolveMembershipStatus(GroupMembership membership) {
+        return membership.getStatus() == null
+                ? GroupMembershipStatus.ACTIVE.name()
+                : membership.getStatus().name();
     }
 
     private String buildPlayerName(Player player) {

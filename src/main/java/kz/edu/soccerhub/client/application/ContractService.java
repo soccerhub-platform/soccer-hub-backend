@@ -88,6 +88,7 @@ public class ContractService implements ContractPort {
     private final AdminPort adminPort;
     private final AuthPort authPort;
     private final LeadPort leadPort;
+    private final GroupMembershipSyncService groupMembershipSyncService;
 
     @Override
     @Transactional(readOnly = true)
@@ -286,6 +287,7 @@ public class ContractService implements ContractPort {
                 .notes(trimToNull(command.notes()))
                 .build();
         contractRepository.save(contract);
+        groupMembershipSyncService.syncFromContract(contract);
         appendHistory(contract.getId(), ContractHistoryType.CREATED, actorUserId, command.notes(), "Initial create");
 
         return toDetails(contract, resolved.player, resolved.client, group, coach, loadHistory(contract.getId()));
@@ -334,6 +336,7 @@ public class ContractService implements ContractPort {
         contract.setCurrency(resolveCurrency(command.currency()));
         contract.setNotes(trimToNull(command.notes()));
         touchLifecycleStatus(contract);
+        groupMembershipSyncService.syncFromContract(contract);
 
         appendHistory(contract.getId(), ContractHistoryType.UPDATED, actorUserId, command.notes(), "Contract updated");
         return toDetails(contract, player, client, group, coach, loadHistory(contract.getId()));
@@ -366,6 +369,7 @@ public class ContractService implements ContractPort {
             contract.setNotes(trimToNull(command.notes()));
         }
         touchLifecycleStatus(contract);
+        groupMembershipSyncService.syncFromContract(contract);
 
         Player player = findPlayer(contract.getPlayerId());
         Client client = requireParent(player);
@@ -395,6 +399,7 @@ public class ContractService implements ContractPort {
         contract.setStatus(ContractStatus.CANCELLED);
         contract.setCancelReasonCode(command.reasonCode());
         contract.setCancelComment(trimToNull(command.comment()));
+        groupMembershipSyncService.syncFromContract(contract);
 
         Player player = findPlayer(contract.getPlayerId());
         Client client = requireParent(player);

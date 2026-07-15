@@ -5,6 +5,7 @@ import kz.edu.soccerhub.admin.application.dto.group.*;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleValidationCommand;
 import kz.edu.soccerhub.common.dto.group.ScheduleValidationResult;
 import kz.edu.soccerhub.admin.application.service.AdminGroupService;
+import kz.edu.soccerhub.admin.application.service.AdminGroupMembershipService;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleBatchCommand;
 import kz.edu.soccerhub.common.dto.group.UpdateScheduleBatchCommand;
 import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
@@ -33,6 +34,7 @@ import java.util.UUID;
 public class AdminGroupController {
 
     private final AdminGroupService adminGroupService;
+    private final AdminGroupMembershipService adminGroupMembershipService;
 
     /* ================= GROUP ================= */
     @PostMapping("/create")
@@ -83,6 +85,48 @@ public class AdminGroupController {
     ) {
         UUID adminId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(adminGroupService.getGroupMembers(adminId, groupId, pageable));
+    }
+
+    @GetMapping("/{groupId}/member-candidates")
+    public ResponseEntity<AdminGroupMemberCandidatesOutput> getGroupMemberCandidates(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupMembershipService.getMemberCandidates(adminId, groupId, search, page, size));
+    }
+
+    @PostMapping("/{groupId}/members")
+    public ResponseEntity<AdminGroupMembershipOutput> addGroupMember(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @RequestBody @Valid AdminAddGroupMemberInput input
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupMembershipService.addMember(adminId, groupId, input));
+    }
+
+    @PostMapping("/group-memberships/{membershipId}/transfer")
+    public ResponseEntity<AdminGroupMembershipTransferOutput> transferGroupMember(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID membershipId,
+            @RequestBody @Valid AdminTransferGroupMembershipInput input
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupMembershipService.transferMember(adminId, membershipId, input));
+    }
+
+    @PostMapping("/group-memberships/{membershipId}/remove")
+    public ResponseEntity<AdminGroupMembershipOutput> removeGroupMember(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID membershipId,
+            @RequestBody @Valid AdminRemoveGroupMembershipInput input
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupMembershipService.removeMember(adminId, membershipId, input));
     }
 
     @GetMapping("/{groupId}/schedule/risks")

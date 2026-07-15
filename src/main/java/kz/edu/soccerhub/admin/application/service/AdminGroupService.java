@@ -168,13 +168,17 @@ public class AdminGroupService {
 
         List<AdminGroupMemberOutput> members = groupMembers.stream()
                 .map(member -> new AdminGroupMemberOutput(
+                        member.membershipId(),
                         member.clientId(),
                         member.playerId(),
                         member.childName(),
                         member.birthDate(),
                         attendanceRateByPlayer.getOrDefault(member.playerId(), 0),
                         member.contractStatus(),
-                        member.joinedAt()
+                        member.contractStatus(),
+                        member.joinedAt(),
+                        member.leftAt(),
+                        buildMemberCapabilities(member)
                 ))
                 .toList();
 
@@ -513,6 +517,16 @@ public class AdminGroupService {
 
     private int countStudents(UUID groupId) {
         return clientPort.getGroupMembers(groupId).size();
+    }
+
+    private AdminGroupMemberOutput.Capabilities buildMemberCapabilities(GroupMemberDto member) {
+        boolean mutableMembership = member.contractStatus() != null
+                && ("ACTIVE".equalsIgnoreCase(member.contractStatus())
+                || "UPCOMING".equalsIgnoreCase(member.contractStatus()));
+        return new AdminGroupMemberOutput.Capabilities(
+                mutableMembership,
+                mutableMembership
+        );
     }
 
     private List<AdminGroupHealthOutput.IssueItem> buildIssues(

@@ -2,9 +2,12 @@ package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.student.*;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
+import kz.edu.soccerhub.client.domain.enums.GroupMembershipStatus;
+import kz.edu.soccerhub.client.domain.model.GroupMembership;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
 import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
+import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
 import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus;
@@ -41,6 +44,8 @@ public class AdminStudentReadService {
     private final PaymentPort paymentPort;
     private final CoachPort coachPort;
     private final GroupSchedulePort groupSchedulePort;
+    private final GroupPort groupPort;
+    private final GroupMembershipPort groupMembershipPort;
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
     private final MediaAvatarPort mediaAvatarPort;
@@ -51,16 +56,31 @@ public class AdminStudentReadService {
         verifyAdminAccessToBranch(adminId, query.branchId());
 
         List<StudentProfileDto> profiles = clientPort.getStudentProfilesByBranch(query.branchId());
+        List<UUID> playerIds = profiles.stream().map(StudentProfileDto::playerId).toList();
         Map<UUID, List<StudentContractSnapshotOutput>> contractsByPlayerId = groupContractsByPlayer(
-                contractPort.getStudentContracts(query.branchId(), profiles.stream().map(StudentProfileDto::playerId).toList())
+                contractPort.getStudentContracts(query.branchId(), playerIds)
+        );
+        Map<UUID, GroupMembership> currentMembershipsByPlayerId = groupMembershipPort.findActiveByPlayerIdInAsOfDate(
+                        playerIds,
+                        LocalDate.now()
+                ).stream()
+                .collect(Collectors.groupingBy(GroupMembership::getPlayerId))
+                .entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> selectCurrentMembership(entry.getValue())));
+        Map<UUID, String> currentGroupNamesById = resolveGroupNames(
+                currentMembershipsByPlayerId.values().stream()
+                        .filter(Objects::nonNull)
+                        .map(GroupMembership::getGroupId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet())
         );
         Map<UUID, PlayerAttendanceSummaryDto> attendanceByPlayerId = coachPort.getAttendanceSummaries(
-                        profiles.stream().map(StudentProfileDto::playerId).collect(Collectors.toSet())
+                        new HashSet<>(playerIds)
                 ).stream()
                 .collect(Collectors.toMap(PlayerAttendanceSummaryDto::playerId, item -> item));
         Map<UUID, MediaAsset> avatarsByPlayerId = mediaAvatarPort.findActiveAvatars(
                 MediaOwnerType.PLAYER,
-                profiles.stream().map(StudentProfileDto::playerId).toList()
+                playerIds
         );
 
         Map<UUID, StudentContractSnapshotOutput> currentContractsByPlayerId = new HashMap<>();
@@ -79,6 +99,8 @@ public class AdminStudentReadService {
         List<AdminStudentListItemOutput> allItems = profiles.stream()
                 .map(profile -> toListItem(
                         profile,
+                        currentMembershipsByPlayerId.get(profile.playerId()),
+                        currentGroupNamesById,
                         currentContractsByPlayerId.get(profile.playerId()),
                         paymentSummaries,
                         attendanceByPlayerId.get(profile.playerId()),
@@ -114,6 +136,8 @@ public class AdminStudentReadService {
         verifyAdminAccessToBranch(adminId, profile.branchId());
 
         List<StudentContractSnapshotOutput> contracts = contractPort.getStudentContracts(profile.branchId(), playerId);
+        List<GroupMembership> memberships = groupMembershipPort.findByPlayerIdOrderByJoinedAtDesc(playerId);
+        GroupMembership currentMembership = selectCurrentMembership(memberships);
         StudentContractSnapshotOutput currentContract = selectCurrentContract(contracts);
         ContractPaymentSummaryOutput paymentSummary = currentContract == null
                 ? null
@@ -128,7 +152,12 @@ public class AdminStudentReadService {
         List<PaymentOutput> recentPayments = currentContract == null
                 ? List.of()
                 : paymentPort.getContractPayments(currentContract.id()).stream().limit(RECENT_PAYMENTS_LIMIT).toList();
-        List<AdminStudentRiskOutput> risks = buildRisks(currentContract, paymentSummary, attendanceSummary);
+        List<AdminStudentRiskOutput> risks = buildRisks(
+                currentMembership == null ? null : currentMembership.getGroupId(),
+                currentContract,
+                paymentSummary,
+                attendanceSummary
+        );
         MediaAssetResponse avatar = toMediaAssetResponse(mediaAvatarPort.findActiveAvatar(
                 MediaOwnerType.PLAYER,
                 playerId
@@ -149,7 +178,7 @@ public class AdminStudentReadService {
                         profile.email(),
                         profile.clientStatus()
                 ),
-                toCurrentGroupBlock(currentContract),
+                toCurrentGroupBlock(currentMembership, currentContract),
                 toCurrentContractBlock(currentContract, paymentSummary),
                 new AdminStudentDetailsOutput.AttendanceSummaryBlock(
                         attendanceSummary.attendanceRate(),
@@ -181,8 +210,46 @@ public class AdminStudentReadService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public AdminStudentMembershipHistoryOutput getMembershipHistory(UUID adminId, UUID playerId) {
+        StudentProfileDto profile = clientPort.getStudentProfile(playerId);
+        verifyAdminAccessToBranch(adminId, profile.branchId());
+
+        List<GroupMembership> memberships = groupMembershipPort.findByPlayerIdOrderByJoinedAtDesc(playerId);
+        Set<UUID> groupIds = memberships.stream()
+                .map(GroupMembership::getGroupId)
+                .collect(Collectors.toSet());
+        Map<UUID, String> groupNamesById = groupIds.isEmpty()
+                ? Map.of()
+                : groupPort.getGroupsByIds(groupIds).stream()
+                .collect(Collectors.toMap(kz.edu.soccerhub.common.dto.group.GroupDto::groupId,
+                        kz.edu.soccerhub.common.dto.group.GroupDto::name));
+
+        return new AdminStudentMembershipHistoryOutput(
+                new AdminStudentMembershipHistoryOutput.Player(profile.playerId(), profile.playerFullName()),
+                memberships.stream()
+                        .map(item -> new AdminStudentMembershipHistoryOutput.Item(
+                                item.getId(),
+                                new AdminStudentMembershipHistoryOutput.Group(
+                                        item.getGroupId(),
+                                        groupNamesById.get(item.getGroupId())
+                                ),
+                                item.getStatus().name(),
+                                item.getJoinedAt(),
+                                item.getLeftAt(),
+                                item.getJoinReason(),
+                                item.getLeaveReason(),
+                                item.getComment(),
+                                item.getSourceContractId()
+                        ))
+                        .toList()
+        );
+    }
+
     private AdminStudentListItemOutput toListItem(
             StudentProfileDto profile,
+            GroupMembership currentMembership,
+            Map<UUID, String> currentGroupNamesById,
             StudentContractSnapshotOutput currentContract,
             Map<UUID, ContractPaymentSummaryOutput> paymentSummaries,
             PlayerAttendanceSummaryDto attendanceSummary,
@@ -192,7 +259,12 @@ public class AdminStudentReadService {
         PlayerAttendanceSummaryDto resolvedAttendance = attendanceSummary == null
                 ? new PlayerAttendanceSummaryDto(profile.playerId(), 0, 0, 0, 0, 0, 0)
                 : attendanceSummary;
-        List<AdminStudentRiskOutput> risks = buildRisks(currentContract, paymentSummary, resolvedAttendance);
+        UUID currentGroupId = currentMembership == null ? null : currentMembership.getGroupId();
+        String currentGroupName = currentMembership == null ? null : currentGroupNamesById.get(currentMembership.getGroupId());
+        String currentCoachName = currentContract != null && Objects.equals(currentContract.groupId(), currentGroupId)
+                ? currentContract.coachName()
+                : null;
+        List<AdminStudentRiskOutput> risks = buildRisks(currentGroupId, currentContract, paymentSummary, resolvedAttendance);
 
         return new AdminStudentListItemOutput(
                 profile.playerId(),
@@ -204,9 +276,9 @@ public class AdminStudentReadService {
                 profile.clientFullName(),
                 profile.phone(),
                 profile.email(),
-                currentContract == null ? null : currentContract.groupId(),
-                currentContract == null ? null : currentContract.groupName(),
-                currentContract == null ? null : currentContract.coachName(),
+                currentGroupId,
+                currentGroupName,
+                currentCoachName,
                 currentContract == null ? null : currentContract.id(),
                 currentContract == null ? null : currentContract.contractNumber(),
                 currentContract == null ? null : currentContract.status(),
@@ -383,13 +455,14 @@ public class AdminStudentReadService {
     }
 
     private List<AdminStudentRiskOutput> buildRisks(
+            UUID currentGroupId,
             StudentContractSnapshotOutput currentContract,
             ContractPaymentSummaryOutput paymentSummary,
             PlayerAttendanceSummaryDto attendanceSummary
     ) {
         Map<AdminStudentRiskCode, AdminStudentRiskOutput> risks = new LinkedHashMap<>();
 
-        if (currentContract == null || currentContract.groupId() == null) {
+        if (currentGroupId == null) {
             risks.put(AdminStudentRiskCode.NO_GROUP, new AdminStudentRiskOutput(
                     AdminStudentRiskCode.NO_GROUP,
                     "No group assigned",
@@ -438,20 +511,63 @@ public class AdminStudentReadService {
         return List.copyOf(risks.values());
     }
 
+    private Map<UUID, String> resolveGroupNames(Set<UUID> groupIds) {
+        if (groupIds == null || groupIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return groupPort.getGroupsByIds(groupIds).stream()
+                .collect(Collectors.toMap(GroupDto::groupId, GroupDto::name));
+    }
+
+    private GroupMembership selectCurrentMembership(List<GroupMembership> memberships) {
+        if (memberships == null || memberships.isEmpty()) {
+            return null;
+        }
+
+        return memberships.stream()
+                .filter(item -> item.getStatus() == GroupMembershipStatus.ACTIVE || item.getStatus() == GroupMembershipStatus.UPCOMING)
+                .sorted(Comparator.comparing(
+                                (GroupMembership item) -> item.getStatus() == GroupMembershipStatus.ACTIVE ? 0 : 1
+                        ).thenComparing(GroupMembership::getJoinedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .findFirst()
+                .orElse(null);
+    }
+
     private int totalAttendanceCount(PlayerAttendanceSummaryDto summary) {
         return summary.presentCount() + summary.absentCount() + summary.lateCount() + summary.excusedCount();
     }
 
-    private AdminStudentDetailsOutput.CurrentGroupBlock toCurrentGroupBlock(StudentContractSnapshotOutput currentContract) {
-        if (currentContract == null || currentContract.groupId() == null) {
+    private AdminStudentDetailsOutput.CurrentGroupBlock toCurrentGroupBlock(
+            GroupMembership currentMembership,
+            StudentContractSnapshotOutput currentContract
+    ) {
+        UUID groupId = null;
+        String groupName = null;
+        String coachName = null;
+
+        if (currentMembership != null && currentMembership.getGroupId() != null) {
+            GroupDto group = groupPort.getGroupById(currentMembership.getGroupId());
+            groupId = group.groupId();
+            groupName = group.name();
+            if (currentContract != null && Objects.equals(currentContract.groupId(), groupId)) {
+                coachName = currentContract.coachName();
+            }
+        } else if (currentContract != null && currentContract.groupId() != null) {
+            groupId = currentContract.groupId();
+            groupName = currentContract.groupName();
+            coachName = currentContract.coachName();
+        }
+
+        if (groupId == null) {
             return null;
         }
 
-        List<GroupScheduleDto> schedules = groupSchedulePort.getActiveSchedulesByGroup(currentContract.groupId());
+        List<GroupScheduleDto> schedules = groupSchedulePort.getActiveSchedulesByGroup(groupId);
         return new AdminStudentDetailsOutput.CurrentGroupBlock(
-                currentContract.groupId(),
-                currentContract.groupName(),
-                currentContract.coachName(),
+                groupId,
+                groupName,
+                coachName,
                 buildScheduleLabel(schedules),
                 resolveNextSessionAt(schedules)
         );

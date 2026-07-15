@@ -19,10 +19,10 @@ public class CoachRosterReader {
         String sql = """
                 select distinct p.id, p.first_name, p.last_name
                 from players p
-                join contracts c on c.player_id = p.id
-                where c.group_id = :groupId
-                  and c.start_date <= :sessionDate
-                  and (c.end_date is null or c.end_date >= :sessionDate)
+                join group_memberships gm on gm.player_id = p.id
+                where gm.group_id = :groupId
+                  and gm.joined_at <= :sessionDate
+                  and (gm.left_at is null or gm.left_at >= :sessionDate)
                 order by p.first_name, p.last_name
                 """;
 

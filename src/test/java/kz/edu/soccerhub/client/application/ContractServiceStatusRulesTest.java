@@ -64,6 +64,8 @@ class ContractServiceStatusRulesTest {
     private AuthPort authPort;
     @Mock
     private LeadPort leadPort;
+    @Mock
+    private GroupMembershipSyncService groupMembershipSyncService;
 
     private ContractService contractService;
 
@@ -79,7 +81,8 @@ class ContractServiceStatusRulesTest {
                 coachPort,
                 adminPort,
                 authPort,
-                leadPort
+                leadPort,
+                groupMembershipSyncService
         );
     }
 

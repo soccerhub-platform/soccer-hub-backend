@@ -12,6 +12,7 @@ import java.util.UUID;
 public interface GroupPort {
     UUID createGroup(CreateGroupCommand command);
     GroupDto getGroupById(UUID groupId);
+    GroupDto getGroupByIdForUpdate(UUID groupId);
     Collection<GroupDto> getGroupsByIds(Set<UUID> groupIds);
     void deleteGroup(UUID groupId);
     void stopGroup(UUID groupId);

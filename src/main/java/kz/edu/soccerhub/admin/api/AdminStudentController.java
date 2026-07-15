@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.admin.api;
 
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentDetailsOutput;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentMembershipHistoryOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentRiskCode;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsPageOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsQuery;
@@ -67,6 +68,15 @@ public class AdminStudentController {
             @PathVariable UUID playerId
     ) {
         return ResponseEntity.ok(adminStudentReadService.getStudent(UUID.fromString(jwt.getSubject()), playerId));
+    }
+
+    @GetMapping("/{playerId}/memberships")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<AdminStudentMembershipHistoryOutput> getMembershipHistory(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID playerId
+    ) {
+        return ResponseEntity.ok(adminStudentReadService.getMembershipHistory(UUID.fromString(jwt.getSubject()), playerId));
     }
 
     @PostMapping("/{playerId}/avatar")
