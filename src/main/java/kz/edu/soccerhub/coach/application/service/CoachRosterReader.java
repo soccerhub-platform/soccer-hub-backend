@@ -23,12 +23,17 @@ public class CoachRosterReader {
                 where gm.group_id = :groupId
                   and gm.joined_at <= :sessionDate
                   and (gm.left_at is null or gm.left_at >= :sessionDate)
+                  and (
+                      :sessionDate < :today
+                      or gm.status in ('ACTIVE', 'UPCOMING')
+                  )
                 order by p.first_name, p.last_name
                 """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("groupId", groupId)
-                .addValue("sessionDate", sessionDate);
+                .addValue("sessionDate", sessionDate)
+                .addValue("today", LocalDate.now());
 
         return jdbcTemplate.query(sql, params, (rs, rowNum) -> new ActivePlayerView(
                 UUID.fromString(rs.getString("id")),

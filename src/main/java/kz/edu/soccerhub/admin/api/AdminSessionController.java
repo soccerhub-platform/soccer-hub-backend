@@ -9,9 +9,11 @@ import kz.edu.soccerhub.admin.application.dto.session.AdminSessionAttendanceOutp
 import kz.edu.soccerhub.admin.application.dto.session.AdminSessionAttendanceUpdateInput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminSessionDetailsOutput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminSubstituteCoachInput;
+import kz.edu.soccerhub.admin.application.dto.session.AdminGroupScheduleOverviewOutput;
 import kz.edu.soccerhub.admin.application.service.AdminSessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PutMapping;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.UUID;
 
 @RestController
@@ -34,6 +37,16 @@ import java.util.UUID;
 public class AdminSessionController {
 
     private final AdminSessionService adminSessionService;
+
+    @GetMapping("/groups/{groupId}/schedule/overview")
+    public ResponseEntity<AdminGroupScheduleOverviewOutput> getGroupScheduleOverview(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId,
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM") YearMonth month
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminSessionService.getGroupScheduleOverview(adminId, groupId, month));
+    }
 
     @GetMapping("/groups/{groupId}/sessions")
     public ResponseEntity<AdminGroupSessionsOutput> getGroupSessions(

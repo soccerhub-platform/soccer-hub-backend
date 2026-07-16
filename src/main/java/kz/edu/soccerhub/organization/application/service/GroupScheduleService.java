@@ -21,7 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -225,32 +227,28 @@ public class GroupScheduleService implements GroupSchedulePort {
                 .excludeScheduleIds(ignoreIds)
                 .build());
 
-        // 4. закрываем СТАРЫЙ batch
-        currentBatch.forEach(s -> s.setStatus(ScheduleStatus.DELETED));
+        Map<ScheduleSlotKey, GroupSchedule> unmatchedCurrent = new HashMap<>();
+        currentBatch.forEach(schedule -> unmatchedCurrent.put(ScheduleSlotKey.from(schedule), schedule));
 
-        // 5. создаём НОВЫЙ batch
-        List<GroupSchedule> newBatch = command.slots().stream()
-                .map(slot -> GroupSchedule.builder()
-                        .id(UUID.randomUUID())
-                        .groupId(groupId)
-                        .coachId(command.coachId())
-                        .locationId(command.locationId())
-                        .dayOfWeek(slot.dayOfWeek())
-                        .startTime(slot.startTime())
-                        .endTime(slot.endTime())
-                        .startDate(command.startDate())
-                        .endDate(command.endDate())
-                        .scheduleType(command.type())
-                        .status(ScheduleStatus.ACTIVE)
-                        .build())
+        List<GroupSchedule> newSchedules = command.slots().stream()
+                .filter(slot -> unmatchedCurrent.remove(ScheduleSlotKey.from(slot, command.locationId())) == null)
+                .map(slot -> buildSchedule(groupId, command, slot))
                 .toList();
 
-        groupScheduleRepository.saveAll(newBatch);
-        trainingSessionPlanningPort.resyncSchedules(
-                scheduleIds(currentBatch),
-                scheduleIds(newBatch),
-                today()
-        );
+        List<GroupSchedule> removedSchedules = List.copyOf(unmatchedCurrent.values());
+        removedSchedules.forEach(schedule -> schedule.setStatus(ScheduleStatus.DELETED));
+
+        if (!removedSchedules.isEmpty()) {
+            trainingSessionPlanningPort.cancelFuturePlannedSessions(
+                    scheduleIds(removedSchedules),
+                    today(),
+                    "Schedule changed"
+            );
+        }
+        if (!newSchedules.isEmpty()) {
+            groupScheduleRepository.saveAll(newSchedules);
+            trainingSessionPlanningPort.materializeSchedules(scheduleIds(newSchedules));
+        }
     }
 
     @Override
@@ -377,5 +375,45 @@ public class GroupScheduleService implements GroupSchedulePort {
 
     private LocalDate today() {
         return LocalDate.now(BUSINESS_ZONE);
+    }
+
+    private GroupSchedule buildSchedule(
+            UUID groupId,
+            UpdateScheduleBatchCommand command,
+            DayScheduleSlot slot
+    ) {
+        return GroupSchedule.builder()
+                .id(UUID.randomUUID())
+                .groupId(groupId)
+                .coachId(command.coachId())
+                .locationId(command.locationId())
+                .dayOfWeek(slot.dayOfWeek())
+                .startTime(slot.startTime())
+                .endTime(slot.endTime())
+                .startDate(command.startDate())
+                .endDate(command.endDate())
+                .scheduleType(command.type())
+                .status(ScheduleStatus.ACTIVE)
+                .build();
+    }
+
+    private record ScheduleSlotKey(
+            DayOfWeek dayOfWeek,
+            LocalTime startTime,
+            LocalTime endTime,
+            UUID locationId
+    ) {
+        private static ScheduleSlotKey from(GroupSchedule schedule) {
+            return new ScheduleSlotKey(
+                    schedule.getDayOfWeek(),
+                    schedule.getStartTime(),
+                    schedule.getEndTime(),
+                    schedule.getLocationId()
+            );
+        }
+
+        private static ScheduleSlotKey from(DayScheduleSlot slot, UUID locationId) {
+            return new ScheduleSlotKey(slot.dayOfWeek(), slot.startTime(), slot.endTime(), locationId);
+        }
     }
 }

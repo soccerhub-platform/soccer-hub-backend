@@ -45,7 +45,8 @@ public record AdminSessionAttendanceOutput(
             UUID playerId,
             String fullName,
             TrainingSessionAttendanceStatus status,
-            String comment
+            String comment,
+            MediaAssetResponse avatar
     ) {}
 
     public record Capabilities(

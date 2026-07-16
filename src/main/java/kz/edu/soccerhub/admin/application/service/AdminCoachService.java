@@ -14,11 +14,16 @@ import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
 import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+import kz.edu.soccerhub.common.dto.media.MediaDownloadUrlResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.ConflictException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.dispatcher.application.service.PasswordGenerator;
+import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
+import kz.edu.soccerhub.media.domain.enums.MediaVariant;
+import kz.edu.soccerhub.media.domain.model.MediaAsset;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -26,6 +31,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -55,6 +61,32 @@ public class AdminCoachService {
     private final GroupPort groupPort;
     private final GroupCoachPort groupCoachPort;
     private final ClientPort clientPort;
+    private final MediaAvatarPort mediaAvatarPort;
+    private final MediaAccessPort mediaAccessPort;
+
+    @Transactional
+    public MediaAssetResponse uploadCoachAvatar(UUID adminId, UUID coachId, MultipartFile file) {
+        adminService.findById(adminId).orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+        ensureAdminHasCoachAccess(adminId, coachId);
+        MediaAsset avatar = mediaAvatarPort.uploadAvatar(MediaOwnerType.COACH, coachId, adminId, file);
+        return mediaAccessPort.toResponse(avatar);
+    }
+
+    @Transactional
+    public void deleteCoachAvatar(UUID adminId, UUID coachId) {
+        adminService.findById(adminId).orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+        ensureAdminHasCoachAccess(adminId, coachId);
+        mediaAvatarPort.deleteAvatar(MediaOwnerType.COACH, coachId, adminId);
+    }
+
+    @Transactional(readOnly = true)
+    public MediaDownloadUrlResponse getCoachAvatarDownloadUrl(UUID adminId, UUID coachId) {
+        adminService.findById(adminId).orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+        ensureAdminHasCoachAccess(adminId, coachId);
+        MediaAsset avatar = mediaAvatarPort.findActiveAvatar(MediaOwnerType.COACH, coachId)
+                .orElseThrow(() -> new NotFoundException("Coach avatar not found", coachId));
+        return new MediaDownloadUrlResponse(mediaAccessPort.createContentUrl(avatar, MediaVariant.ORIGINAL));
+    }
 
     @Transactional
     public AdminCreateCoachOutput createCoach(UUID adminId, AdminCreateCoachInput input) {

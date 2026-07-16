@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.session.*;
+import kz.edu.soccerhub.admin.application.dto.group.AdminGroupScheduleRiskOutput;
 import kz.edu.soccerhub.coach.application.service.CoachRosterReader;
 import kz.edu.soccerhub.coach.domain.model.TrainingSession;
 import kz.edu.soccerhub.coach.domain.model.TrainingSessionAttendance;
@@ -12,12 +13,17 @@ import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
+import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.common.port.CoachPort;
 import kz.edu.soccerhub.common.port.GroupActivityPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.MediaAccessPort;
 import kz.edu.soccerhub.common.port.MediaAvatarPort;
+import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
+import kz.edu.soccerhub.media.domain.enums.MediaKind;
+import kz.edu.soccerhub.media.domain.model.MediaAsset;
 import kz.edu.soccerhub.organization.domain.model.Location;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
@@ -30,13 +36,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,6 +60,8 @@ class AdminSessionServiceTest {
     private AdminBranchService adminBranchService;
     @Mock
     private GroupPort groupPort;
+    @Mock
+    private kz.edu.soccerhub.common.port.GroupSchedulePort groupSchedulePort;
     @Mock
     private GroupCoachPort groupCoachPort;
     @Mock
@@ -66,6 +80,8 @@ class AdminSessionServiceTest {
     private MediaAvatarPort mediaAvatarPort;
     @Mock
     private MediaAccessPort mediaAccessPort;
+    @Mock
+    private AdminGroupService adminGroupService;
 
     private AdminSessionService service;
 
@@ -75,6 +91,7 @@ class AdminSessionServiceTest {
                 adminService,
                 adminBranchService,
                 groupPort,
+                groupSchedulePort,
                 groupCoachPort,
                 coachPort,
                 trainingSessionRepository,
@@ -83,8 +100,49 @@ class AdminSessionServiceTest {
                 locationRepository,
                 groupActivityPort,
                 mediaAvatarPort,
-                mediaAccessPort
+                mediaAccessPort,
+                adminGroupService
         );
+    }
+
+    @Test
+    void shouldBuildGroupScheduleOverviewForSelectedMonth() {
+        UUID adminId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID coachId = UUID.randomUUID();
+        YearMonth month = YearMonth.of(2026, 7);
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(groupPort.getGroupById(groupId)).thenReturn(GroupDto.builder().groupId(groupId).branchId(branchId).build());
+        when(trainingSessionRepository.findByGroupIdAndSessionDateBetweenOrderBySessionDateAscScheduledStartAtAsc(
+                groupId, month.atDay(1), month.atEndOfMonth()
+        )).thenReturn(List.of());
+        when(adminGroupService.getScheduleRisks(adminId, groupId)).thenReturn(
+                new AdminGroupScheduleRiskOutput(false, 0, 4, OffsetDateTime.parse("2026-07-17T09:00:00+05:00"))
+        );
+        when(groupSchedulePort.getActiveSchedulesByGroup(groupId)).thenReturn(List.of(
+                GroupScheduleDto.builder()
+                        .scheduleId(UUID.randomUUID())
+                        .groupId(groupId)
+                        .coachId(coachId)
+                        .dayOfWeek(DayOfWeek.MONDAY)
+                        .startTime(LocalTime.of(9, 0))
+                        .endTime(LocalTime.of(10, 0))
+                        .startDate(LocalDate.of(2026, 7, 1))
+                        .endDate(LocalDate.of(2026, 12, 31))
+                        .scheduleType("REGULAR")
+                        .status("ACTIVE")
+                        .build()
+        ));
+
+        AdminGroupScheduleOverviewOutput result = service.getGroupScheduleOverview(adminId, groupId, month);
+
+        assertEquals(0, result.summary().total());
+        assertEquals(1, result.currentPeriods().size());
+        assertEquals(1, result.currentPeriods().getFirst().sessionsPerWeek());
+        assertEquals(DayOfWeek.MONDAY, result.currentPeriods().getFirst().slots().getFirst().dayOfWeek());
     }
 
     @Test
@@ -406,6 +464,27 @@ class AdminSessionServiceTest {
                 new CoachRosterReader.ActivePlayerView(playerLate, "Miras", "Akhmetov"),
                 new CoachRosterReader.ActivePlayerView(playerUnmarked, "Dias", "Nurlybek")
         ));
+        MediaAsset playerAvatar = mock(MediaAsset.class);
+        MediaAssetResponse playerAvatarResponse = new MediaAssetResponse(
+                UUID.randomUUID(),
+                MediaOwnerType.PLAYER,
+                playerPresent,
+                MediaKind.AVATAR,
+                "avatar.jpg",
+                "image/jpeg",
+                1024L,
+                128,
+                128,
+                "/api/media/player/original",
+                "/api/media/player/thumb",
+                "/api/media/player/medium",
+                LocalDateTime.now()
+        );
+        when(mediaAvatarPort.findActiveAvatars(
+                MediaOwnerType.PLAYER,
+                Set.of(playerPresent, playerLate, playerUnmarked)
+        )).thenReturn(Map.of(playerPresent, playerAvatar));
+        when(mediaAccessPort.toResponse(playerAvatar)).thenReturn(playerAvatarResponse);
         when(trainingSessionAttendanceRepository.findBySessionId(sessionId)).thenReturn(List.of(
                 TrainingSessionAttendance.builder()
                         .id(UUID.randomUUID())
@@ -437,6 +516,11 @@ class AdminSessionServiceTest {
         assertEquals(2, output.summary().presentLike());
         assertTrue(output.capabilities().canEdit());
         assertEquals(3, output.participants().size());
+        assertSame(playerAvatarResponse, output.participants().stream()
+                .filter(item -> item.playerId().equals(playerPresent))
+                .findFirst()
+                .orElseThrow()
+                .avatar());
         assertNull(output.participants().stream()
                 .filter(item -> item.playerId().equals(playerUnmarked))
                 .findFirst()

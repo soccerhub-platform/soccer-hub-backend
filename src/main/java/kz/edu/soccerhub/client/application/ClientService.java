@@ -379,9 +379,21 @@ public class ClientService implements ClientPort {
     }
 
     private String resolveMembershipStatus(GroupMembership membership) {
-        return membership.getStatus() == null
-                ? GroupMembershipStatus.ACTIVE.name()
-                : membership.getStatus().name();
+        GroupMembershipStatus status = membership.getStatus();
+        if (status == null) {
+            return GroupMembershipStatus.ACTIVE.name();
+        }
+        if (status == GroupMembershipStatus.UPCOMING
+                && membership.getJoinedAt() != null
+                && !membership.getJoinedAt().isAfter(LocalDate.now())) {
+            return GroupMembershipStatus.ACTIVE.name();
+        }
+        if (status == GroupMembershipStatus.ACTIVE
+                && membership.getJoinedAt() != null
+                && membership.getJoinedAt().isAfter(LocalDate.now())) {
+            return GroupMembershipStatus.UPCOMING.name();
+        }
+        return status.name();
     }
 
     private String buildPlayerName(Player player) {

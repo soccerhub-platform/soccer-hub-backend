@@ -1,5 +1,7 @@
 package kz.edu.soccerhub.admin.application.dto.session;
 
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,8 +37,13 @@ public record AdminGroupSessionsOutput(
     public record CoachRef(
             UUID id,
             String fullName,
-            String role
-    ) {}
+            String role,
+            MediaAssetResponse avatar
+    ) {
+        public CoachRef(UUID id, String fullName, String role) {
+            this(id, fullName, role, null);
+        }
+    }
 
     public record AttendanceSummary(
             int total,

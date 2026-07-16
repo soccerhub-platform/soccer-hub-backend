@@ -22,6 +22,8 @@ import kz.edu.soccerhub.common.port.CoachPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.GroupSchedulePort;
+import kz.edu.soccerhub.common.port.MediaAccessPort;
+import kz.edu.soccerhub.common.port.MediaAvatarPort;
 import kz.edu.soccerhub.dispatcher.application.service.PasswordGenerator;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
@@ -71,6 +73,10 @@ class AdminCoachServiceTest {
     private GroupCoachPort groupCoachPort;
     @Mock
     private ClientPort clientPort;
+    @Mock
+    private MediaAvatarPort mediaAvatarPort;
+    @Mock
+    private MediaAccessPort mediaAccessPort;
 
     private AdminCoachService service;
 
@@ -85,7 +91,9 @@ class AdminCoachServiceTest {
                 groupSchedulePort,
                 groupPort,
                 groupCoachPort,
-                clientPort
+                clientPort,
+                mediaAvatarPort,
+                mediaAccessPort
         );
     }
 

@@ -8,6 +8,7 @@ import kz.edu.soccerhub.admin.application.dto.session.AdminSessionAttendanceOutp
 import kz.edu.soccerhub.admin.application.dto.session.AdminSessionAttendanceUpdateInput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminSessionDetailsOutput;
 import kz.edu.soccerhub.admin.application.dto.session.AdminSubstituteCoachInput;
+import kz.edu.soccerhub.admin.application.dto.session.AdminGroupScheduleOverviewOutput;
 import kz.edu.soccerhub.coach.application.service.CoachRosterReader;
 import kz.edu.soccerhub.coach.domain.model.TrainingSession;
 import kz.edu.soccerhub.coach.domain.model.TrainingSessionAttendance;
@@ -18,6 +19,7 @@ import kz.edu.soccerhub.coach.domain.repository.TrainingSessionRepository;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
+import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
 import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
@@ -25,6 +27,7 @@ import kz.edu.soccerhub.common.port.CoachPort;
 import kz.edu.soccerhub.common.port.GroupActivityPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
+import kz.edu.soccerhub.common.port.GroupSchedulePort;
 import kz.edu.soccerhub.common.port.MediaAccessPort;
 import kz.edu.soccerhub.common.port.MediaAvatarPort;
 import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
@@ -37,6 +40,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -61,6 +67,7 @@ public class AdminSessionService {
     private final AdminService adminService;
     private final AdminBranchService adminBranchService;
     private final GroupPort groupPort;
+    private final GroupSchedulePort groupSchedulePort;
     private final GroupCoachPort groupCoachPort;
     private final CoachPort coachPort;
     private final TrainingSessionRepository trainingSessionRepository;
@@ -70,6 +77,69 @@ public class AdminSessionService {
     private final GroupActivityPort groupActivityPort;
     private final MediaAvatarPort mediaAvatarPort;
     private final MediaAccessPort mediaAccessPort;
+    private final AdminGroupService adminGroupService;
+
+    @Transactional(readOnly = true)
+    public AdminGroupScheduleOverviewOutput getGroupScheduleOverview(
+            UUID adminId,
+            UUID groupId,
+            YearMonth month
+    ) {
+        LocalDate from = month.atDay(1);
+        LocalDate to = month.atEndOfMonth();
+        AdminGroupSessionsOutput sessions = getGroupSessions(adminId, groupId, from, to, null, null);
+        var risk = adminGroupService.getScheduleRisks(adminId, groupId);
+        List<GroupScheduleDto> schedules = groupSchedulePort.getActiveSchedulesByGroup(groupId);
+
+        Map<String, List<GroupScheduleDto>> schedulesByPeriod = schedules.stream()
+                .collect(Collectors.groupingBy(
+                        schedule -> schedule.coachId() + "_" + schedule.startDate() + "_" + schedule.endDate() + "_" + schedule.scheduleType(),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        List<AdminGroupScheduleOverviewOutput.Period> periods = new ArrayList<>();
+        schedulesByPeriod.forEach((key, slots) -> {
+            GroupScheduleDto first = slots.getFirst();
+            periods.add(new AdminGroupScheduleOverviewOutput.Period(
+                    key,
+                    first.coachId(),
+                    first.scheduleType(),
+                    first.startDate(),
+                    first.endDate(),
+                    slots.size(),
+                    slots.stream()
+                            .map(slot -> new AdminGroupScheduleOverviewOutput.Slot(
+                                    slot.scheduleId(), slot.dayOfWeek(), slot.startTime(), slot.endTime()
+                            ))
+                            .toList(),
+                    new AdminGroupScheduleOverviewOutput.Capabilities(true, true)
+            ));
+        });
+
+        return new AdminGroupScheduleOverviewOutput(
+                groupId,
+                from,
+                to,
+                new AdminGroupScheduleOverviewOutput.Summary(
+                        sessions.items().size(),
+                        countSessions(sessions, "PLANNED"),
+                        countSessions(sessions, "IN_PROGRESS"),
+                        countSessions(sessions, "COMPLETED") + countSessions(sessions, "OVERDUE"),
+                        countSessions(sessions, "CANCELLED")
+                ),
+                new AdminGroupScheduleOverviewOutput.Risk(
+                        risk.hasConflicts(), risk.conflictsCount(), risk.nextSessionAt()
+                ),
+                periods
+        );
+    }
+
+    private int countSessions(AdminGroupSessionsOutput sessions, String status) {
+        return (int) sessions.items().stream()
+                .filter(item -> status.equals(item.effectiveStatus()))
+                .count();
+    }
 
     @Transactional(readOnly = true)
     public AdminGroupSessionsOutput getGroupSessions(
@@ -106,6 +176,7 @@ public class AdminSessionService {
         Map<UUID, CoachDto> coachById = getCoachMap(sessions.stream()
                 .map(TrainingSession::getCoachId)
                 .collect(Collectors.toSet()));
+        Map<UUID, MediaAsset> coachAvatarsById = getCoachAvatars(coachById.keySet());
         Map<UUID, String> locationNames = getLocationNames(sessions.stream()
                 .map(TrainingSession::getLocationId)
                 .filter(java.util.Objects::nonNull)
@@ -118,7 +189,7 @@ public class AdminSessionService {
                 .collect(Collectors.groupingBy(TrainingSessionAttendance::getSessionId));
 
         List<AdminGroupSessionsOutput.SessionItem> items = sessions.stream()
-                .map(session -> toSessionItem(session, coachById, groupCoachByCoachId, attendanceBySessionId, locationNames))
+                .map(session -> toSessionItem(session, coachById, coachAvatarsById, groupCoachByCoachId, attendanceBySessionId, locationNames))
                 .toList();
 
         return new AdminGroupSessionsOutput(groupId, from, to, items);
@@ -247,7 +318,7 @@ public class AdminSessionService {
                 resolveEffectiveStatus(session),
                 session.getCancelReason(),
                 toLocationRef(session.getLocationId(), locationNames),
-                List.of(toCoachRef(session.getCoachId(), coachById, groupCoachByCoachId)),
+                List.of(toCoachRef(session.getCoachId(), coachById, groupCoachByCoachId, getCoachAvatar(session.getCoachId()))),
                 participantsCount,
                 attendance,
                 buildCapabilities(session)
@@ -264,6 +335,10 @@ public class AdminSessionService {
         Map<UUID, TrainingSessionAttendance> attendanceByPlayerId = trainingSessionAttendanceRepository.findBySessionId(sessionId)
                 .stream()
                 .collect(Collectors.toMap(TrainingSessionAttendance::getPlayerId, Function.identity()));
+        Set<UUID> playerIds = activePlayers.stream()
+                .map(CoachRosterReader.ActivePlayerView::id)
+                .collect(Collectors.toSet());
+        Map<UUID, MediaAsset> playerAvatars = getPlayerAvatars(playerIds);
 
         List<AdminSessionAttendanceOutput.ParticipantItem> participants = activePlayers.stream()
                 .sorted(Comparator.comparing(player -> StreamUtil.joinNonBlank(player.firstName(), player.lastName())))
@@ -273,7 +348,8 @@ public class AdminSessionService {
                             player.id(),
                             StreamUtil.joinNonBlank(player.firstName(), player.lastName()),
                             attendance == null ? null : attendance.getStatus(),
-                            attendance == null ? null : attendance.getComment()
+                            attendance == null ? null : attendance.getComment(),
+                            toMediaAssetResponse(playerAvatars.get(player.id()))
                     );
                 })
                 .toList();
@@ -506,6 +582,7 @@ public class AdminSessionService {
     private AdminGroupSessionsOutput.SessionItem toSessionItem(
             TrainingSession session,
             Map<UUID, CoachDto> coachById,
+            Map<UUID, MediaAsset> coachAvatarsById,
             Map<UUID, GroupCoachDto> groupCoachByCoachId,
             Map<UUID, List<TrainingSessionAttendance>> attendanceBySessionId,
             Map<UUID, String> locationNames
@@ -526,7 +603,7 @@ public class AdminSessionService {
                 resolveEffectiveStatus(session),
                 session.getCancelReason(),
                 toLocationRef(session.getLocationId(), locationNames),
-                List.of(toCoachRef(session.getCoachId(), coachById, groupCoachByCoachId)),
+                List.of(toCoachRef(session.getCoachId(), coachById, groupCoachByCoachId, coachAvatarsById.get(session.getCoachId()))),
                 participantsCount,
                 attendance,
                 buildCapabilities(session)
@@ -536,7 +613,8 @@ public class AdminSessionService {
     private AdminGroupSessionsOutput.CoachRef toCoachRef(
             UUID coachId,
             Map<UUID, CoachDto> coachById,
-            Map<UUID, GroupCoachDto> groupCoachByCoachId
+            Map<UUID, GroupCoachDto> groupCoachByCoachId,
+            MediaAsset avatar
     ) {
         CoachDto coach = coachById.get(coachId);
         GroupCoachDto assignment = groupCoachByCoachId.get(coachId);
@@ -546,7 +624,40 @@ public class AdminSessionService {
         String role = assignment == null || assignment.role() == null
                 ? null
                 : assignment.role().name();
-        return new AdminGroupSessionsOutput.CoachRef(coachId, fullName, role);
+        return new AdminGroupSessionsOutput.CoachRef(
+                coachId,
+                fullName,
+                role,
+                avatar == null ? null : mediaAccessPort.toResponse(avatar)
+        );
+    }
+
+    private Map<UUID, MediaAsset> getCoachAvatars(Set<UUID> coachIds) {
+        if (coachIds == null || coachIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, MediaAsset> avatars = mediaAvatarPort.findActiveAvatars(MediaOwnerType.COACH, coachIds);
+        return avatars == null ? Map.of() : avatars;
+    }
+
+    private Map<UUID, MediaAsset> getPlayerAvatars(Set<UUID> playerIds) {
+        if (playerIds == null || playerIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, MediaAsset> avatars = mediaAvatarPort.findActiveAvatars(MediaOwnerType.PLAYER, playerIds);
+        return avatars == null ? Map.of() : avatars;
+    }
+
+    private MediaAssetResponse toMediaAssetResponse(MediaAsset avatar) {
+        return avatar == null ? null : mediaAccessPort.toResponse(avatar);
+    }
+
+    private MediaAsset getCoachAvatar(UUID coachId) {
+        if (coachId == null) {
+            return null;
+        }
+        var avatar = mediaAvatarPort.findActiveAvatar(MediaOwnerType.COACH, coachId);
+        return avatar == null ? null : avatar.orElse(null);
     }
 
     private AdminGroupSessionsOutput.AttendanceSummary toAttendanceSummary(

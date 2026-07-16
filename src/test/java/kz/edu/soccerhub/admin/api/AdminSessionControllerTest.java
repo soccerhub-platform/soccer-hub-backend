@@ -164,6 +164,7 @@ class AdminSessionControllerTest {
                         UUID.randomUUID(),
                         "Алихан Сериков",
                         TrainingSessionAttendanceStatus.PRESENT,
+                        null,
                         null
                 )),
                 new AdminSessionAttendanceOutput.Capabilities(true)
@@ -299,7 +300,8 @@ class AdminSessionControllerTest {
                         input.entries().getFirst().playerId(),
                         "Алихан Сериков",
                         TrainingSessionAttendanceStatus.EXCUSED,
-                        "Болел"
+                        "Болел",
+                        null
                 )),
                 new AdminSessionAttendanceOutput.Capabilities(true)
         );

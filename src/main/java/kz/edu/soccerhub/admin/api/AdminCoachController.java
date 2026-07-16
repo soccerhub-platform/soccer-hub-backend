@@ -6,6 +6,8 @@ import kz.edu.soccerhub.admin.application.service.AdminCoachService;
 import kz.edu.soccerhub.common.dto.coach.AdminCoachOverviewOutput;
 import kz.edu.soccerhub.common.dto.coach.AdminCoachProfileOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+import kz.edu.soccerhub.common.dto.media.MediaDownloadUrlResponse;
 import kz.edu.soccerhub.dispatcher.application.dto.admin.DispatcherAdminResetPasswordOutput;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -17,6 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
 import java.util.Map;
@@ -29,6 +32,35 @@ import java.util.UUID;
 public class AdminCoachController {
 
     private final AdminCoachService adminCoachService;
+
+    @PostMapping(value = "/{coachId}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<MediaAssetResponse> uploadCoachAvatar(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID coachId,
+            @RequestPart("file") MultipartFile file
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminCoachService.uploadCoachAvatar(adminId, coachId, file));
+    }
+
+    @DeleteMapping("/{coachId}/avatar")
+    public ResponseEntity<Void> deleteCoachAvatar(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID coachId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        adminCoachService.deleteCoachAvatar(adminId, coachId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{coachId}/avatar/download-url")
+    public ResponseEntity<MediaDownloadUrlResponse> getCoachAvatarDownloadUrl(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID coachId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminCoachService.getCoachAvatarDownloadUrl(adminId, coachId));
+    }
 
     @PostMapping(
             consumes = MediaType.APPLICATION_JSON_VALUE,

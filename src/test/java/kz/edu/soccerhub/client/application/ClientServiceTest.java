@@ -71,8 +71,8 @@ class ClientServiceTest {
                 .id(membershipId)
                 .groupId(groupId)
                 .playerId(playerId)
-                .status(GroupMembershipStatus.ACTIVE)
-                .joinedAt(LocalDate.of(2026, 6, 24))
+                .status(GroupMembershipStatus.UPCOMING)
+                .joinedAt(LocalDate.now())
                 .leftAt(LocalDate.of(2026, 8, 31))
                 .build();
         Contract contract = Contract.builder()
