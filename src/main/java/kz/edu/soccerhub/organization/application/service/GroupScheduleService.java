@@ -317,6 +317,71 @@ public class GroupScheduleService implements GroupSchedulePort {
         );
     }
 
+    @Override
+    @Transactional
+    public int replaceCoach(UUID groupId, UUID currentCoachId, UUID replacementCoachId, LocalDate fromDate) {
+        LocalDate effectiveDate = fromDate == null ? today() : fromDate;
+        List<GroupSchedule> schedules = groupScheduleRepository.findByGroupIdAndStatus(groupId, ScheduleStatus.ACTIVE)
+                .stream()
+                .filter(schedule -> schedule.getCoachId().equals(currentCoachId))
+                .filter(schedule -> !schedule.getEndDate().isBefore(effectiveDate))
+                .toList();
+        trainingSessionPlanningPort.replaceCoachInFuturePlannedSessions(
+                groupId,
+                currentCoachId,
+                replacementCoachId,
+                effectiveDate
+        );
+
+        List<ScheduleReplacement> replacements = schedules.stream()
+                .filter(schedule -> schedule.getStartDate().isBefore(effectiveDate))
+                .map(schedule -> {
+                    LocalDate previousEndDate = schedule.getEndDate();
+                    schedule.setEndDate(effectiveDate.minusDays(1));
+                    GroupSchedule replacement = copyScheduleForReplacement(
+                            schedule, replacementCoachId, effectiveDate, previousEndDate
+                    );
+                    return new ScheduleReplacement(schedule, replacement);
+                })
+                .toList();
+        schedules.stream()
+                .filter(schedule -> !schedule.getStartDate().isBefore(effectiveDate))
+                .forEach(schedule -> schedule.setCoachId(replacementCoachId));
+        if (!replacements.isEmpty()) {
+            groupScheduleRepository.saveAll(replacements.stream().map(ScheduleReplacement::replacement).toList());
+            replacements.forEach(item -> trainingSessionPlanningPort.replaceScheduleInFuturePlannedSessions(
+                    item.current().getId(), item.replacement().getId(), effectiveDate
+            ));
+        }
+        return schedules.size();
+    }
+
+    private GroupSchedule copyScheduleForReplacement(
+            GroupSchedule source,
+            UUID replacementCoachId,
+            LocalDate startDate,
+            LocalDate endDate
+    ) {
+        return GroupSchedule.builder()
+                .id(UUID.randomUUID())
+                .groupId(source.getGroupId())
+                .coachId(replacementCoachId)
+                .locationId(source.getLocationId())
+                .dayOfWeek(source.getDayOfWeek())
+                .startTime(source.getStartTime())
+                .endTime(source.getEndTime())
+                .scheduleType(source.getScheduleType())
+                .startDate(startDate)
+                .endDate(endDate)
+                .status(ScheduleStatus.ACTIVE)
+                .comment(source.getComment())
+                .substitution(false)
+                .substitutionCoachId(null)
+                .build();
+    }
+
+    private record ScheduleReplacement(GroupSchedule current, GroupSchedule replacement) {}
+
     @Transactional(readOnly = true)
     public int countSessionsPerWeek(UUID groupId) {
         return groupScheduleRepository.countWeeklySessions(groupId);

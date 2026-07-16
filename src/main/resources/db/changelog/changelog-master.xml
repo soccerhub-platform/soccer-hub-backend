@@ -28,5 +28,6 @@
     <include file="/db/changelog/2026-07-14-group-memberships.sql"/>
     <include file="/db/changelog/2026-07-14-group-memberships-write-support.sql"/>
     <include file="/db/changelog/2026-07-15-group-activities.sql"/>
+    <include file="/db/changelog/2026-07-16-group-coach-history.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>

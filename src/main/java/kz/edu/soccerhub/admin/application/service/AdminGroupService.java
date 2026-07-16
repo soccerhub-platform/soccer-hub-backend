@@ -4,12 +4,14 @@ import kz.edu.soccerhub.admin.application.dto.group.*;
 import kz.edu.soccerhub.common.dto.branch.BranchDto;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
 import kz.edu.soccerhub.common.dto.group.*;
 import kz.edu.soccerhub.common.dto.lead.AvailableSlotOutput;
 import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.common.dto.media.MediaDownloadUrlResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
+import kz.edu.soccerhub.common.exception.ConflictException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
@@ -30,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.*;
+import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -39,10 +42,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminGroupService {
 
+    private static final int COACH_WEEKLY_SESSION_LIMIT = 12;
+
     private static final String ACTIVITY_GROUP_UPDATED = "GROUP_UPDATED";
     private static final String ACTIVITY_GROUP_STATUS_CHANGED = "GROUP_STATUS_CHANGED";
     private static final String ACTIVITY_COACH_ASSIGNED = "COACH_ASSIGNED";
     private static final String ACTIVITY_COACH_UNASSIGNED = "COACH_UNASSIGNED";
+    private static final String ACTIVITY_COACH_ROLE_CHANGED = "COACH_ROLE_CHANGED";
 
     private final GroupPort groupPort;
     private final CoachPort coachPort;
@@ -370,12 +376,34 @@ public class AdminGroupService {
     /* ================= GROUP COACH ================= */
 
     @Transactional
-    public UUID assignCoachToGroup(UUID adminId, UUID groupId, UUID coachId, CoachRole role) {
+    public UUID assignCoachToGroup(
+            UUID adminId,
+            UUID groupId,
+            UUID coachId,
+            CoachRole role,
+            LocalDate assignedFrom,
+            LocalDate assignedTo
+    ) {
         verifyAdmin(adminId);
-        verifyAdminBranchAccess(adminId, groupPort.getGroupById(groupId).branchId());
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
         verifyCoach(coachId);
+        verifyCoachBranchAccess(coachId, group.branchId());
 
-        UUID assignmentId = groupCoachPort.assignCoach(groupId, coachId, role);
+        LocalDate resolvedAssignedFrom = assignedFrom == null ? LocalDate.now() : assignedFrom;
+        if (assignedTo != null && assignedTo.isBefore(resolvedAssignedFrom)) {
+            throw new BadRequestException("assignedTo must not be before assignedFrom", Map.of(
+                    "assignedFrom", resolvedAssignedFrom,
+                    "assignedTo", assignedTo
+            ));
+        }
+        UUID assignmentId = groupCoachPort.assignCoach(
+                groupId,
+                coachId,
+                role,
+                resolvedAssignedFrom,
+                assignedTo
+        );
         groupActivityPort.recordGroupActivity(
                 groupId,
                 adminId,
@@ -384,6 +412,8 @@ public class AdminGroupService {
                         .put("groupCoachId", assignmentId)
                         .put("coachId", coachId)
                         .put("role", role == null ? CoachRole.ASSISTANT : role)
+                        .put("assignedFrom", resolvedAssignedFrom)
+                        .put("assignedTo", assignedTo)
                         .build()
         );
 
@@ -393,6 +423,58 @@ public class AdminGroupService {
         );
 
         return assignmentId;
+    }
+
+    private void verifyCoachBranchAccess(UUID coachId, UUID branchId) {
+        if (!coachPort.getBranchIds(coachId).contains(branchId)) {
+            throw new BadRequestException("Coach is not assigned to group branch", Map.of(
+                    "coachId", coachId,
+                    "branchId", branchId
+            ));
+        }
+    }
+
+    private void ensureNoCoachScheduleConflicts(
+            UUID groupId,
+            UUID coachId,
+            List<GroupScheduleDto> targetSchedules
+    ) {
+
+        List<GroupScheduleDto> coachSchedules = groupSchedulePort.getActiveSchedulesByCoach(coachId);
+        List<Map<String, Object>> conflicts = new ArrayList<>();
+        for (GroupScheduleDto target : targetSchedules) {
+            for (GroupScheduleDto existing : coachSchedules) {
+                if (existing.groupId().equals(groupId)
+                        || existing.dayOfWeek() != target.dayOfWeek()
+                        || !overlaps(target.startDate(), target.endDate(), existing.startDate(), existing.endDate())
+                        || !overlaps(target.startTime(), target.endTime(), existing.startTime(), existing.endTime())) {
+                    continue;
+                }
+                conflicts.add(Map.of(
+                        "groupId", existing.groupId(),
+                        "dayOfWeek", target.dayOfWeek(),
+                        "startTime", max(target.startTime(), existing.startTime()),
+                        "endTime", min(target.endTime(), existing.endTime()),
+                        "periodStart", target.startDate().isAfter(existing.startDate()) ? target.startDate() : existing.startDate(),
+                        "periodEnd", target.endDate().isBefore(existing.endDate()) ? target.endDate() : existing.endDate()
+                ));
+            }
+        }
+        if (!conflicts.isEmpty()) {
+            throw new ConflictException(
+                    "У тренера есть конфликт расписания с другой группой",
+                    "COACH_ASSIGNMENT_SCHEDULE_CONFLICT",
+                    Map.of("conflicts", conflicts)
+            );
+        }
+    }
+
+    private LocalTime max(LocalTime left, LocalTime right) {
+        return left.isAfter(right) ? left : right;
+    }
+
+    private LocalTime min(LocalTime left, LocalTime right) {
+        return left.isBefore(right) ? left : right;
     }
 
     @Transactional
@@ -423,12 +505,237 @@ public class AdminGroupService {
         );
     }
 
+    @Transactional
+    public void updateGroupCoachRole(UUID adminId, UUID groupCoachId, CoachRole role) {
+        verifyAdmin(adminId);
+        GroupCoachDto assignment = groupCoachPort.findAssignmentById(groupCoachId)
+                .orElseThrow(() -> new NotFoundException("Group coach data not found", groupCoachId));
+        verifyAdminBranchAccess(adminId, groupPort.getGroupById(assignment.groupId()).branchId());
+
+        GroupCoachDto updated = groupCoachPort.updateRole(groupCoachId, role);
+        if (assignment.role() != updated.role()) {
+            groupActivityPort.recordGroupActivity(
+                    assignment.groupId(),
+                    adminId,
+                    ACTIVITY_COACH_ROLE_CHANGED,
+                    activityPayload()
+                            .put("groupCoachId", groupCoachId)
+                            .put("coachId", assignment.coachId())
+                            .put("previousRole", assignment.role())
+                            .put("newRole", updated.role())
+                            .build()
+            );
+        }
+    }
+
     @Transactional(readOnly = true)
-    public Collection<AdminGroupCoachOutput> getGroupCoaches(UUID groupId) {
+    public AdminGroupCoachRemovalPreviewOutput previewCoachRemoval(UUID adminId, UUID groupCoachId) {
+        verifyAdmin(adminId);
+        GroupCoachDto assignment = groupCoachPort.findAssignmentById(groupCoachId)
+                .orElseThrow(() -> new NotFoundException("Group coach data not found", groupCoachId));
+        GroupDto group = groupPort.getGroupById(assignment.groupId());
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        LocalDate effectiveDate = LocalDate.now();
+        List<GroupScheduleDto> affectedSchedules = affectedCoachSchedules(
+                assignment.groupId(), assignment.coachId(), effectiveDate
+        );
+        List<CoachSessionAdminView> futureSessions = coachPort.getSessions(
+                        Set.of(assignment.coachId()),
+                        Set.of(assignment.groupId()),
+                        effectiveDate,
+                        effectiveDate.plusDays(90)
+                ).stream()
+                .filter(session -> !"CANCELLED".equals(session.status()))
+                .filter(session -> session.scheduledStartAt() != null
+                        && !session.scheduledStartAt().isBefore(LocalDateTime.now()))
+                .toList();
+
+        Collection<GroupCoachDto> groupAssignments = groupCoachPort.getActiveCoaches(assignment.groupId());
+        List<GroupCoachDto> candidateAssignments = groupAssignments.stream()
+                .filter(item -> !item.coachId().equals(assignment.coachId()))
+                .toList();
+        Map<UUID, CoachDto> candidateCoaches = coachPort.getCoaches(candidateAssignments.stream()
+                        .map(GroupCoachDto::coachId)
+                        .collect(Collectors.toSet()))
+                .stream()
+                .filter(CoachDto::active)
+                .collect(Collectors.toMap(CoachDto::id, Function.identity()));
+        List<AdminGroupCoachRemovalPreviewOutput.ReplacementCandidate> candidates = candidateAssignments.stream()
+                .filter(item -> candidateCoaches.containsKey(item.coachId()))
+                .map(item -> {
+                    CoachDto coach = candidateCoaches.get(item.coachId());
+                    return new AdminGroupCoachRemovalPreviewOutput.ReplacementCandidate(
+                            item.id(), item.coachId(), coach.firstName() + " " + coach.lastName(), item.role()
+                    );
+                })
+                .toList();
+
+        CoachDto currentCoach = coachPort.getCoach(assignment.coachId());
+        boolean replacementRequired = assignment.role() == CoachRole.MAIN
+                || !affectedSchedules.isEmpty()
+                || !futureSessions.isEmpty();
+        LocalDateTime nextSessionAt = futureSessions.stream()
+                .map(CoachSessionAdminView::scheduledStartAt)
+                .min(LocalDateTime::compareTo)
+                .orElse(null);
+
+        return new AdminGroupCoachRemovalPreviewOutput(
+                assignment.id(),
+                assignment.groupId(),
+                assignment.coachId(),
+                currentCoach.firstName() + " " + currentCoach.lastName(),
+                assignment.role(),
+                affectedSchedules.size(),
+                futureSessions.size(),
+                nextSessionAt,
+                replacementRequired,
+                !replacementRequired || !candidates.isEmpty(),
+                candidates
+        );
+    }
+
+    @Transactional
+    public void removeCoachFromGroup(UUID adminId, UUID groupCoachId, AdminRemoveGroupCoachInput input) {
+        verifyAdmin(adminId);
+        GroupCoachDto assignment = groupCoachPort.findAssignmentById(groupCoachId)
+                .orElseThrow(() -> new NotFoundException("Group coach data not found", groupCoachId));
+        GroupDto group = groupPort.getGroupById(assignment.groupId());
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        LocalDate effectiveDate = input.effectiveDate() == null ? LocalDate.now() : input.effectiveDate();
+        if (!effectiveDate.equals(LocalDate.now())) {
+            throw new BadRequestException("Only immediate coach removal is supported", effectiveDate);
+        }
+        List<GroupScheduleDto> affectedSchedules = affectedCoachSchedules(
+                assignment.groupId(), assignment.coachId(), effectiveDate
+        );
+        List<CoachSessionAdminView> affectedFutureSessions = coachPort.getSessions(
+                        Set.of(assignment.coachId()), Set.of(assignment.groupId()), effectiveDate, effectiveDate.plusDays(90)
+                ).stream()
+                .filter(session -> !"CANCELLED".equals(session.status())
+                        && session.scheduledStartAt() != null
+                        && session.scheduledEndAt() != null
+                        && !session.scheduledStartAt().isBefore(LocalDateTime.now()))
+                .toList();
+        boolean hasFutureSessions = !affectedFutureSessions.isEmpty();
+        boolean replacementRequired = assignment.role() == CoachRole.MAIN
+                || !affectedSchedules.isEmpty()
+                || hasFutureSessions;
+        if (replacementRequired && input.replacementCoachId() == null) {
+            throw new ConflictException(
+                    "Для снятия тренера необходимо выбрать замену",
+                    "COACH_REPLACEMENT_REQUIRED",
+                    Map.of(
+                            "activeScheduleSlots", affectedSchedules.size(),
+                            "hasFutureSessions", hasFutureSessions,
+                            "mainCoach", assignment.role() == CoachRole.MAIN
+                    )
+            );
+        }
+
+        UUID replacementCoachId = input.replacementCoachId();
+        if (replacementCoachId != null) {
+            if (replacementCoachId.equals(assignment.coachId())) {
+                throw new BadRequestException("Replacement coach must be different", replacementCoachId);
+            }
+            GroupCoachDto replacementAssignment = groupCoachPort.getActiveCoaches(assignment.groupId()).stream()
+                    .filter(item -> item.coachId().equals(replacementCoachId))
+                    .findFirst()
+                    .orElseThrow(() -> new BadRequestException(
+                            "Replacement coach must be assigned to the group", replacementCoachId
+                    ));
+            verifyCoach(replacementCoachId);
+            ensureNoCoachScheduleConflicts(assignment.groupId(), replacementCoachId, affectedSchedules);
+            ensureNoCoachFutureSessionConflicts(
+                    group.branchId(), replacementCoachId, affectedFutureSessions, effectiveDate
+            );
+            groupSchedulePort.replaceCoach(
+                    assignment.groupId(), assignment.coachId(), replacementCoachId, effectiveDate
+            );
+
+            boolean changed = groupCoachPort.unassignCoach(
+                    groupCoachId, effectiveDate, input.reason(), replacementCoachId
+            );
+            if (changed && assignment.role() == CoachRole.MAIN && replacementAssignment.role() != CoachRole.MAIN) {
+                groupCoachPort.updateRole(replacementAssignment.id(), CoachRole.MAIN);
+            }
+        } else {
+            groupCoachPort.unassignCoach(groupCoachId, effectiveDate, input.reason(), null);
+        }
+
+        groupActivityPort.recordGroupActivity(
+                assignment.groupId(),
+                adminId,
+                ACTIVITY_COACH_UNASSIGNED,
+                activityPayload()
+                        .put("groupCoachId", groupCoachId)
+                        .put("coachId", assignment.coachId())
+                        .put("role", assignment.role())
+                        .put("replacementCoachId", replacementCoachId)
+                        .put("effectiveDate", effectiveDate)
+                        .put("reason", input.reason())
+                        .put("affectedScheduleSlots", affectedSchedules.size())
+                        .build()
+        );
+    }
+
+    private List<GroupScheduleDto> affectedCoachSchedules(UUID groupId, UUID coachId, LocalDate effectiveDate) {
+        return groupSchedulePort.getActiveSchedulesByGroup(groupId).stream()
+                .filter(schedule -> coachId.equals(schedule.coachId()))
+                .filter(schedule -> !schedule.endDate().isBefore(effectiveDate))
+                .toList();
+    }
+
+    private void ensureNoCoachFutureSessionConflicts(
+            UUID branchId,
+            UUID replacementCoachId,
+            List<CoachSessionAdminView> affectedSessions,
+            LocalDate effectiveDate
+    ) {
+        if (affectedSessions.isEmpty()) {
+            return;
+        }
+        Set<UUID> branchGroupIds = groupPort.getGroupsByBranch(branchId).stream()
+                .map(GroupDto::groupId)
+                .collect(Collectors.toSet());
+        if (branchGroupIds.isEmpty()) {
+            return;
+        }
+        List<CoachSessionAdminView> replacementSessions = coachPort.getSessions(
+                        Set.of(replacementCoachId), branchGroupIds, effectiveDate, effectiveDate.plusDays(90)
+                ).stream()
+                .filter(session -> !"CANCELLED".equals(session.status()))
+                .filter(session -> session.scheduledStartAt() != null && session.scheduledEndAt() != null)
+                .toList();
+        boolean conflict = affectedSessions.stream().anyMatch(target -> replacementSessions.stream().anyMatch(existing ->
+                target.sessionDate().equals(existing.sessionDate())
+                        && target.scheduledStartAt().isBefore(existing.scheduledEndAt())
+                        && target.scheduledEndAt().isAfter(existing.scheduledStartAt())
+        ));
+        if (conflict) {
+            throw new ConflictException(
+                    "У выбранной замены есть пересекающееся занятие",
+                    "COACH_REPLACEMENT_SESSION_CONFLICT",
+                    Map.of("replacementCoachId", replacementCoachId)
+            );
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public Collection<AdminGroupCoachOutput> getGroupCoaches(UUID adminId, UUID groupId) {
         log.debug("======= Fetching group -> {} coaches =======", groupId);
+
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
 
         Collection<GroupCoachDto> activeGroupCoaches =
                 groupCoachPort.getActiveCoaches(groupId);
+
+        if (activeGroupCoaches.isEmpty()) {
+            return List.of();
+        }
 
         log.debug("======= Group {} coaches ids {} =======", groupId, activeGroupCoaches);
 
@@ -442,6 +749,49 @@ public class AdminGroupService {
 
         Map<UUID, CoachDto> coachMap = coaches.stream()
                 .collect(Collectors.toMap(CoachDto::id, Function.identity()));
+
+        Set<UUID> coachIds = activeGroupCoaches.stream()
+                .map(GroupCoachDto::coachId)
+                .collect(Collectors.toSet());
+        Map<UUID, MediaAsset> avatarsByCoachId = Optional.ofNullable(
+                mediaAvatarPort.findActiveAvatars(MediaOwnerType.COACH, coachIds)
+        ).orElseGet(Map::of);
+
+        Set<UUID> branchGroupIds = groupPort.getGroupsByBranch(group.branchId()).stream()
+                .map(GroupDto::groupId)
+                .collect(Collectors.toSet());
+        Collection<GroupCoachDto> branchAssignments = branchGroupIds.isEmpty()
+                ? List.of()
+                : groupCoachPort.getActiveAssignmentsByCoachIdsAndGroupIds(coachIds, branchGroupIds);
+        Map<UUID, Integer> groupsCountByCoach = new HashMap<>();
+        branchAssignments.forEach(assignment -> groupsCountByCoach.merge(assignment.coachId(), 1, Integer::sum));
+
+        LocalDate today = LocalDate.now();
+        LocalDate weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate weekEnd = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY));
+        List<CoachSessionAdminView> weeklySessions = branchGroupIds.isEmpty()
+                ? List.of()
+                : coachPort.getSessions(coachIds, branchGroupIds, weekStart, weekEnd);
+        Map<UUID, Integer> weeklySessionsByCoach = new HashMap<>();
+        weeklySessions.stream()
+                .filter(session -> !"CANCELLED".equals(session.status()))
+                .forEach(session -> weeklySessionsByCoach.merge(session.coachId(), 1, Integer::sum));
+
+        List<CoachSessionAdminView> upcomingGroupSessions = coachPort.getSessions(
+                coachIds,
+                Set.of(groupId),
+                today,
+                today.plusDays(60)
+        );
+        Map<UUID, CoachSessionAdminView> nextSessionByCoach = upcomingGroupSessions.stream()
+                .filter(session -> !"CANCELLED".equals(session.status()))
+                .filter(session -> session.scheduledStartAt() != null && !session.scheduledStartAt().isBefore(LocalDateTime.now()))
+                .collect(Collectors.toMap(
+                        CoachSessionAdminView::coachId,
+                        Function.identity(),
+                        (left, right) -> left.scheduledStartAt().isBefore(right.scheduledStartAt()) ? left : right
+                ));
+        boolean hasMainCoach = activeGroupCoaches.stream().anyMatch(item -> item.role() == CoachRole.MAIN);
 
         return activeGroupCoaches.stream()
                 .map(groupCoach -> {
@@ -458,19 +808,112 @@ public class AdminGroupService {
                             .groupId(groupCoach.groupId())
                             .coachFirstName(coach.firstName())
                             .coachLastName(coach.lastName())
+                            .avatar(toMediaAssetResponse(avatarsByCoachId.get(coach.id())))
                             .birthDate(coach.birthDate())
                             .phone(coach.phone())
                             .email(coach.email())
+                            .specialization(coach.specialization())
                             .active(coach.active())
+                            .accountStatus(coach.accountStatus() == null ? null : coach.accountStatus().name())
+                            .workStatus(coach.workStatus() == null ? null : coach.workStatus().name())
                             .coachRole(groupCoach.role())
                             .assignedFrom(groupCoach.assignedFrom())
                             .assignedTo(groupCoach.assignedTo())
                             .createdAt(groupCoach.createdAt())
                             .updatedAt(groupCoach.updateAt())
+                            .load(buildGroupCoachLoad(
+                                    groupsCountByCoach.getOrDefault(coach.id(), 0),
+                                    weeklySessionsByCoach.getOrDefault(coach.id(), 0)
+                            ))
+                            .nextSession(toGroupCoachNextSession(nextSessionByCoach.get(coach.id())))
+                            .capabilities(new AdminGroupCoachOutput.Capabilities(
+                                    true,
+                                    coach.active(),
+                                    coach.active() && groupCoach.role() != CoachRole.MAIN && !hasMainCoach,
+                                    coach.active() && groupCoach.role() != CoachRole.ASSISTANT,
+                                    true
+                            ))
                             .build();
                 })
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Collection<AdminGroupCoachHistoryOutput> getGroupCoachHistory(UUID adminId, UUID groupId) {
+        verifyAdmin(adminId);
+        GroupDto group = groupPort.getGroupById(groupId);
+        verifyAdminBranchAccess(adminId, group.branchId());
+
+        List<GroupCoachDto> assignments = new ArrayList<>(groupCoachPort.getAssignmentsByGroupId(groupId));
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
+
+        Set<UUID> coachIds = assignments.stream()
+                .flatMap(item -> java.util.stream.Stream.of(item.coachId(), item.replacementCoachId()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, CoachDto> coachesById = coachPort.getCoaches(coachIds).stream()
+                .collect(Collectors.toMap(CoachDto::id, Function.identity()));
+        Map<UUID, MediaAsset> avatarsByCoachId = Optional.ofNullable(
+                mediaAvatarPort.findActiveAvatars(MediaOwnerType.COACH, coachIds)
+        ).orElseGet(Map::of);
+
+        return assignments.stream()
+                .map(item -> new AdminGroupCoachHistoryOutput(
+                        item.id(),
+                        toHistoryCoachRef(coachesById.get(item.coachId()), avatarsByCoachId),
+                        item.role(),
+                        item.assignedFrom(),
+                        item.assignedTo(),
+                        item.active(),
+                        item.removalReason(),
+                        toHistoryCoachRef(coachesById.get(item.replacementCoachId()), avatarsByCoachId),
+                        item.createdAt(),
+                        item.updateAt()
+                ))
+                .toList();
+    }
+
+    private AdminGroupCoachHistoryOutput.CoachRef toHistoryCoachRef(
+            CoachDto coach,
+            Map<UUID, MediaAsset> avatarsByCoachId
+    ) {
+        if (coach == null) {
+            return null;
+        }
+        return new AdminGroupCoachHistoryOutput.CoachRef(
+                coach.id(),
+                coach.firstName(),
+                coach.lastName(),
+                toMediaAssetResponse(avatarsByCoachId.get(coach.id()))
+        );
+    }
+
+    private AdminGroupCoachOutput.Load buildGroupCoachLoad(int groupsCount, int weeklySessionsCount) {
+        int percentage = (int) Math.round(weeklySessionsCount * 100.0 / COACH_WEEKLY_SESSION_LIMIT);
+        String status = percentage > 100 ? "OVERLOADED" : percentage >= 80 ? "HIGH" : "NORMAL";
+        return new AdminGroupCoachOutput.Load(
+                groupsCount,
+                weeklySessionsCount,
+                COACH_WEEKLY_SESSION_LIMIT,
+                percentage,
+                status
+        );
+    }
+
+    private AdminGroupCoachOutput.NextSession toGroupCoachNextSession(CoachSessionAdminView session) {
+        if (session == null) {
+            return null;
+        }
+        return new AdminGroupCoachOutput.NextSession(
+                session.sessionId(),
+                session.sessionDate(),
+                session.scheduledStartAt().toLocalTime(),
+                session.scheduledEndAt() == null ? null : session.scheduledEndAt().toLocalTime(),
+                session.status()
+        );
     }
 
     /* ================= SCHEDULE ================= */

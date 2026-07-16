@@ -1,6 +1,8 @@
 package kz.edu.soccerhub.organization.application.service;
 
 import kz.edu.soccerhub.common.dto.group.*;
+import kz.edu.soccerhub.common.dto.coach.CoachWorkingAvailability;
+import kz.edu.soccerhub.common.port.CoachWorkingAvailabilityPort;
 import kz.edu.soccerhub.organization.domain.model.GroupSchedule;
 import kz.edu.soccerhub.organization.domain.model.enums.ScheduleStatus;
 import kz.edu.soccerhub.organization.domain.repository.GroupScheduleRepository;
@@ -18,6 +20,7 @@ import java.util.UUID;
 public class GroupScheduleValidationService {
 
     private final GroupScheduleRepository groupScheduleRepository;
+    private final CoachWorkingAvailabilityPort coachWorkingAvailabilityPort;
 
     @Transactional(readOnly = true)
     public ScheduleValidationResult validate(UUID groupId, GroupScheduleValidationCommand command) {
@@ -105,6 +108,9 @@ public class GroupScheduleValidationService {
             }
         }
 
+        coachWorkingAvailabilityPort.findWorkingAvailability(command.coachId())
+                .ifPresent(availability -> validateWorkingAvailability(command, availability, conflicts));
+
         for (DayScheduleSlot slot : command.slots()) {
             List<GroupSchedule> existing = groupScheduleRepository
                     .findByGroupIdAndDayOfWeekAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
@@ -172,6 +178,51 @@ public class GroupScheduleValidationService {
         }
 
         return ScheduleValidationResult.of(conflicts);
+    }
+
+    private void validateWorkingAvailability(
+            GroupScheduleValidationCommand command,
+            CoachWorkingAvailability availability,
+            List<ScheduleValidationConflict> conflicts
+    ) {
+        for (DayScheduleSlot slot : command.slots()) {
+            if (!availability.days().contains(slot.dayOfWeek())) {
+                conflicts.add(new ScheduleValidationConflict(
+                        ScheduleValidationConflictCode.COACH_UNAVAILABLE_DAY,
+                        command.coachId(),
+                        slot.dayOfWeek(),
+                        slot.startTime(),
+                        slot.endTime(),
+                        availability.timeFrom(),
+                        availability.timeTo(),
+                        null,
+                        null,
+                        null,
+                        command.startDate(),
+                        command.endDate(),
+                        "Coach is not available on this day"
+                ));
+                continue;
+            }
+            if (slot.startTime().isBefore(availability.timeFrom())
+                    || slot.endTime().isAfter(availability.timeTo())) {
+                conflicts.add(new ScheduleValidationConflict(
+                        ScheduleValidationConflictCode.COACH_OUTSIDE_WORKING_HOURS,
+                        command.coachId(),
+                        slot.dayOfWeek(),
+                        slot.startTime(),
+                        slot.endTime(),
+                        availability.timeFrom(),
+                        availability.timeTo(),
+                        null,
+                        null,
+                        null,
+                        command.startDate(),
+                        command.endDate(),
+                        "Schedule is outside coach working hours"
+                ));
+            }
+        }
     }
 
     private boolean timeOverlaps(LocalTime startOne, LocalTime endOne, LocalTime startTwo, LocalTime endTwo) {

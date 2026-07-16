@@ -6,6 +6,7 @@ public record CoachAvailabilityResponse(
         List<String> days,
         String timeFrom,
         String timeTo,
-        String timezone
+        String timezone,
+        boolean configured
 ) {
 }

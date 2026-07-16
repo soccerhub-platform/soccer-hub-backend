@@ -14,5 +14,9 @@ public interface TrainingSessionPlanningPort {
 
     void reactivateScheduleCancelledSessions(Collection<UUID> scheduleIds, LocalDate fromDate);
 
+    int replaceCoachInFuturePlannedSessions(UUID groupId, UUID currentCoachId, UUID replacementCoachId, LocalDate fromDate);
+
+    int replaceScheduleInFuturePlannedSessions(UUID currentScheduleId, UUID replacementScheduleId, LocalDate fromDate);
+
     void materializeAllActiveSchedules();
 }

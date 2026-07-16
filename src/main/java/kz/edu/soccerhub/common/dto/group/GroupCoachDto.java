@@ -16,6 +16,8 @@ public record GroupCoachDto(
         boolean active,
         LocalDate assignedFrom,
         LocalDate assignedTo,
+        String removalReason,
+        UUID replacementCoachId,
         LocalDateTime createdAt,
         LocalDateTime updateAt
 ) {

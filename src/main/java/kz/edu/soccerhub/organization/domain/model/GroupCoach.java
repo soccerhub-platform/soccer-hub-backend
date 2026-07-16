@@ -41,4 +41,10 @@ public class GroupCoach extends AbstractAuditableEntity {
     @Column(name = "assigned_to")
     private LocalDate assignedTo;
 
+    @Column(name = "removal_reason")
+    private String removalReason;
+
+    @Column(name = "replacement_coach_id")
+    private UUID replacementCoachId;
+
 }

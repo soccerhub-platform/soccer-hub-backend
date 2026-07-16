@@ -219,31 +219,75 @@ public class AdminGroupController {
                 adminId,
                 groupId,
                 input.coachId(),
-                input.role()
+                input.role(),
+                input.assignedFrom(),
+                input.assignedTo()
         );
 
         return Map.of("groupCoachId", id);
     }
 
-    @DeleteMapping("/coaches/{groupCoachId}")
-    public void unassignCoach(
+    @GetMapping("/coaches/{groupCoachId}/removal-preview")
+    public ResponseEntity<AdminGroupCoachRemovalPreviewOutput> previewCoachRemoval(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID groupCoachId
     ) {
-        UUID adminId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(adminGroupService.previewCoachRemoval(UUID.fromString(jwt.getSubject()), groupCoachId));
+    }
 
-        adminGroupService.unassignCoachFromGroup(
-                adminId,
-                groupCoachId
+    @PostMapping("/coaches/{groupCoachId}/remove")
+    public ResponseEntity<Void> removeCoach(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupCoachId,
+            @RequestBody @Valid AdminRemoveGroupCoachInput input
+    ) {
+        adminGroupService.removeCoachFromGroup(UUID.fromString(jwt.getSubject()), groupCoachId, input);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/coaches/{groupCoachId}")
+    public ResponseEntity<Void> unassignCoachWithoutReplacement(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupCoachId
+    ) {
+        adminGroupService.removeCoachFromGroup(
+                UUID.fromString(jwt.getSubject()),
+                groupCoachId,
+                new AdminRemoveGroupCoachInput(null, LocalDate.now(), "Снятие тренера")
         );
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/coaches/{groupCoachId}")
+    public ResponseEntity<Void> updateCoachRole(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupCoachId,
+            @RequestBody @Valid AdminUpdateGroupCoachInput input
+    ) {
+        adminGroupService.updateGroupCoachRole(UUID.fromString(jwt.getSubject()), groupCoachId, input.role());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{groupId}/coaches")
-    public ResponseEntity<Map<String, Object>> getGroupCoaches(@PathVariable UUID groupId) {
-        Collection<AdminGroupCoachOutput> coaches = adminGroupService.getGroupCoaches(groupId);
+    public ResponseEntity<Map<String, Object>> getGroupCoaches(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId
+    ) {
+        UUID adminId = UUID.fromString(jwt.getSubject());
+        Collection<AdminGroupCoachOutput> coaches = adminGroupService.getGroupCoaches(adminId, groupId);
         return ResponseEntity.ok(Map.of(
                 "groupId", groupId,
                 "coaches", coaches
+        ));
+    }
+
+    @GetMapping("/{groupId}/coaches/history")
+    public ResponseEntity<Collection<AdminGroupCoachHistoryOutput>> getGroupCoachHistory(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID groupId
+    ) {
+        return ResponseEntity.ok(adminGroupService.getGroupCoachHistory(
+                UUID.fromString(jwt.getSubject()), groupId
         ));
     }
 

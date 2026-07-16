@@ -115,6 +115,36 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
             @Param("sessionId") UUID sessionId
     );
 
+    @Modifying
+    @Query("""
+        update TrainingSession ts
+        set ts.coachId = :replacementCoachId
+        where ts.groupId = :groupId
+          and ts.coachId = :currentCoachId
+          and ts.sessionDate >= :fromDate
+          and ts.status = kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.PLANNED
+    """)
+    int replaceCoachInFuturePlannedSessions(
+            @Param("groupId") UUID groupId,
+            @Param("currentCoachId") UUID currentCoachId,
+            @Param("replacementCoachId") UUID replacementCoachId,
+            @Param("fromDate") LocalDate fromDate
+    );
+
+    @Modifying
+    @Query("""
+        update TrainingSession ts
+        set ts.scheduleId = :replacementScheduleId
+        where ts.scheduleId = :currentScheduleId
+          and ts.sessionDate >= :fromDate
+          and ts.status = kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.PLANNED
+    """)
+    int replaceScheduleInFuturePlannedSessions(
+            @Param("currentScheduleId") UUID currentScheduleId,
+            @Param("replacementScheduleId") UUID replacementScheduleId,
+            @Param("fromDate") LocalDate fromDate
+    );
+
     int countByCoachIdAndSessionDateBeforeAndReportDoneFalseAndStatusNot(
             UUID coachId,
             LocalDate date,

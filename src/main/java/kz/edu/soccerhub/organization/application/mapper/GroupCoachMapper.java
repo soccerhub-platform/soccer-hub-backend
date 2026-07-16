@@ -16,6 +16,8 @@ public class GroupCoachMapper {
                 .active(groupCoach.isActive())
                 .assignedFrom(groupCoach.getAssignedFrom())
                 .assignedTo(groupCoach.getAssignedTo())
+                .removalReason(groupCoach.getRemovalReason())
+                .replacementCoachId(groupCoach.getReplacementCoachId())
                 .createdAt(groupCoach.getCreatedAt())
                 .updateAt(groupCoach.getUpdatedAt())
                 .build();

@@ -17,9 +17,15 @@ public interface GroupCoachPort {
 
     boolean unassignCoach(UUID groupCoachId);
 
+    boolean unassignCoach(UUID groupCoachId, LocalDate assignedTo, String reason, UUID replacementCoachId);
+
+    GroupCoachDto updateRole(UUID groupCoachId, CoachRole role);
+
     Optional<GroupCoachDto> findAssignmentById(UUID groupCoachId);
 
     Collection<GroupCoachDto> getActiveCoaches(UUID groupId);
+
+    Collection<GroupCoachDto> getAssignmentsByGroupId(UUID groupId);
 
     Collection<GroupCoachDto> getActiveAssignmentsByCoachId(UUID coachId);
 

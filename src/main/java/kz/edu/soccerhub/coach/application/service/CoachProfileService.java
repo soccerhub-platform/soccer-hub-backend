@@ -71,7 +71,8 @@ public class CoachProfileService {
     @Transactional(readOnly = true)
     public CoachAvailabilityResponse getAvailability(UUID currentUserId) {
         getCoachProfile(currentUserId);
-        CoachAvailability availability = coachAvailabilityRepository.findById(currentUserId)
+        Optional<CoachAvailability> storedAvailability = coachAvailabilityRepository.findById(currentUserId);
+        CoachAvailability availability = storedAvailability
                 .orElseGet(() -> CoachAvailability.builder()
                         .coachId(currentUserId)
                         .days("MON,TUE,WED,THU,FRI")
@@ -79,7 +80,7 @@ public class CoachProfileService {
                         .timeTo(LocalTime.of(20, 0))
                         .timezone(DEFAULT_TIMEZONE)
                         .build());
-        return toAvailabilityResponse(availability);
+        return toAvailabilityResponse(availability, storedAvailability.isPresent());
     }
 
     @Transactional
@@ -106,7 +107,7 @@ public class CoachProfileService {
         availability.setTimezone(request.timezone().trim());
 
         coachAvailabilityRepository.save(availability);
-        return toAvailabilityResponse(availability);
+        return toAvailabilityResponse(availability, true);
     }
 
     @Transactional(readOnly = true)
@@ -209,7 +210,7 @@ public class CoachProfileService {
         return profile;
     }
 
-    private CoachAvailabilityResponse toAvailabilityResponse(CoachAvailability availability) {
+    private CoachAvailabilityResponse toAvailabilityResponse(CoachAvailability availability, boolean configured) {
         List<String> days = Arrays.stream(availability.getDays().split(","))
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
@@ -218,7 +219,8 @@ public class CoachProfileService {
                 days,
                 availability.getTimeFrom().format(TIME_FORMAT),
                 availability.getTimeTo().format(TIME_FORMAT),
-                availability.getTimezone()
+                availability.getTimezone(),
+                configured
         );
     }
 

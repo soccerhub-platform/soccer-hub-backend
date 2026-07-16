@@ -13,12 +13,12 @@ import java.util.UUID;
 
 @Repository
 public interface GroupCoachRepository extends JpaRepository<GroupCoach, UUID> {
-    Optional<GroupCoach> findByGroupIdAndCoachId(UUID groupId, UUID coachId);
     boolean existsByGroupIdAndCoachIdAndActiveTrue(UUID groupId, UUID coachId);
     List<GroupCoach> findByGroupIdAndActiveTrue(UUID groupId);
+    List<GroupCoach> findByGroupIdOrderByAssignedFromDescCreatedAtDesc(UUID groupId);
     List<GroupCoach> findByCoachIdAndActiveTrue(UUID coachId);
     List<GroupCoach> findByCoachIdInAndGroupIdInAndActiveTrue(Set<UUID> coachIds, Set<UUID> groupIds);
     int countByGroupIdAndActiveTrue(UUID groupId);
 
-    boolean existsByGroupIdAndCoachIdAndRole(UUID groupId, UUID coachId, CoachRole role);
+    boolean existsByGroupIdAndRoleAndActiveTrue(UUID groupId, CoachRole role);
 }

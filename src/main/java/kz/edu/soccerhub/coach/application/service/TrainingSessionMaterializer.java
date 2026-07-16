@@ -72,6 +72,36 @@ public class TrainingSessionMaterializer implements TrainingSessionPlanningPort 
     }
 
     @Override
+    @Transactional
+    public int replaceCoachInFuturePlannedSessions(
+            UUID groupId,
+            UUID currentCoachId,
+            UUID replacementCoachId,
+            LocalDate fromDate
+    ) {
+        return trainingSessionRepository.replaceCoachInFuturePlannedSessions(
+                groupId,
+                currentCoachId,
+                replacementCoachId,
+                fromDate
+        );
+    }
+
+    @Override
+    @Transactional
+    public int replaceScheduleInFuturePlannedSessions(
+            UUID currentScheduleId,
+            UUID replacementScheduleId,
+            LocalDate fromDate
+    ) {
+        return trainingSessionRepository.replaceScheduleInFuturePlannedSessions(
+                currentScheduleId,
+                replacementScheduleId,
+                fromDate
+        );
+    }
+
+    @Override
     @Scheduled(cron = "0 10 3 * * *", zone = "Asia/Almaty")
     @Transactional
     public void materializeAllActiveSchedules() {

@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,7 +51,7 @@ class GroupScheduleServiceTest {
                 groupScheduleValidationService,
                 trainingSessionPlanningPort
         );
-        when(groupScheduleValidationService.validate(any(), any()))
+        lenient().when(groupScheduleValidationService.validate(any(), any()))
                 .thenReturn(ScheduleValidationResult.of(List.of()));
     }
 
@@ -122,6 +123,42 @@ class GroupScheduleServiceTest {
         verify(trainingSessionPlanningPort, never()).materializeSchedules(any());
         verify(trainingSessionPlanningPort, never()).cancelFuturePlannedSessions(any(), any(), any());
         verify(trainingSessionPlanningPort, never()).resyncSchedules(any(), any(), any());
+    }
+
+    @Test
+    void shouldReplaceCoachInScheduleAndFuturePlannedSessions() {
+        UUID groupId = UUID.randomUUID();
+        UUID currentCoachId = UUID.randomUUID();
+        UUID replacementCoachId = UUID.randomUUID();
+        LocalDate effectiveDate = LocalDate.of(2026, 7, 16);
+        GroupSchedule schedule = schedule(
+                groupId,
+                currentCoachId,
+                UUID.randomUUID(),
+                DayOfWeek.MONDAY,
+                effectiveDate.minusMonths(1),
+                effectiveDate.plusMonths(3)
+        );
+        when(groupScheduleRepository.findByGroupIdAndStatus(groupId, ScheduleStatus.ACTIVE))
+                .thenReturn(List.of(schedule));
+
+        int replaced = service.replaceCoach(groupId, currentCoachId, replacementCoachId, effectiveDate);
+
+        assertEquals(1, replaced);
+        assertEquals(currentCoachId, schedule.getCoachId());
+        assertEquals(effectiveDate.minusDays(1), schedule.getEndDate());
+        verify(trainingSessionPlanningPort).replaceCoachInFuturePlannedSessions(
+                groupId, currentCoachId, replacementCoachId, effectiveDate
+        );
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<GroupSchedule>> replacements = ArgumentCaptor.forClass(List.class);
+        verify(groupScheduleRepository).saveAll(replacements.capture());
+        GroupSchedule replacement = replacements.getValue().getFirst();
+        assertEquals(replacementCoachId, replacement.getCoachId());
+        assertEquals(effectiveDate, replacement.getStartDate());
+        verify(trainingSessionPlanningPort).replaceScheduleInFuturePlannedSessions(
+                schedule.getId(), replacement.getId(), effectiveDate
+        );
     }
 
     private UpdateScheduleBatchCommand command(

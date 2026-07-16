@@ -188,9 +188,8 @@ public class CoachService implements CoachPort {
         if (!coachProfileRepository.existsById(coachId)) {
             throw new NotFoundException("Coach not found", coachId);
         }
-        CoachAvailability availability = coachAvailabilityRepository.findById(coachId)
-                .orElseGet(() -> defaultAvailability(coachId));
-        return toAvailabilityResponse(availability);
+        Optional<CoachAvailability> availability = coachAvailabilityRepository.findById(coachId);
+        return toAvailabilityResponse(availability.orElseGet(() -> defaultAvailability(coachId)), availability.isPresent());
     }
 
     @Override
@@ -212,7 +211,7 @@ public class CoachService implements CoachPort {
         availability.setTimeTo(LocalTime.parse(request.timeTo().trim(), TIME_FORMAT));
         availability.setTimezone(request.timezone().trim());
         coachAvailabilityRepository.save(availability);
-        return toAvailabilityResponse(availability);
+        return toAvailabilityResponse(availability, true);
     }
 
     @Override
@@ -659,7 +658,7 @@ public class CoachService implements CoachPort {
                 .build();
     }
 
-    private CoachAvailabilityResponse toAvailabilityResponse(CoachAvailability availability) {
+    private CoachAvailabilityResponse toAvailabilityResponse(CoachAvailability availability, boolean configured) {
         List<String> days = Arrays.stream(availability.getDays().split(","))
                 .map(String::trim)
                 .filter(value -> !value.isBlank())
@@ -668,7 +667,8 @@ public class CoachService implements CoachPort {
                 days,
                 availability.getTimeFrom().format(TIME_FORMAT),
                 availability.getTimeTo().format(TIME_FORMAT),
-                availability.getTimezone()
+                availability.getTimezone(),
+                configured
         );
     }
 

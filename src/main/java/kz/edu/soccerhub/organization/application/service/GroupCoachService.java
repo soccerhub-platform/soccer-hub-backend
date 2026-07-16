@@ -48,24 +48,19 @@ public class GroupCoachService implements GroupCoachPort {
             ));
         }
 
-        if (role == CoachRole.MAIN && groupCoachRepository.existsByGroupIdAndCoachIdAndRole(groupId, coachId, CoachRole.MAIN)) {
+        if (role == CoachRole.MAIN && groupCoachRepository.existsByGroupIdAndRoleAndActiveTrue(groupId, CoachRole.MAIN)) {
             throw new BadRequestException("Main coach already exist in this group", groupId);
         }
 
-        // 2. Проверяем, был ли раньше
-        GroupCoach groupCoach = groupCoachRepository
-                .findByGroupIdAndCoachId(groupId, coachId)
-                .orElseGet(() -> GroupCoach.builder()
-                        .id(UUID.randomUUID())
-                        .groupId(groupId)
-                        .coachId(coachId)
-                        .build()
-                );
-
-        groupCoach.setRole(role);
-        groupCoach.setActive(true);
-        groupCoach.setAssignedFrom(resolvedAssignedFrom);
-        groupCoach.setAssignedTo(assignedTo);
+        GroupCoach groupCoach = GroupCoach.builder()
+                .id(UUID.randomUUID())
+                .groupId(groupId)
+                .coachId(coachId)
+                .role(role)
+                .active(true)
+                .assignedFrom(resolvedAssignedFrom)
+                .assignedTo(assignedTo)
+                .build();
 
         GroupCoach saved = groupCoachRepository.save(groupCoach);
 
@@ -77,6 +72,12 @@ public class GroupCoachService implements GroupCoachPort {
     @Override
     @Transactional
     public boolean unassignCoach(UUID groupCoachId) {
+        return unassignCoach(groupCoachId, LocalDate.now(), null, null);
+    }
+
+    @Override
+    @Transactional
+    public boolean unassignCoach(UUID groupCoachId, LocalDate assignedTo, String reason, UUID replacementCoachId) {
 
         GroupCoach groupCoach = groupCoachRepository
                 .findById(groupCoachId)
@@ -89,13 +90,39 @@ public class GroupCoachService implements GroupCoachPort {
         }
 
         groupCoach.setActive(false);
-        groupCoach.setAssignedTo(LocalDate.now());
+        groupCoach.setAssignedTo(assignedTo == null ? LocalDate.now() : assignedTo);
+        groupCoach.setRemovalReason(reason);
+        groupCoach.setReplacementCoachId(replacementCoachId);
 
         groupCoachRepository.save(groupCoach);
 
         log.info("Coach {} unassigned from group {}", groupCoach.getCoachId(), groupCoach.getGroupId());
 
         return true;
+    }
+
+    @Override
+    @Transactional
+    public GroupCoachDto updateRole(UUID groupCoachId, CoachRole role) {
+        if (role == null) {
+            throw new BadRequestException("Coach role is required", groupCoachId);
+        }
+
+        GroupCoach groupCoach = groupCoachRepository.findById(groupCoachId)
+                .orElseThrow(() -> new NotFoundException("Group coach data not found", groupCoachId));
+        if (!groupCoach.isActive()) {
+            throw new BadRequestException("Inactive coach assignment cannot be changed", groupCoachId);
+        }
+        if (groupCoach.getRole() == role) {
+            return GroupCoachMapper.toDto(groupCoach);
+        }
+        if (role == CoachRole.MAIN
+                && groupCoachRepository.existsByGroupIdAndRoleAndActiveTrue(groupCoach.getGroupId(), CoachRole.MAIN)) {
+            throw new BadRequestException("Main coach already exist in this group", groupCoach.getGroupId());
+        }
+
+        groupCoach.setRole(role);
+        return GroupCoachMapper.toDto(groupCoachRepository.save(groupCoach));
     }
 
     @Override
@@ -113,6 +140,15 @@ public class GroupCoachService implements GroupCoachPort {
                 .map(GroupCoachMapper::toDto)
                 .collect(Collectors.toList());
 
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Collection<GroupCoachDto> getAssignmentsByGroupId(UUID groupId) {
+        return groupCoachRepository.findByGroupIdOrderByAssignedFromDescCreatedAtDesc(groupId)
+                .stream()
+                .map(GroupCoachMapper::toDto)
+                .toList();
     }
 
     @Override

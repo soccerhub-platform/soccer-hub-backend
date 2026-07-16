@@ -26,6 +26,8 @@ public interface GroupSchedulePort {
 
     void cancelGroupSchedules(UUID groupId);
 
+    int replaceCoach(UUID groupId, UUID currentCoachId, UUID replacementCoachId, LocalDate fromDate);
+
     List<GroupScheduleDto> getActiveSchedulesByGroup(UUID groupId);
 
     List<GroupScheduleDto> getActiveSchedulesByGroup(UUID groupId, LocalDate date);
