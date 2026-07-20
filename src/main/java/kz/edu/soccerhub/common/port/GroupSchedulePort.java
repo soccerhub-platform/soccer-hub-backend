@@ -37,4 +37,6 @@ public interface GroupSchedulePort {
     List<GroupScheduleDto> getActiveSchedulesByCoach(UUID coachId, LocalDate date);
 
     List<GroupScheduleDto> getActiveSchedulesByCoachAndDay(UUID coachId, DayOfWeek dayOfWeek);
+
+    List<GroupScheduleDto> getActiveSchedules(LocalDate from, LocalDate to);
 }

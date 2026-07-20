@@ -24,6 +24,7 @@ import kz.edu.soccerhub.dispatcher.application.service.PasswordGenerator;
 import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
 import kz.edu.soccerhub.media.domain.enums.MediaVariant;
 import kz.edu.soccerhub.media.domain.model.MediaAsset;
+import kz.edu.soccerhub.organization.domain.repository.LocationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -63,6 +64,9 @@ public class AdminCoachService {
     private final ClientPort clientPort;
     private final MediaAvatarPort mediaAvatarPort;
     private final MediaAccessPort mediaAccessPort;
+    private final BranchPort branchPort;
+    private final GroupActivityPort groupActivityPort;
+    private final LocationRepository locationRepository;
 
     @Transactional
     public MediaAssetResponse uploadCoachAvatar(UUID adminId, UUID coachId, MultipartFile file) {
@@ -369,6 +373,19 @@ public class AdminCoachService {
                 })
                 .toList();
         kz.edu.soccerhub.coach.application.dto.profile.CoachAvailabilityResponse availability = coachPort.getAvailability(trainerId);
+        List<AdminTrainerOverviewOutput.BranchItem> branches = branchPort
+                .findAllByIds(coachPort.getBranchIds(trainerId))
+                .stream()
+                .filter(branch -> allowedBranchIds.contains(branch.id()))
+                .map(branch -> new AdminTrainerOverviewOutput.BranchItem(branch.id(), branch.name()))
+                .sorted(Comparator.comparing(AdminTrainerOverviewOutput.BranchItem::name))
+                .toList();
+        LocalDate weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        int substitutionsThisWeek = Math.toIntExact(groupActivityPort.countCoachSubstitutions(
+                trainerId,
+                weekStart.atStartOfDay(),
+                weekStart.plusWeeks(1).atStartOfDay()
+        ));
 
         return new AdminTrainerOverviewOutput(
                 new AdminTrainerOverviewOutput.Trainer(
@@ -391,6 +408,7 @@ public class AdminCoachService {
                 ),
                 buildAttentionItems(coach, profile, nextSession),
                 groups,
+                branches,
                 new AdminTrainerOverviewOutput.Availability(
                         availability.days(),
                         availability.timeFrom(),
@@ -398,7 +416,8 @@ public class AdminCoachService {
                         availability.timezone()
                 ),
                 nextSession,
-                lastReport
+                lastReport,
+                substitutionsThisWeek
         );
     }
 
@@ -757,6 +776,10 @@ public class AdminCoachService {
             );
         }
 
+        Map<UUID, MediaAsset> coachAvatars = Optional.ofNullable(
+                mediaAvatarPort.findActiveAvatars(MediaOwnerType.COACH, coachIds)
+        ).orElse(Map.of());
+
         List<GroupDto> groups = new ArrayList<>(groupPort.getGroupsByBranch(branchId));
         Set<UUID> groupIds = groups.stream().map(GroupDto::groupId).collect(Collectors.toSet());
         Map<UUID, GroupDto> groupsById = groups.stream().collect(Collectors.toMap(GroupDto::groupId, group -> group));
@@ -772,6 +795,9 @@ public class AdminCoachService {
         LocalDate weekEnd = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY));
 
         List<CoachSessionAdminView> weekSessions = coachPort.getSessions(coachIds, groupIds, weekStart, weekEnd);
+        List<GroupScheduleDto> weekSchedules = groupSchedulePort.getActiveSchedules(weekStart, weekEnd).stream()
+                .filter(schedule -> groupIds.contains(schedule.groupId()))
+                .toList();
         List<CoachSessionAdminView> overdueSessions = coachPort.getOverdueReportSessions(coachIds, groupIds, today);
         List<CoachSessionAdminView> reportedSessions = coachPort.getReportedSessions(coachIds, groupIds);
 
@@ -780,6 +806,22 @@ public class AdminCoachService {
         Map<UUID, Integer> plannedByCoach = new HashMap<>();
         Map<UUID, Integer> pendingReportByCoach = new HashMap<>();
         Map<UUID, Integer> todayByCoach = new HashMap<>();
+        Map<UUID, Integer> weeklyScheduleByCoach = new HashMap<>();
+        Map<UUID, Integer> todayScheduleByCoach = new HashMap<>();
+        for (GroupScheduleDto schedule : weekSchedules) {
+            UUID effectiveCoachId = schedule.substitution() && schedule.substitutionCoachId() != null
+                    ? schedule.substitutionCoachId()
+                    : schedule.coachId();
+            if (!coachIds.contains(effectiveCoachId)) {
+                continue;
+            }
+            weeklyScheduleByCoach.merge(effectiveCoachId, 1, Integer::sum);
+            if (schedule.dayOfWeek() == today.getDayOfWeek()
+                    && !schedule.startDate().isAfter(today)
+                    && !schedule.endDate().isBefore(today)) {
+                todayScheduleByCoach.merge(effectiveCoachId, 1, Integer::sum);
+            }
+        }
         LocalDateTime now = LocalDateTime.now();
         for (CoachSessionAdminView session : weekSessions) {
             if ("CANCELLED".equals(session.status())) {
@@ -842,10 +884,19 @@ public class AdminCoachService {
                 withoutGroups++;
             }
 
-            int weeklyCount = weeklyByCoach.getOrDefault(coach.id(), 0);
+            int weeklyCount = Math.max(
+                    weeklyByCoach.getOrDefault(coach.id(), 0),
+                    weeklyScheduleByCoach.getOrDefault(coach.id(), 0)
+            );
             int completedCount = completedByCoach.getOrDefault(coach.id(), 0);
-            int plannedCount = plannedByCoach.getOrDefault(coach.id(), 0);
-            int todayCount = todayByCoach.getOrDefault(coach.id(), 0);
+            int plannedCount = Math.max(
+                    plannedByCoach.getOrDefault(coach.id(), 0),
+                    Math.max(0, weeklyCount - completedCount)
+            );
+            int todayCount = Math.max(
+                    todayByCoach.getOrDefault(coach.id(), 0),
+                    todayScheduleByCoach.getOrDefault(coach.id(), 0)
+            );
             if (todayCount > 0) {
                 withSessionsToday++;
             }
@@ -869,6 +920,7 @@ public class AdminCoachService {
                     coach.vacationTo(),
                     coach.workStatusReason(),
                     coach.specialization(),
+                    toMediaAssetResponse(coachAvatars.get(coach.id())),
                     coach.createdAt(),
                     coachGroups,
                     weeklyCount,
@@ -1385,9 +1437,22 @@ public class AdminCoachService {
         }
 
         List<GroupCoachDto> groupLinks = new ArrayList<>(groupCoachPort.getActiveAssignmentsByCoachId(coachId));
+        List<GroupCoachDto> assignmentHistoryLinks = new ArrayList<>(groupCoachPort.getAssignmentsByCoachId(coachId));
+        assignmentHistoryLinks.removeIf(GroupCoachDto::active);
         Set<UUID> groupIds = groupLinks.stream().map(GroupCoachDto::groupId).collect(Collectors.toSet());
-        Map<UUID, GroupDto> groupsById = groupPort.getGroupsByIds(groupIds).stream()
+        Set<UUID> allGroupIds = Stream.concat(
+                        groupIds.stream(),
+                        assignmentHistoryLinks.stream().map(GroupCoachDto::groupId)
+                )
+                .collect(Collectors.toSet());
+        Map<UUID, GroupDto> groupsById = groupPort.getGroupsByIds(allGroupIds).stream()
                 .collect(Collectors.toMap(GroupDto::groupId, group -> group));
+        MediaAsset coachAvatar = Optional.ofNullable(mediaAvatarPort.findActiveAvatar(MediaOwnerType.COACH, coachId))
+                .flatMap(optional -> optional)
+                .orElse(null);
+        Map<UUID, MediaAsset> groupAvatars = Optional.ofNullable(
+                mediaAvatarPort.findActiveAvatars(MediaOwnerType.GROUP, allGroupIds)
+        ).orElse(Map.of());
 
         LocalDate today = LocalDate.now();
         LocalDate weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
@@ -1435,6 +1500,13 @@ public class AdminCoachService {
         int loadPercent = loadPercentage(usedSlots, maxSlots);
 
         List<CoachSessionAdminView> upcomingSessionViews = coachPort.getUpcomingSessions(coachId, today);
+        Map<UUID, String> upcomingLocationNames = locationRepository.findAllById(
+                        upcomingSessionViews.stream()
+                                .map(CoachSessionAdminView::locationId)
+                                .filter(java.util.Objects::nonNull)
+                                .collect(Collectors.toSet())
+                ).stream()
+                .collect(Collectors.toMap(location -> location.getId(), location -> location.getName()));
         Map<UUID, CoachSessionAdminView> nextSessionByGroupId = upcomingSessionViews.stream()
                 .sorted(Comparator.comparing(CoachSessionAdminView::sessionDate)
                         .thenComparing(CoachSessionAdminView::scheduledStartAt))
@@ -1457,6 +1529,13 @@ public class AdminCoachService {
                             session.scheduledEndAt().toLocalTime(),
                             session.groupId(),
                             groupName,
+                            session.scheduleType(),
+                            session.locationId() == null
+                                    ? null
+                                    : new AdminCoachProfileOutput.LocationItem(
+                                            session.locationId(),
+                                            upcomingLocationNames.get(session.locationId())
+                                    ),
                             session.status(),
                             session.reportDone()
                     );
@@ -1541,14 +1620,41 @@ public class AdminCoachService {
                     return new AdminCoachProfileOutput.GroupItem(
                             group.groupId(),
                             group.name(),
+                            toMediaAssetResponse(groupAvatars.get(group.groupId())),
                             group.branchId(),
                             link.id(),
                             link.role() == null ? null : link.role().name(),
+                            link.assignedFrom(),
+                            link.assignedTo(),
+                            group.ageFrom(),
+                            group.ageTo(),
                             studentsCount,
                             activeStudentsCount,
                             weeklySlotsCount,
                             nextSession,
                             riskFlags
+                    );
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        List<AdminCoachProfileOutput.GroupAssignmentHistoryItem> groupAssignmentHistory = assignmentHistoryLinks.stream()
+                .map(link -> {
+                    GroupDto group = groupsById.get(link.groupId());
+                    if (group == null) {
+                        return null;
+                    }
+                    return new AdminCoachProfileOutput.GroupAssignmentHistoryItem(
+                            link.id(),
+                            group.groupId(),
+                            group.name(),
+                            toMediaAssetResponse(groupAvatars.get(group.groupId())),
+                            link.role() == null ? null : link.role().name(),
+                            link.assignedFrom(),
+                            link.assignedTo(),
+                            link.removalReason(),
+                            link.createdAt(),
+                            link.updateAt()
                     );
                 })
                 .filter(java.util.Objects::nonNull)
@@ -1563,6 +1669,7 @@ public class AdminCoachService {
                 coach.phone(),
                 coach.specialization(),
                 coach.bio(),
+                toMediaAssetResponse(coachAvatar),
                 coach.active(),
                 coach.accountStatus() == null ? null : coach.accountStatus().name(),
                 coach.workStatus() == null ? null : coach.workStatus().name(),
@@ -1580,6 +1687,7 @@ public class AdminCoachService {
                         loadPercent
                 ),
                 groups,
+                groupAssignmentHistory,
                 weeklySchedule,
                 upcomingSessions,
                 new AdminCoachProfileOutput.Reports(
@@ -1784,6 +1892,10 @@ public class AdminCoachService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private MediaAssetResponse toMediaAssetResponse(MediaAsset avatar) {
+        return avatar == null ? null : mediaAccessPort.toResponse(avatar);
     }
 
     private boolean overlaps(LocalDate startOne, LocalDate endOne, LocalDate startTwo, LocalDate endTwo) {

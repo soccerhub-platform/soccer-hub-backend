@@ -1,11 +1,15 @@
 package kz.edu.soccerhub.admin.api;
 
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentDetailsOutput;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentAttendanceOutput;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentContractsOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentMembershipHistoryOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentRiskCode;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentUpdateInput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsPageOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsQuery;
 import kz.edu.soccerhub.admin.application.service.AdminStudentReadService;
+import kz.edu.soccerhub.admin.application.service.AdminStudentService;
 import kz.edu.soccerhub.client.application.StudentAvatarService;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
@@ -15,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -22,13 +27,17 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
+import java.time.LocalDate;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/admin/students")
@@ -36,6 +45,7 @@ import java.util.UUID;
 public class AdminStudentController {
 
     private final AdminStudentReadService adminStudentReadService;
+    private final AdminStudentService adminStudentService;
     private final StudentAvatarService studentAvatarService;
 
     @GetMapping
@@ -70,6 +80,16 @@ public class AdminStudentController {
         return ResponseEntity.ok(adminStudentReadService.getStudent(UUID.fromString(jwt.getSubject()), playerId));
     }
 
+    @PatchMapping("/{playerId}")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<AdminStudentDetailsOutput> update(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID playerId,
+            @Valid @RequestBody AdminStudentUpdateInput input
+    ) {
+        return ResponseEntity.ok(adminStudentService.update(UUID.fromString(jwt.getSubject()), playerId, input));
+    }
+
     @GetMapping("/{playerId}/memberships")
     @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<AdminStudentMembershipHistoryOutput> getMembershipHistory(
@@ -77,6 +97,35 @@ public class AdminStudentController {
             @PathVariable UUID playerId
     ) {
         return ResponseEntity.ok(adminStudentReadService.getMembershipHistory(UUID.fromString(jwt.getSubject()), playerId));
+    }
+
+    @GetMapping("/{playerId}/attendance")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<AdminStudentAttendanceOutput> getAttendance(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID playerId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) UUID groupId,
+            @RequestParam(required = false) String status
+    ) {
+        return ResponseEntity.ok(adminStudentReadService.getAttendance(
+                UUID.fromString(jwt.getSubject()),
+                playerId,
+                from,
+                to,
+                groupId,
+                status
+        ));
+    }
+
+    @GetMapping("/{playerId}/contracts")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<AdminStudentContractsOutput> getContracts(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID playerId
+    ) {
+        return ResponseEntity.ok(adminStudentReadService.getContracts(UUID.fromString(jwt.getSubject()), playerId));
     }
 
     @PostMapping("/{playerId}/avatar")

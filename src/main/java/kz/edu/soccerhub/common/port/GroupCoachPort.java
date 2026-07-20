@@ -27,6 +27,8 @@ public interface GroupCoachPort {
 
     Collection<GroupCoachDto> getAssignmentsByGroupId(UUID groupId);
 
+    Collection<GroupCoachDto> getAssignmentsByCoachId(UUID coachId);
+
     Collection<GroupCoachDto> getActiveAssignmentsByCoachId(UUID coachId);
 
     Collection<GroupCoachDto> getActiveAssignmentsByCoachIdsAndGroupIds(Set<UUID> coachIds, Set<UUID> groupIds);

@@ -79,6 +79,18 @@ public interface TrainingSessionRepository extends JpaRepository<TrainingSession
             LocalDate to
     );
 
+    Optional<TrainingSession> findFirstByGroupIdAndStatusNotAndScheduledStartAtGreaterThanEqualOrderByScheduledStartAtAsc(
+            UUID groupId,
+            TrainingSessionStatus status,
+            LocalDateTime startsAt
+    );
+
+    List<TrainingSession> findByGroupIdInAndSessionDateBetweenOrderBySessionDateDescScheduledStartAtDesc(
+            Set<UUID> groupIds,
+            LocalDate from,
+            LocalDate to
+    );
+
     @Query("""
         select count(ts) > 0
         from TrainingSession ts

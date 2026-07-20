@@ -9,6 +9,8 @@ import kz.edu.soccerhub.client.domain.repository.ClientRepository;
 import kz.edu.soccerhub.client.domain.repository.ContractRepository;
 import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
+import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
+import kz.edu.soccerhub.common.dto.student.StudentUpdateCommand;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.BranchPort;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
@@ -27,6 +29,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class ClientServiceTest {
@@ -112,5 +115,38 @@ class ClientServiceTest {
         assertEquals("ACTIVE", item.contractStatus());
         assertEquals(LocalDate.of(2026, 6, 24), item.contractStartDate());
         assertEquals(LocalDate.of(2026, 8, 31), item.contractEndDate());
+    }
+
+    @Test
+    void shouldUpdateStudentProfileFields() {
+        UUID playerId = UUID.randomUUID();
+        Client parent = Client.builder().id(UUID.randomUUID()).branchId(UUID.randomUUID()).build();
+        Player player = Player.builder().id(playerId).firstName("Old").lastName("Name").parent(parent).build();
+        LocalDate birthDate = LocalDate.of(2014, 3, 12);
+
+        when(playerRepository.findWithParentById(playerId)).thenReturn(java.util.Optional.of(player));
+        when(playerRepository.save(player)).thenReturn(player);
+
+        ClientService service = new ClientService(
+                clientRepository,
+                playerRepository,
+                contractRepository,
+                branchPort,
+                authPort,
+                groupMembershipPort,
+                groupMembershipSyncService
+        );
+
+        StudentProfileDto result = service.updateStudent(
+                playerId,
+                new StudentUpdateCommand("New", "Student", birthDate, "Goalkeeper")
+        );
+
+        assertEquals("New Student", result.playerFullName());
+        assertEquals("New", result.firstName());
+        assertEquals("Student", result.lastName());
+        assertEquals(birthDate, result.birthDate());
+        assertEquals("Goalkeeper", result.position());
+        verify(playerRepository).save(player);
     }
 }

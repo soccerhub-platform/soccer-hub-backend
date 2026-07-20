@@ -22,6 +22,7 @@ import kz.edu.soccerhub.organization.domain.repository.GroupScheduleRepository;
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceTimelineRecordDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
 import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
@@ -472,6 +473,57 @@ public class CoachService implements CoachPort {
 
     @Override
     @Transactional(readOnly = true)
+    public List<PlayerAttendanceTimelineRecordDto> getAttendanceTimeline(
+            UUID playerId,
+            Set<UUID> groupIds,
+            LocalDate from,
+            LocalDate to
+    ) {
+        if (playerId == null || groupIds == null || groupIds.isEmpty() || from == null || to == null) {
+            return List.of();
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        List<TrainingSession> sessions = trainingSessionRepository
+                .findByGroupIdInAndSessionDateBetweenOrderBySessionDateDescScheduledStartAtDesc(groupIds, from, to)
+                .stream()
+                .filter(session -> session.getStatus() != TrainingSessionStatus.CANCELLED)
+                .filter(session -> !session.getScheduledStartAt().isAfter(now))
+                .toList();
+        if (sessions.isEmpty()) {
+            return List.of();
+        }
+
+        Set<UUID> sessionIds = sessions.stream().map(TrainingSession::getId).collect(Collectors.toSet());
+        Map<UUID, TrainingSessionAttendance> attendanceBySessionId = trainingSessionAttendanceRepository
+                .findBySessionIdInAndPlayerId(sessionIds, playerId)
+                .stream()
+                .collect(Collectors.toMap(TrainingSessionAttendance::getSessionId, item -> item));
+
+        return sessions.stream()
+                .map(session -> {
+                    TrainingSessionAttendance attendance = attendanceBySessionId.get(session.getId());
+                    String effectiveStatus = session.getStatus() == TrainingSessionStatus.PLANNED
+                            && session.getScheduledEndAt().isBefore(now)
+                            ? "OVERDUE"
+                            : session.getStatus().name();
+                    return new PlayerAttendanceTimelineRecordDto(
+                            session.getId(),
+                            session.getGroupId(),
+                            session.getSessionDate(),
+                            session.getScheduledStartAt(),
+                            session.getScheduledEndAt(),
+                            session.getStatus(),
+                            effectiveStatus,
+                            attendance == null ? null : attendance.getStatus(),
+                            attendance == null ? null : attendance.getComment()
+                    );
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<SessionAttendanceSummaryDto> getSessionAttendanceSummaries(Set<UUID> sessionIds) {
         if (sessionIds == null || sessionIds.isEmpty()) {
             return List.of();
@@ -615,6 +667,7 @@ public class CoachService implements CoachPort {
                 session.getGroupId(),
                 session.getScheduleId(),
                 scheduleType,
+                session.getLocationId(),
                 session.getSessionDate(),
                 session.getScheduledStartAt(),
                 session.getScheduledEndAt(),

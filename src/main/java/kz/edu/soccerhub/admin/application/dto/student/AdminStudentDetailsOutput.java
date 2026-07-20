@@ -21,13 +21,17 @@ public record AdminStudentDetailsOutput(
         AttendanceSummaryBlock attendanceSummary,
         List<RecentPaymentBlock> recentPayments,
         List<RecentAttendanceBlock> recentAttendance,
-        List<AdminStudentRiskOutput> risks
+        List<AdminStudentRiskOutput> risks,
+        CapabilitiesBlock capabilities
 ) {
     public record PlayerBlock(
             UUID id,
             String fullName,
+            String firstName,
+            String lastName,
             LocalDate birthDate,
             Integer age,
+            String position,
             MediaAssetResponse avatar
     ) {
     }
@@ -47,6 +51,7 @@ public record AdminStudentDetailsOutput(
             MediaAssetResponse avatar,
             String coachName,
             String scheduleLabel,
+            UUID nextSessionId,
             LocalDateTime nextSessionAt
     ) {
     }
@@ -92,6 +97,12 @@ public record AdminStudentDetailsOutput(
             LocalDate date,
             String groupName,
             TrainingSessionAttendanceStatus status
+    ) {
+    }
+
+    public record CapabilitiesBlock(
+            boolean canEdit,
+            boolean canManageAvatar
     ) {
     }
 }

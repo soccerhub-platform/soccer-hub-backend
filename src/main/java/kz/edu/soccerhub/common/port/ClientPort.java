@@ -6,6 +6,7 @@ import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
 import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
+import kz.edu.soccerhub.common.dto.student.StudentUpdateCommand;
 
 import java.util.List;
 import java.time.LocalDate;
@@ -34,6 +35,8 @@ public interface ClientPort {
     List<StudentProfileDto> getStudentProfilesByBranch(UUID branchId);
 
     StudentProfileDto getStudentProfile(UUID playerId);
+
+    StudentProfileDto updateStudent(UUID playerId, StudentUpdateCommand command);
 
     long countStudentsAsOf(
             UUID branchId,

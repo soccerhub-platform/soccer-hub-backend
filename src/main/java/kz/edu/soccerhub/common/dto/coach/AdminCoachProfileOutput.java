@@ -8,6 +8,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+
 public record AdminCoachProfileOutput(
         UUID coachId,
         String firstName,
@@ -17,6 +19,7 @@ public record AdminCoachProfileOutput(
         String phone,
         String specialization,
         String description,
+        MediaAssetResponse avatar,
         boolean active,
         String accountStatus,
         String workStatus,
@@ -25,6 +28,7 @@ public record AdminCoachProfileOutput(
         String workStatusReason,
         Load load,
         List<GroupItem> groups,
+        List<GroupAssignmentHistoryItem> groupAssignmentHistory,
         List<WeeklyScheduleItem> weeklySchedule,
         List<UpcomingSessionItem> upcomingSessions,
         Reports reports,
@@ -33,14 +37,32 @@ public record AdminCoachProfileOutput(
     public record GroupItem(
             UUID groupId,
             String groupName,
+            MediaAssetResponse avatar,
             UUID branchId,
             UUID groupCoachId,
             String role,
+            LocalDate assignedFrom,
+            LocalDate assignedTo,
+            Integer ageFrom,
+            Integer ageTo,
             int studentsCount,
             int activeStudentsCount,
             int weeklySlotsCount,
             NextSessionItem nextSession,
             List<RiskFlagItem> riskFlags
+    ) {}
+
+    public record GroupAssignmentHistoryItem(
+            UUID groupCoachId,
+            UUID groupId,
+            String groupName,
+            MediaAssetResponse avatar,
+            String role,
+            LocalDate assignedFrom,
+            LocalDate assignedTo,
+            String removalReason,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
     ) {}
 
     public record NextSessionItem(
@@ -101,8 +123,15 @@ public record AdminCoachProfileOutput(
             LocalTime endTime,
             UUID groupId,
             String groupName,
+            String scheduleType,
+            LocationItem location,
             String status,
             boolean reportDone
+    ) {}
+
+    public record LocationItem(
+            UUID id,
+            String name
     ) {}
 
     public record Reports(

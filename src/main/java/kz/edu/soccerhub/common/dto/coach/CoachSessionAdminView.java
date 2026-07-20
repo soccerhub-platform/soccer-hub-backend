@@ -10,6 +10,7 @@ public record CoachSessionAdminView(
         UUID groupId,
         UUID scheduleId,
         String scheduleType,
+        UUID locationId,
         LocalDate sessionDate,
         LocalDateTime scheduledStartAt,
         LocalDateTime scheduledEndAt,
@@ -17,4 +18,20 @@ public record CoachSessionAdminView(
         boolean reportDone,
         LocalDateTime updatedAt
 ) {
+    public CoachSessionAdminView(
+            UUID sessionId,
+            UUID coachId,
+            UUID groupId,
+            UUID scheduleId,
+            String scheduleType,
+            LocalDate sessionDate,
+            LocalDateTime scheduledStartAt,
+            LocalDateTime scheduledEndAt,
+            String status,
+            boolean reportDone,
+            LocalDateTime updatedAt
+    ) {
+        this(sessionId, coachId, groupId, scheduleId, scheduleType, null, sessionDate,
+                scheduledStartAt, scheduledEndAt, status, reportDone, updatedAt);
+    }
 }

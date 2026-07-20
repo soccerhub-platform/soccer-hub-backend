@@ -18,6 +18,7 @@ import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
 import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
+import kz.edu.soccerhub.common.dto.student.StudentUpdateCommand;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.BranchPort;
@@ -184,6 +185,20 @@ public class ClientService implements ClientPort {
     }
 
     @Override
+    @Transactional
+    public StudentProfileDto updateStudent(UUID playerId, StudentUpdateCommand command) {
+        Player player = playerRepository.findWithParentById(playerId)
+                .orElseThrow(() -> new NotFoundException("Player not found", playerId));
+
+        player.setFirstName(command.firstName());
+        player.setLastName(command.lastName());
+        player.setBirthDate(command.birthDate());
+        player.setPosition(command.position());
+
+        return toStudentProfile(playerRepository.save(player));
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public long countStudentsAsOf(UUID branchId, LocalDate date, String timezone) {
         ZoneId zoneId = resolveZone(timezone);
@@ -312,6 +327,9 @@ public class ClientService implements ClientPort {
                 client == null ? null : client.getBranchId(),
                 player.getId(),
                 joinName(player.getFirstName(), player.getLastName()),
+                player.getFirstName(),
+                player.getLastName(),
+                player.getPosition(),
                 player.getCreatedAt(),
                 player.getBirthDate(),
                 client == null ? null : client.getId(),

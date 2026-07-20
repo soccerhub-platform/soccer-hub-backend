@@ -275,9 +275,9 @@ class AdminGroupMembershipServiceTest {
                 .level(GroupLevel.PRO)
                 .build());
         when(clientPort.getStudentProfilesByBranch(branchId)).thenReturn(List.of(
-                new StudentProfileDto(branchId, firstPlayerId, "Алихан Сериков", null, LocalDate.of(2015, 4, 12), UUID.randomUUID(), "Parent One", "+7701", "a@test.com", "ACTIVE"),
-                new StudentProfileDto(branchId, secondPlayerId, "Диас Ахметов", null, LocalDate.of(2018, 2, 10), UUID.randomUUID(), "Parent Two", "+7702", "b@test.com", "ACTIVE"),
-                new StudentProfileDto(branchId, blockedPlayerId, "Елена Садыкова", null, LocalDate.of(2015, 8, 20), UUID.randomUUID(), "Parent Three", "+7703", "c@test.com", "ACTIVE")
+                new StudentProfileDto(branchId, firstPlayerId, "Алихан Сериков", "Алихан", "Сериков", null, null, LocalDate.of(2015, 4, 12), UUID.randomUUID(), "Parent One", "+7701", "a@test.com", "ACTIVE"),
+                new StudentProfileDto(branchId, secondPlayerId, "Диас Ахметов", "Диас", "Ахметов", null, null, LocalDate.of(2018, 2, 10), UUID.randomUUID(), "Parent Two", "+7702", "b@test.com", "ACTIVE"),
+                new StudentProfileDto(branchId, blockedPlayerId, "Елена Садыкова", "Елена", "Садыкова", null, null, LocalDate.of(2015, 8, 20), UUID.randomUUID(), "Parent Three", "+7703", "c@test.com", "ACTIVE")
         ));
         when(groupMembershipPort.findActiveByPlayerIdInAsOfDate(any(), any())).thenReturn(List.of(
                 GroupMembership.builder()
@@ -345,6 +345,9 @@ class AdminGroupMembershipServiceTest {
                 branchId,
                 playerId,
                 "Алихан Сериков",
+                "Алихан",
+                "Сериков",
+                null,
                 null,
                 LocalDate.of(2015, 4, 12),
                 UUID.randomUUID(),

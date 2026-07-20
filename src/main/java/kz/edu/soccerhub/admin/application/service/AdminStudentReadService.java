@@ -2,8 +2,12 @@ package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.student.*;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
+import kz.edu.soccerhub.coach.domain.model.TrainingSession;
+import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
+import kz.edu.soccerhub.coach.domain.repository.TrainingSessionRepository;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceTimelineRecordDto;
 import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
@@ -38,6 +42,9 @@ public class AdminStudentReadService {
     private static final int ENDING_SOON_DAYS = 7;
     private static final int RECENT_PAYMENTS_LIMIT = 10;
     private static final int RECENT_ATTENDANCE_LIMIT = 10;
+    private static final int MAX_ATTENDANCE_RANGE_DAYS = 366;
+    private static final int CONTRACT_ENDING_SOON_DAYS = 30;
+    private static final Set<String> ATTENDANCE_STATUSES = Set.of("PRESENT", "ABSENT", "LATE", "EXCUSED", "UNMARKED");
 
     private final ClientPort clientPort;
     private final ContractPort contractPort;
@@ -50,6 +57,7 @@ public class AdminStudentReadService {
     private final AdminBranchService adminBranchService;
     private final MediaAvatarPort mediaAvatarPort;
     private final MediaAccessPort mediaAccessPort;
+    private final TrainingSessionRepository trainingSessionRepository;
 
     @Transactional(readOnly = true)
     public AdminStudentsPageOutput getStudents(UUID adminId, AdminStudentsQuery query, Pageable pageable, String sort) {
@@ -184,8 +192,11 @@ public class AdminStudentReadService {
                 new AdminStudentDetailsOutput.PlayerBlock(
                         profile.playerId(),
                         profile.playerFullName(),
+                        profile.firstName(),
+                        profile.lastName(),
                         profile.birthDate(),
                         calculateAge(profile.birthDate()),
+                        profile.position(),
                         avatar
                 ),
                 new AdminStudentDetailsOutput.ClientBlock(
@@ -223,7 +234,8 @@ public class AdminStudentReadService {
                                 item.status()
                         ))
                         .toList(),
-                risks
+                risks,
+                new AdminStudentDetailsOutput.CapabilitiesBlock(true, true)
         );
     }
 
@@ -263,10 +275,226 @@ public class AdminStudentReadService {
                                 item.getJoinReason(),
                                 item.getLeaveReason(),
                                 item.getComment(),
-                                item.getSourceContractId()
+                                item.getSourceContractId(),
+                                buildMembershipCapabilities(item)
                         ))
                         .toList()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public AdminStudentAttendanceOutput getAttendance(
+            UUID adminId,
+            UUID playerId,
+            LocalDate from,
+            LocalDate to,
+            UUID groupId,
+            String status
+    ) {
+        StudentProfileDto profile = clientPort.getStudentProfile(playerId);
+        verifyAdminAccessToBranch(adminId, profile.branchId());
+        validateAttendanceRange(from, to);
+
+        String normalizedStatus = status == null || status.isBlank() ? null : status.trim().toUpperCase(Locale.ROOT);
+        if (normalizedStatus != null && !ATTENDANCE_STATUSES.contains(normalizedStatus)) {
+            throw new BadRequestException("Unsupported attendance status", status);
+        }
+
+        List<GroupMembership> memberships = groupMembershipPort.findByPlayerIdOrderByJoinedAtDesc(playerId).stream()
+                .filter(item -> groupId == null || Objects.equals(item.getGroupId(), groupId))
+                .filter(item -> !item.getJoinedAt().isAfter(to))
+                .filter(item -> item.getLeftAt() == null || !item.getLeftAt().isBefore(from))
+                .toList();
+        Set<UUID> groupIds = memberships.stream().map(GroupMembership::getGroupId).collect(Collectors.toSet());
+
+        if (groupIds.isEmpty()) {
+            return emptyAttendanceOutput(playerId, from, to);
+        }
+
+        Map<UUID, List<GroupMembership>> membershipsByGroup = memberships.stream()
+                .collect(Collectors.groupingBy(GroupMembership::getGroupId));
+        List<PlayerAttendanceTimelineRecordDto> attendanceTimeline = coachPort
+                .getAttendanceTimeline(playerId, groupIds, from, to)
+                .stream()
+                .filter(record -> membershipsByGroup.getOrDefault(record.groupId(), List.of()).stream()
+                        .anyMatch(membership -> includesDate(membership, record.sessionDate())))
+                .toList();
+
+        if (attendanceTimeline.isEmpty()) {
+            return emptyAttendanceOutput(playerId, from, to);
+        }
+
+        Map<UUID, GroupDto> groupsById = groupPort.getGroupsByIds(groupIds).stream()
+                .collect(Collectors.toMap(GroupDto::groupId, item -> item));
+        Map<UUID, MediaAsset> groupAvatars = mediaAvatarPort.findActiveAvatars(MediaOwnerType.GROUP, groupIds);
+        if (groupAvatars == null) {
+            groupAvatars = Map.of();
+        }
+        Map<UUID, MediaAsset> resolvedGroupAvatars = groupAvatars;
+
+        List<AdminStudentAttendanceOutput.Item> allItems = attendanceTimeline.stream()
+                .map(record -> {
+                    GroupDto group = groupsById.get(record.groupId());
+                    return new AdminStudentAttendanceOutput.Item(
+                            record.sessionId(),
+                            new AdminStudentAttendanceOutput.GroupRef(
+                                    record.groupId(),
+                                    group == null ? null : group.name(),
+                                    toMediaAssetResponse(resolvedGroupAvatars.get(record.groupId()))
+                            ),
+                            record.sessionDate(),
+                            record.startsAt(),
+                            record.endsAt(),
+                            record.sessionStatus().name(),
+                            record.effectiveSessionStatus(),
+                            record.attendanceStatus() == null ? "UNMARKED" : record.attendanceStatus().name(),
+                            record.comment()
+                    );
+                })
+                .toList();
+
+        AdminStudentAttendanceOutput.Summary summary = summarizeAttendance(allItems);
+        List<AdminStudentAttendanceOutput.Item> filteredItems = normalizedStatus == null
+                ? allItems
+                : allItems.stream().filter(item -> normalizedStatus.equals(item.attendanceStatus())).toList();
+
+        return new AdminStudentAttendanceOutput(playerId, from, to, summary, filteredItems);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminStudentContractsOutput getContracts(UUID adminId, UUID playerId) {
+        StudentProfileDto profile = clientPort.getStudentProfile(playerId);
+        verifyAdminAccessToBranch(adminId, profile.branchId());
+
+        List<StudentContractSnapshotOutput> contractSnapshots = contractPort.getStudentContracts(profile.branchId(), playerId);
+        StudentContractSnapshotOutput currentContract = selectCurrentContract(contractSnapshots);
+        List<StudentContractSnapshotOutput> contracts = contractSnapshots.stream()
+                .sorted(Comparator
+                        .comparing(
+                                (StudentContractSnapshotOutput contract) -> currentContract != null
+                                        && Objects.equals(currentContract.id(), contract.id()),
+                                Comparator.reverseOrder()
+                        )
+                        .thenComparing(
+                                StudentContractSnapshotOutput::startDate,
+                                Comparator.nullsLast(Comparator.reverseOrder())
+                        ))
+                .toList();
+        if (contracts.isEmpty()) {
+            return new AdminStudentContractsOutput(
+                    playerId,
+                    new AdminStudentContractsOutput.Summary(0, 0, 0, 0, 0),
+                    List.of()
+            );
+        }
+
+        Map<UUID, ContractPaymentSummaryOutput> paymentSummaries = paymentPort.getContractPaymentSummaries(
+                contracts.stream()
+                        .map(contract -> new ContractPaymentSummaryQueryInput(contract.id(), contract.amount()))
+                        .toList()
+        );
+        Set<UUID> groupIds = contracts.stream()
+                .map(StudentContractSnapshotOutput::groupId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, MediaAsset> groupAvatars = groupIds.isEmpty()
+                ? Map.of()
+                : mediaAvatarPort.findActiveAvatars(MediaOwnerType.GROUP, groupIds);
+        if (groupAvatars == null) {
+            groupAvatars = Map.of();
+        }
+        Map<UUID, MediaAsset> resolvedGroupAvatars = groupAvatars;
+
+        List<AdminStudentContractsOutput.Item> items = contracts.stream()
+                .map(contract -> {
+                    ContractPaymentSummaryOutput payment = paymentSummaries.get(contract.id());
+                    return new AdminStudentContractsOutput.Item(
+                            contract.id(),
+                            contract.contractNumber(),
+                            contract.status(),
+                            contract.startDate(),
+                            contract.endDate(),
+                            contract.amount(),
+                            contract.currency(),
+                            contract.groupId() == null ? null : new AdminStudentContractsOutput.GroupRef(
+                                    contract.groupId(),
+                                    contract.groupName(),
+                                    toMediaAssetResponse(resolvedGroupAvatars.get(contract.groupId()))
+                            ),
+                            contract.coachName(),
+                            payment == null ? null : payment.paymentStatus(),
+                            payment == null ? BigDecimal.ZERO : payment.paidAmount(),
+                            payment == null ? contract.amount() : payment.outstandingAmount(),
+                            payment == null ? BigDecimal.ZERO : payment.overpaidAmount(),
+                            payment == null ? null : payment.lastPaidAt(),
+                            payment == null ? 0 : payment.paymentsCount(),
+                            currentContract != null && Objects.equals(currentContract.id(), contract.id())
+                    );
+                })
+                .toList();
+
+        LocalDate today = LocalDate.now();
+        AdminStudentContractsOutput.Summary summary = new AdminStudentContractsOutput.Summary(
+                items.size(),
+                (int) items.stream().filter(item -> item.status() == ContractStatus.ACTIVE).count(),
+                (int) items.stream().filter(item -> item.status() == ContractStatus.UPCOMING).count(),
+                (int) items.stream().filter(item -> item.status() == ContractStatus.ACTIVE)
+                        .filter(item -> item.endDate() != null
+                                && !item.endDate().isBefore(today)
+                                && !item.endDate().isAfter(today.plusDays(CONTRACT_ENDING_SOON_DAYS)))
+                        .count(),
+                (int) items.stream().filter(item -> item.outstandingAmount() != null
+                                && item.outstandingAmount().compareTo(BigDecimal.ZERO) > 0)
+                        .count()
+        );
+        return new AdminStudentContractsOutput(playerId, summary, items);
+    }
+
+    private boolean includesDate(GroupMembership membership, LocalDate date) {
+        return !date.isBefore(membership.getJoinedAt())
+                && (membership.getLeftAt() == null || !date.isAfter(membership.getLeftAt()));
+    }
+
+    private AdminStudentAttendanceOutput.Summary summarizeAttendance(List<AdminStudentAttendanceOutput.Item> items) {
+        int present = (int) items.stream().filter(item -> "PRESENT".equals(item.attendanceStatus())).count();
+        int absent = (int) items.stream().filter(item -> "ABSENT".equals(item.attendanceStatus())).count();
+        int excused = (int) items.stream().filter(item -> "EXCUSED".equals(item.attendanceStatus())).count();
+        int late = (int) items.stream().filter(item -> "LATE".equals(item.attendanceStatus())).count();
+        int unmarked = (int) items.stream().filter(item -> "UNMARKED".equals(item.attendanceStatus())).count();
+        int marked = items.size() - unmarked;
+        int presentLike = present + late;
+        int rate = marked == 0 ? 0 : (int) Math.round((double) presentLike * 100 / marked);
+        return new AdminStudentAttendanceOutput.Summary(
+                items.size(), marked, present, absent, excused, late, unmarked, presentLike, rate
+        );
+    }
+
+    private AdminStudentAttendanceOutput emptyAttendanceOutput(UUID playerId, LocalDate from, LocalDate to) {
+        return new AdminStudentAttendanceOutput(
+                playerId,
+                from,
+                to,
+                new AdminStudentAttendanceOutput.Summary(0, 0, 0, 0, 0, 0, 0, 0, 0),
+                List.of()
+        );
+    }
+
+    private void validateAttendanceRange(LocalDate from, LocalDate to) {
+        if (from == null || to == null) {
+            throw new BadRequestException("from and to are required", from, to);
+        }
+        if (from.isAfter(to)) {
+            throw new BadRequestException("from cannot be after to", from, to);
+        }
+        if (to.toEpochDay() - from.toEpochDay() + 1 > MAX_ATTENDANCE_RANGE_DAYS) {
+            throw new BadRequestException("Attendance range cannot exceed 366 days", from, to);
+        }
+    }
+
+    private AdminStudentMembershipHistoryOutput.Capabilities buildMembershipCapabilities(GroupMembership membership) {
+        boolean mutable = membership.getStatus() == GroupMembershipStatus.ACTIVE
+                || membership.getStatus() == GroupMembershipStatus.UPCOMING;
+        return new AdminStudentMembershipHistoryOutput.Capabilities(mutable, mutable);
     }
 
     private AdminStudentListItemOutput toListItem(
@@ -592,13 +820,21 @@ public class AdminStudentReadService {
         }
 
         List<GroupScheduleDto> schedules = groupSchedulePort.getActiveSchedulesByGroup(groupId);
+        TrainingSession nextSession = trainingSessionRepository
+                .findFirstByGroupIdAndStatusNotAndScheduledStartAtGreaterThanEqualOrderByScheduledStartAtAsc(
+                        groupId,
+                        TrainingSessionStatus.CANCELLED,
+                        LocalDateTime.now()
+                )
+                .orElse(null);
         return new AdminStudentDetailsOutput.CurrentGroupBlock(
                 groupId,
                 groupName,
                 getGroupAvatar(groupId),
                 coachName,
                 buildScheduleLabel(schedules),
-                resolveNextSessionAt(schedules)
+                nextSession == null ? null : nextSession.getId(),
+                nextSession == null ? resolveNextSessionAt(schedules) : nextSession.getScheduledStartAt()
         );
     }
 

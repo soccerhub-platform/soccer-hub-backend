@@ -25,7 +25,14 @@ public record AdminStudentMembershipHistoryOutput(
             String joinReason,
             String leaveReason,
             String comment,
-            UUID sourceContractId
+            UUID sourceContractId,
+            Capabilities capabilities
+    ) {
+    }
+
+    public record Capabilities(
+            boolean canTransfer,
+            boolean canRemove
     ) {
     }
 

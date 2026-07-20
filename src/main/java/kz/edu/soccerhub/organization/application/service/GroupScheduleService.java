@@ -145,6 +145,14 @@ public class GroupScheduleService implements GroupSchedulePort {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<GroupScheduleDto> getActiveSchedules(LocalDate from, LocalDate to) {
+        return groupScheduleRepository.findActiveSchedulesBetween(from, to).stream()
+                .map(GroupScheduleMapper::toDto)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public void cancelSchedule(@NotNull UUID scheduleId) {
         GroupSchedule groupSchedule = groupScheduleRepository.findById(scheduleId)

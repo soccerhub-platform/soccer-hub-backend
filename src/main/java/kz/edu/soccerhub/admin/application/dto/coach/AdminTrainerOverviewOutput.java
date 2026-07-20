@@ -11,9 +11,11 @@ public record AdminTrainerOverviewOutput(
         AdminTrainerListOutput.Load load,
         List<AttentionItem> attentionItems,
         List<GroupItem> groups,
+        List<BranchItem> branches,
         Availability availability,
         NextSession nextSession,
-        LastReport lastReport
+        LastReport lastReport,
+        int substitutionsThisWeek
 ) {
     public record Trainer(
             UUID id,
@@ -44,6 +46,11 @@ public record AdminTrainerOverviewOutput(
             UUID groupId,
             String groupName,
             String role
+    ) {}
+
+    public record BranchItem(
+            UUID id,
+            String name
     ) {}
 
     public record Availability(

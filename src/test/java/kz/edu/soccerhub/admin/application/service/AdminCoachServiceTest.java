@@ -16,9 +16,12 @@ import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.common.port.AuthPort;
+import kz.edu.soccerhub.common.port.BranchPort;
 import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.GroupActivityPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.GroupSchedulePort;
@@ -27,6 +30,10 @@ import kz.edu.soccerhub.common.port.MediaAvatarPort;
 import kz.edu.soccerhub.dispatcher.application.service.PasswordGenerator;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
+import kz.edu.soccerhub.organization.domain.repository.LocationRepository;
+import kz.edu.soccerhub.media.domain.enums.MediaKind;
+import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
+import kz.edu.soccerhub.media.domain.model.MediaAsset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -77,6 +84,12 @@ class AdminCoachServiceTest {
     private MediaAvatarPort mediaAvatarPort;
     @Mock
     private MediaAccessPort mediaAccessPort;
+    @Mock
+    private BranchPort branchPort;
+    @Mock
+    private GroupActivityPort groupActivityPort;
+    @Mock
+    private LocationRepository locationRepository;
 
     private AdminCoachService service;
 
@@ -93,7 +106,10 @@ class AdminCoachServiceTest {
                 groupCoachPort,
                 clientPort,
                 mediaAvatarPort,
-                mediaAccessPort
+                mediaAccessPort,
+                branchPort,
+                groupActivityPort,
+                locationRepository
         );
     }
 
@@ -199,6 +215,19 @@ class AdminCoachServiceTest {
                         .coachId(coachId)
                         .role(null)
                         .active(true)
+                        .build()
+        ));
+        UUID completedAssignmentId = UUID.randomUUID();
+        when(groupCoachPort.getAssignmentsByCoachId(coachId)).thenReturn(List.of(
+                GroupCoachDto.builder()
+                        .id(completedAssignmentId)
+                        .groupId(firstGroupId)
+                        .coachId(coachId)
+                        .role(CoachRole.ASSISTANT)
+                        .active(false)
+                        .assignedFrom(today.minusMonths(4))
+                        .assignedTo(today.minusMonths(1))
+                        .removalReason("Schedule changed")
                         .build()
         ));
         when(groupPort.getGroupsByIds(Set.of(firstGroupId, secondGroupId))).thenReturn(List.of(
@@ -328,9 +357,15 @@ class AdminCoachServiceTest {
         AdminCoachProfileOutput output = service.getCoachProfile(adminId, coachId);
 
         assertEquals(2, output.groups().size());
+        assertEquals(1, output.groupAssignmentHistory().size());
         assertEquals(3, output.weeklySchedule().size());
         assertEquals(LocalDate.of(1990, 4, 12), output.birthDate());
         assertEquals("UEFA B licensed coach", output.description());
+        AdminCoachProfileOutput.GroupAssignmentHistoryItem completedAssignment = output.groupAssignmentHistory().getFirst();
+        assertEquals(completedAssignmentId, completedAssignment.groupCoachId());
+        assertEquals("Falcons", completedAssignment.groupName());
+        assertEquals("ASSISTANT", completedAssignment.role());
+        assertEquals("Schedule changed", completedAssignment.removalReason());
 
         AdminCoachProfileOutput.GroupItem firstGroup = output.groups().stream()
                 .filter(group -> group.groupId().equals(firstGroupId))
@@ -388,8 +423,26 @@ class AdminCoachServiceTest {
         UUID inactiveCoachId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         LocalDate today = LocalDate.now();
+        MediaAsset activeCoachAvatar = MediaAsset.builder()
+                .id(UUID.randomUUID())
+                .ownerType(MediaOwnerType.COACH)
+                .ownerId(activeCoachId)
+                .kind(MediaKind.AVATAR)
+                .fileName("arsen.jpg")
+                .mimeType("image/jpeg")
+                .sizeBytes(1024L)
+                .originalStorageKey("coach/original.jpg")
+                .build();
+        MediaAssetResponse activeCoachAvatarResponse = new MediaAssetResponse(
+                activeCoachAvatar.getId(), MediaOwnerType.COACH, activeCoachId, MediaKind.AVATAR,
+                "arsen.jpg", "image/jpeg", 1024L, 256, 256,
+                "/media/coach/original", "/media/coach/thumb", "/media/coach/medium", LocalDateTime.now()
+        );
 
         when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(mediaAvatarPort.findActiveAvatars(MediaOwnerType.COACH, Set.of(activeCoachId, inactiveCoachId)))
+                .thenReturn(java.util.Map.of(activeCoachId, activeCoachAvatar));
+        when(mediaAccessPort.toResponse(activeCoachAvatar)).thenReturn(activeCoachAvatarResponse);
         when(coachPort.getCoaches(Set.of(branchId), Pageable.unpaged())).thenReturn(new PageImpl<>(List.of(
                 CoachDto.builder()
                         .id(activeCoachId)
@@ -489,6 +542,7 @@ class AdminCoachServiceTest {
         assertEquals(1, output.coaches().getContent().size());
         assertEquals(activeCoachId, output.coaches().getContent().getFirst().coachId());
         assertEquals("U12", output.coaches().getContent().getFirst().specialization());
+        assertEquals("/media/coach/thumb", output.coaches().getContent().getFirst().avatar().thumbUrl());
         assertEquals("LOW", output.coaches().getContent().getFirst().load().status());
         assertTrue(output.coaches().getContent().getFirst().active());
     }

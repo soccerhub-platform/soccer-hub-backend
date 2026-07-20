@@ -2,6 +2,7 @@ package kz.edu.soccerhub.common.dto.coach;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.springframework.data.domain.Page;
+import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
@@ -35,6 +36,7 @@ public record AdminCoachOverviewOutput(
             LocalDate vacationTo,
             String workStatusReason,
             String specialization,
+            MediaAssetResponse avatar,
             @JsonIgnore LocalDateTime createdAt,
             List<GroupItem> groups,
             int weeklySessionsCount,

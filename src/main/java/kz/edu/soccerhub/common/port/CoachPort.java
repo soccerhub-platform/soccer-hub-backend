@@ -10,6 +10,7 @@ import kz.edu.soccerhub.coach.application.dto.profile.CoachAvailabilityUpdateReq
 import kz.edu.soccerhub.common.dto.coach.CoachCreateCommand;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceTimelineRecordDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.CoachStatusHistoryDto;
 import kz.edu.soccerhub.common.dto.coach.CoachUpdateCommand;
@@ -52,6 +53,12 @@ public interface CoachPort {
     List<PlayerAttendanceRateDto> getAttendanceRates(UUID groupId, Set<UUID> playerIds);
     List<PlayerAttendanceSummaryDto> getAttendanceSummaries(Set<UUID> playerIds);
     List<PlayerAttendanceRecordDto> getRecentAttendance(UUID playerId, int limit);
+    List<PlayerAttendanceTimelineRecordDto> getAttendanceTimeline(
+            UUID playerId,
+            Set<UUID> groupIds,
+            LocalDate from,
+            LocalDate to
+    );
     List<SessionAttendanceSummaryDto> getSessionAttendanceSummaries(Set<UUID> sessionIds);
 
     void recordStatusHistory(

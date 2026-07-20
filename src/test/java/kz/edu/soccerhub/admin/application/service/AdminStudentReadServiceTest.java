@@ -1,6 +1,8 @@
 package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentDetailsOutput;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentAttendanceOutput;
+import kz.edu.soccerhub.admin.application.dto.student.AdminStudentContractsOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentListItemOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentMembershipHistoryOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentRiskCode;
@@ -8,6 +10,9 @@ import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsPageOutput;
 import kz.edu.soccerhub.admin.application.dto.student.AdminStudentsQuery;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
+import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
+import kz.edu.soccerhub.coach.domain.repository.TrainingSessionRepository;
+import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceTimelineRecordDto;
 import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRecordDto;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceSummaryDto;
@@ -52,6 +57,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
@@ -82,13 +88,19 @@ class AdminStudentReadServiceTest {
     private MediaAvatarPort mediaAvatarPort;
     @Mock
     private MediaAccessPort mediaAccessPort;
-
+    @Mock
+    private TrainingSessionRepository trainingSessionRepository;
     private AdminStudentReadService service;
 
     @BeforeEach
     void setUp() {
         lenient().when(mediaAvatarPort.findActiveAvatars(ArgumentMatchers.any(), ArgumentMatchers.anyCollection()))
                 .thenReturn(Map.of());
+        lenient().when(trainingSessionRepository.findFirstByGroupIdAndStatusNotAndScheduledStartAtGreaterThanEqualOrderByScheduledStartAtAsc(
+                ArgumentMatchers.any(),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.any()
+        )).thenReturn(Optional.empty());
         service = new AdminStudentReadService(
                 clientPort,
                 contractPort,
@@ -100,7 +112,8 @@ class AdminStudentReadServiceTest {
                 adminService,
                 adminBranchService,
                 mediaAvatarPort,
-                mediaAccessPort
+                mediaAccessPort,
+                trainingSessionRepository
         );
     }
 
@@ -409,7 +422,133 @@ class AdminStudentReadServiceTest {
         assertEquals(firstMembershipId, output.items().getFirst().membershipId());
         assertEquals("Tangy Football", output.items().getFirst().group().name());
         assertEquals("ACTIVE", output.items().getFirst().status());
+        assertTrue(output.items().getFirst().capabilities().canTransfer());
+        assertTrue(output.items().getFirst().capabilities().canRemove());
+        assertFalse(output.items().get(1).capabilities().canTransfer());
+        assertFalse(output.items().get(1).capabilities().canRemove());
         assertEquals("SCHEDULE_CHANGE", output.items().get(1).leaveReason());
+    }
+
+    @Test
+    void getAttendanceShouldIncludeUnmarkedTimelineRecordsAndKeepSummaryBeforeStatusFilter() {
+        UUID adminId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID membershipId = UUID.randomUUID();
+        UUID presentSessionId = UUID.randomUUID();
+        UUID unmarkedSessionId = UUID.randomUUID();
+        LocalDate from = LocalDate.now().minusDays(30);
+        LocalDate to = LocalDate.now();
+
+        GroupMembership membership = GroupMembership.builder()
+                .id(membershipId)
+                .groupId(groupId)
+                .playerId(playerId)
+                .status(GroupMembershipStatus.ACTIVE)
+                .joinedAt(from)
+                .build();
+        PlayerAttendanceTimelineRecordDto presentRecord = attendanceRecord(
+                presentSessionId,
+                groupId,
+                LocalDate.now().minusDays(5),
+                TrainingSessionAttendanceStatus.PRESENT
+        );
+        PlayerAttendanceTimelineRecordDto unmarkedRecord = attendanceRecord(
+                unmarkedSessionId,
+                groupId,
+                LocalDate.now().minusDays(3),
+                null
+        );
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(admin(adminId)));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(clientPort.getStudentProfile(playerId)).thenReturn(profile(branchId, playerId, "Alex Doe", "Jane Doe"));
+        when(groupMembershipPort.findByPlayerIdOrderByJoinedAtDesc(playerId)).thenReturn(List.of(membership));
+        when(coachPort.getAttendanceTimeline(playerId, Set.of(groupId), from, to))
+                .thenReturn(List.of(unmarkedRecord, presentRecord));
+        when(groupPort.getGroupsByIds(Set.of(groupId))).thenReturn(List.of(groupDto(groupId, branchId, "Group A")));
+
+        AdminStudentAttendanceOutput output = service.getAttendance(adminId, playerId, from, to, null, null);
+
+        assertEquals(2, output.summary().sessionsCount());
+        assertEquals(1, output.summary().markedCount());
+        assertEquals(1, output.summary().presentCount());
+        assertEquals(1, output.summary().unmarkedCount());
+        assertEquals(100, output.summary().attendanceRate());
+        assertEquals("UNMARKED", output.items().getFirst().attendanceStatus());
+
+        AdminStudentAttendanceOutput filtered = service.getAttendance(adminId, playerId, from, to, null, "UNMARKED");
+        assertEquals(2, filtered.summary().sessionsCount());
+        assertEquals(1, filtered.items().size());
+        assertEquals(unmarkedSessionId, filtered.items().getFirst().sessionId());
+    }
+
+    @Test
+    void getContractsShouldReturnHistoryWithPaymentSummaryAndCurrentMarker() {
+        UUID adminId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID activeContractId = UUID.randomUUID();
+        UUID expiredContractId = UUID.randomUUID();
+        StudentContractSnapshotOutput active = contract(
+                activeContractId,
+                playerId,
+                groupId,
+                "Group A",
+                ContractStatus.ACTIVE,
+                LocalDate.now().plusDays(10)
+        );
+        StudentContractSnapshotOutput expired = contract(
+                expiredContractId,
+                playerId,
+                groupId,
+                "Group A",
+                ContractStatus.EXPIRED,
+                LocalDate.now().minusDays(20)
+        );
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(admin(adminId)));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(clientPort.getStudentProfile(playerId)).thenReturn(profile(branchId, playerId, "Alex Doe", "Jane Doe"));
+        when(contractPort.getStudentContracts(branchId, playerId)).thenReturn(List.of(expired, active));
+        when(paymentPort.getContractPaymentSummaries(ArgumentMatchers.<List<ContractPaymentSummaryQueryInput>>any()))
+                .thenReturn(Map.of(
+                        activeContractId,
+                        new ContractPaymentSummaryOutput(
+                                activeContractId,
+                                BigDecimal.valueOf(50000),
+                                BigDecimal.valueOf(20000),
+                                BigDecimal.valueOf(30000),
+                                BigDecimal.ZERO,
+                                ContractPaymentStatus.PARTIALLY_PAID,
+                                LocalDateTime.now().minusDays(2),
+                                1
+                        ),
+                        expiredContractId,
+                        new ContractPaymentSummaryOutput(
+                                expiredContractId,
+                                BigDecimal.valueOf(50000),
+                                BigDecimal.valueOf(50000),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                ContractPaymentStatus.PAID,
+                                LocalDateTime.now().minusMonths(2),
+                                2
+                        )
+                ));
+
+        AdminStudentContractsOutput output = service.getContracts(adminId, playerId);
+
+        assertEquals(2, output.summary().totalCount());
+        assertEquals(1, output.summary().activeCount());
+        assertEquals(1, output.summary().endingSoonCount());
+        assertEquals(1, output.summary().withDebtCount());
+        assertEquals(activeContractId, output.items().getFirst().id());
+        assertTrue(output.items().getFirst().current());
+        assertEquals(BigDecimal.valueOf(30000), output.items().getFirst().outstandingAmount());
+        assertFalse(output.items().get(1).current());
     }
 
     @Test
@@ -487,6 +626,9 @@ class AdminStudentReadServiceTest {
                 branchId,
                 playerId,
                 playerName,
+                playerName,
+                "",
+                null,
                 createdAt,
                 LocalDate.of(2015, 5, 10),
                 UUID.randomUUID(),
@@ -529,5 +671,24 @@ class AdminStudentReadServiceTest {
                 .branchId(branchId)
                 .name(name)
                 .build();
+    }
+
+    private PlayerAttendanceTimelineRecordDto attendanceRecord(
+            UUID sessionId,
+            UUID groupId,
+            LocalDate date,
+            TrainingSessionAttendanceStatus status
+    ) {
+        return new PlayerAttendanceTimelineRecordDto(
+                sessionId,
+                groupId,
+                date,
+                date.atTime(18, 0),
+                date.atTime(19, 0),
+                TrainingSessionStatus.COMPLETED,
+                TrainingSessionStatus.COMPLETED.name(),
+                status,
+                null
+        );
     }
 }

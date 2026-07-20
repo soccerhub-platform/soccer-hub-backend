@@ -4,6 +4,7 @@ import kz.edu.soccerhub.common.dto.group.GroupActivityDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,4 +21,6 @@ public interface GroupActivityPort {
             Map<String, Object> payload,
             UUID correlationId
     );
+
+    long countCoachSubstitutions(UUID coachId, LocalDateTime from, LocalDateTime to);
 }

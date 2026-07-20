@@ -11,6 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -50,6 +51,28 @@ public class GroupActivityService implements GroupActivityPort {
                 .payload(payload == null ? Map.of() : new LinkedHashMap<>(payload))
                 .correlationId(correlationId)
                 .build());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countCoachSubstitutions(UUID coachId, LocalDateTime from, LocalDateTime to) {
+        String expectedCoachId = coachId.toString();
+        return groupActivityRepository
+                .findByActivityTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThan(
+                        GroupActivityType.SESSION_COACH_SUBSTITUTED,
+                        from,
+                        to
+                )
+                .stream()
+                .filter(activity -> {
+                    Map<String, Object> payload = activity.getPayload();
+                    if (payload == null) {
+                        return false;
+                    }
+                    return expectedCoachId.equals(String.valueOf(payload.get("substituteCoachId")))
+                            || expectedCoachId.equals(String.valueOf(payload.get("replacedCoachId")));
+                })
+                .count();
     }
 
     private GroupActivityDto toOutput(GroupActivity activity) {
