@@ -3,6 +3,7 @@ package kz.edu.soccerhub.admin.application.service;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.contract.ContractDetailsOutput;
+import kz.edu.soccerhub.common.dto.contract.ContractCapabilitiesOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractGroupOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractListItemOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractParticipantOutput;
@@ -184,7 +185,8 @@ class AdminContractServicePaymentReadModelTest {
                 null,
                 LocalDateTime.of(2026, 6, 1, 10, 0),
                 LocalDateTime.of(2026, 6, 2, 10, 0),
-                List.of()
+                List.of(),
+                new ContractCapabilitiesOutput(true, true, false, true, false, false)
         );
     }
 

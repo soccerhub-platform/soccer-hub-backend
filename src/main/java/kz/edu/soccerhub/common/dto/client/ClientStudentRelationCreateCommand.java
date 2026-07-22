@@ -9,6 +9,8 @@ public record ClientStudentRelationCreateCommand(
         ClientStudentRelationshipType relationshipType,
         boolean primaryContact,
         boolean primaryPayer,
+        boolean replacePrimaryContact,
+        boolean replacePrimaryPayer,
         boolean legalRepresentative,
         boolean receivesNotifications,
         LocalDate startedAt

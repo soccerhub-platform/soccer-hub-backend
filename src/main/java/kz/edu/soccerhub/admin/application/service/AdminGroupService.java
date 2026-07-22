@@ -1091,7 +1091,7 @@ public class AdminGroupService {
                 true,
                 true,
                 mutableMembership,
-                mutableMembership
+                mutableMembership && member.contractId() == null
         );
     }
 

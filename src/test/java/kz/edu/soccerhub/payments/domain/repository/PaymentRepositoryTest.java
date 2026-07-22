@@ -79,13 +79,14 @@ class PaymentRepositoryTest {
         );
         jdbcTemplate.update("""
                 insert into contracts (
-                    id, player_id, group_id, contract_number, lead_type, status, coach_id,
+                    id, player_id, client_id, group_id, contract_number, lead_type, status, coach_id,
                     start_date, end_date, amount, currency, notes, cancel_reason_code, cancel_comment,
                     created_at, updated_at, created_by, modified_by
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 contractId,
                 playerId,
+                clientId,
                 groupId,
                 "CTR-TEST-001",
                 "CHILDREN",
@@ -202,13 +203,14 @@ class PaymentRepositoryTest {
         );
         jdbcTemplate.update("""
                 insert into contracts (
-                    id, player_id, group_id, contract_number, lead_type, status, coach_id,
+                    id, player_id, client_id, group_id, contract_number, lead_type, status, coach_id,
                     start_date, end_date, amount, currency, notes, cancel_reason_code, cancel_comment,
                     created_at, updated_at, created_by, modified_by
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 contractId,
                 playerId,
+                clientId,
                 groupId,
                 "CTR-2026-001",
                 "CHILDREN",

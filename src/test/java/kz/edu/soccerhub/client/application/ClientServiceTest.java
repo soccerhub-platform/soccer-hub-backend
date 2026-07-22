@@ -16,7 +16,6 @@ import kz.edu.soccerhub.common.dto.student.StudentUpdateCommand;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.BranchPort;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
-import kz.edu.soccerhub.organization.application.service.GroupMembershipSyncService;
 import kz.edu.soccerhub.organization.domain.model.GroupMembership;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import org.junit.jupiter.api.Test;
@@ -48,8 +47,6 @@ class ClientServiceTest {
     private AuthPort authPort;
     @Mock
     private GroupMembershipPort groupMembershipPort;
-    @Mock
-    private GroupMembershipSyncService groupMembershipSyncService;
     @Mock
     private ClientStudentRelationSyncService relationSyncService;
     @Mock
@@ -106,7 +103,6 @@ class ClientServiceTest {
                 branchPort,
                 authPort,
                 groupMembershipPort,
-                groupMembershipSyncService,
                 relationSyncService,
                 relationRepository
         );
@@ -142,7 +138,6 @@ class ClientServiceTest {
                 branchPort,
                 authPort,
                 groupMembershipPort,
-                groupMembershipSyncService,
                 relationSyncService,
                 relationRepository
         );
@@ -192,7 +187,6 @@ class ClientServiceTest {
                 branchPort,
                 authPort,
                 groupMembershipPort,
-                groupMembershipSyncService,
                 relationSyncService,
                 relationRepository
         );

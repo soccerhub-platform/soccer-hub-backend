@@ -25,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -40,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -183,6 +185,7 @@ class AdminGroupMembershipServiceTest {
         UUID branchId = UUID.randomUUID();
         UUID membershipId = UUID.randomUUID();
         UUID playerId = UUID.randomUUID();
+        UUID contractId = UUID.randomUUID();
         LocalDate joinedAt = LocalDate.of(2026, 7, 1);
         LocalDate transferDate = LocalDate.of(2026, 8, 1);
 
@@ -192,6 +195,7 @@ class AdminGroupMembershipServiceTest {
                 .playerId(playerId)
                 .status(GroupMembershipStatus.ACTIVE)
                 .joinedAt(joinedAt)
+                .sourceContractId(contractId)
                 .build();
 
         when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
@@ -213,6 +217,13 @@ class AdminGroupMembershipServiceTest {
         assertEquals("TRANSFERRED", output.previousMembership().status());
         assertEquals(LocalDate.of(2026, 7, 31), output.previousMembership().leftAt());
         assertEquals(targetGroupId, output.newMembership().group().id());
+        assertEquals(contractId, output.previousMembership().sourceContractId());
+        assertEquals(null, output.newMembership().sourceContractId());
+        InOrder transferOrder = inOrder(groupMembershipPort);
+        transferOrder.verify(groupMembershipPort).save(current);
+        transferOrder.verify(groupMembershipPort).save(org.mockito.ArgumentMatchers.argThat(candidate ->
+                candidate != current && candidate.getSourceContractId() == null
+        ));
         verify(groupActivityPort).recordGroupActivity(eq(sourceGroupId), eq(adminId), eq("STUDENT_TRANSFERRED"), any(), any());
         verify(groupActivityPort).recordGroupActivity(eq(targetGroupId), eq(adminId), eq("STUDENT_TRANSFERRED"), any(), any());
     }
@@ -248,6 +259,40 @@ class AdminGroupMembershipServiceTest {
         assertEquals("REMOVED", output.status());
         assertEquals(LocalDate.of(2026, 8, 1), output.leftAt());
         verify(groupActivityPort).recordGroupActivity(eq(groupId), eq(adminId), eq("STUDENT_REMOVED"), any());
+    }
+
+    @Test
+    void shouldRequireContractCancellationForContractBackedMembership() {
+        UUID adminId = UUID.randomUUID();
+        UUID membershipId = UUID.randomUUID();
+        UUID contractId = UUID.randomUUID();
+
+        GroupMembership membership = GroupMembership.builder()
+                .id(membershipId)
+                .groupId(UUID.randomUUID())
+                .playerId(UUID.randomUUID())
+                .status(GroupMembershipStatus.ACTIVE)
+                .joinedAt(LocalDate.of(2026, 7, 1))
+                .sourceContractId(contractId)
+                .build();
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+        when(groupMembershipPort.findByIdForUpdate(membershipId)).thenReturn(Optional.of(membership));
+
+        ConflictException exception = assertThrows(
+                ConflictException.class,
+                () -> service.removeMember(
+                        adminId,
+                        membershipId,
+                        new AdminRemoveGroupMembershipInput(LocalDate.of(2026, 8, 1), "PARENT_REQUEST", null)
+                )
+        );
+
+        assertEquals(
+                "CONTRACT_BACKED_MEMBERSHIP_REQUIRES_CONTRACT_CANCELLATION",
+                exception.getErrorCode()
+        );
+        assertEquals(contractId, exception.getMetadata().get("contractId"));
     }
 
     @Test

@@ -23,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -69,10 +68,13 @@ public class AdminContractService {
     public ContractDetailsOutput update(UUID adminId, UUID contractId, ContractUpdateCommand command) {
         UUID currentBranchId = contractPort.getBranchId(contractId);
         verifyAdminAccessToBranch(adminId, currentBranchId);
-        if (command.branchId() != null && !Objects.equals(command.branchId(), currentBranchId)) {
-            verifyAdminAccessToBranch(adminId, command.branchId());
-        }
         return enrich(contractPort.update(contractId, command, adminId));
+    }
+
+    @Transactional
+    public ContractDetailsOutput activate(UUID adminId, UUID contractId) {
+        verifyAdminAccessToBranch(adminId, contractPort.getBranchId(contractId));
+        return enrich(contractPort.activate(contractId, adminId));
     }
 
     @Transactional
@@ -139,7 +141,8 @@ public class AdminContractService {
                 summary.lastPaidAt(),
                 details.createdAt(),
                 details.updatedAt(),
-                details.history()
+                details.history(),
+                details.capabilities()
         );
     }
 

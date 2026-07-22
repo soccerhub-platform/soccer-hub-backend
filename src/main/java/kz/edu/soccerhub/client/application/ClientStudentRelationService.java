@@ -95,6 +95,13 @@ public class ClientStudentRelationService implements ClientStudentRelationPort {
             throw new BadRequestException("First active relation must be primary contact and primary payer", player.getId());
         }
         validateSingleSelf(null, command.relationshipType(), activeRelations);
+        requireExplicitPrimaryTransfer(
+                activeRelations,
+                command.primaryContact(),
+                command.primaryPayer(),
+                command.replacePrimaryContact(),
+                command.replacePrimaryPayer()
+        );
         transferPrimaryRoles(activeRelations, null, command.primaryContact(), command.primaryPayer());
         flushTransferredPrimaryRoles(activeRelations, command.primaryContact(), command.primaryPayer());
 
@@ -138,7 +145,7 @@ public class ClientStudentRelationService implements ClientStudentRelationPort {
                 .build());
         return create(new ClientStudentRelationCreateCommand(
                 client.getId(), player.getId(), command.relationshipType(), command.primaryContact(),
-                command.primaryPayer(), command.legalRepresentative(), command.receivesNotifications(),
+                command.primaryPayer(), false, false, command.legalRepresentative(), command.receivesNotifications(),
                 command.startedAt()
         ));
     }
@@ -233,12 +240,37 @@ public class ClientStudentRelationService implements ClientStudentRelationPort {
         });
     }
 
+    private void requireExplicitPrimaryTransfer(
+            List<ClientStudentRelation> active,
+            boolean primaryContact,
+            boolean primaryPayer,
+            boolean replacePrimaryContact,
+            boolean replacePrimaryPayer
+    ) {
+        if (primaryContact && !replacePrimaryContact && active.stream().anyMatch(ClientStudentRelation::isPrimaryContact)) {
+            throw conflict(
+                    "Confirm replacement of the current primary contact",
+                    "CLIENT_STUDENT_PRIMARY_CONTACT_REPLACEMENT_REQUIRED",
+                    null,
+                    active.getFirst().getPlayerId()
+            );
+        }
+        if (primaryPayer && !replacePrimaryPayer && active.stream().anyMatch(ClientStudentRelation::isPrimaryPayer)) {
+            throw conflict(
+                    "Confirm replacement of the current primary payer",
+                    "CLIENT_STUDENT_PRIMARY_PAYER_REPLACEMENT_REQUIRED",
+                    null,
+                    active.getFirst().getPlayerId()
+            );
+        }
+    }
+
     private void flushTransferredPrimaryRoles(List<ClientStudentRelation> active, boolean contact, boolean payer) {
         if (!active.isEmpty() && (contact || payer)) relationRepository.flush();
     }
 
     private void syncLegacyParent(Player player, Client client, boolean primaryContact) {
-        if (primaryContact && !Objects.equals(player.getParent().getId(), client.getId())) {
+        if (primaryContact && (player.getParent() == null || !Objects.equals(player.getParent().getId(), client.getId()))) {
             player.setParent(client);
             playerRepository.save(player);
         }

@@ -544,4 +544,53 @@ class AdminGroupServiceTest {
         assertFalse(item.capabilities().canTransfer());
         assertFalse(item.capabilities().canRemove());
     }
+
+    @Test
+    void shouldRequireContractCancellationForContractBackedGroupMember() {
+        UUID adminId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+
+        when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(groupPort.getGroupById(groupId)).thenReturn(GroupDto.builder()
+                .groupId(groupId)
+                .branchId(branchId)
+                .name("Adal")
+                .status(GroupStatus.ACTIVE)
+                .audienceType(GroupAudienceType.CHILDREN)
+                .capacity(20)
+                .level(GroupLevel.PRO)
+                .build());
+        when(clientPort.getGroupMembers(groupId)).thenReturn(List.of(
+                new GroupMemberDto(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        playerId,
+                        "Алихан Сериков",
+                        LocalDate.of(2015, 4, 12),
+                        "ACTIVE",
+                        "ACTIVE",
+                        UUID.randomUUID(),
+                        "CNT-1",
+                        LocalDate.of(2026, 7, 1),
+                        LocalDate.of(2026, 8, 1),
+                        LocalDate.of(2026, 7, 1),
+                        null
+                )
+        ));
+        when(coachPort.getAttendanceRates(eq(groupId), org.mockito.ArgumentMatchers.anySet())).thenReturn(List.of());
+        when(mediaAvatarPort.findActiveAvatars(eq(kz.edu.soccerhub.media.domain.enums.MediaOwnerType.PLAYER), org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(java.util.Map.of());
+
+        AdminGroupMemberOutput item = service
+                .getGroupMembers(adminId, groupId, PageRequest.of(0, 20))
+                .getContent()
+                .getFirst();
+
+        assertTrue(item.capabilities().canTransfer());
+        assertFalse(item.capabilities().canRemove());
+        assertTrue(item.contract().id() != null);
+    }
 }

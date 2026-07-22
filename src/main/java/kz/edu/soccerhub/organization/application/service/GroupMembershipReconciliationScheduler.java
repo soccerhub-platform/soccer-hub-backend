@@ -2,6 +2,7 @@ package kz.edu.soccerhub.organization.application.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -13,6 +14,12 @@ import java.time.ZoneId;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(
+        prefix = "app.membership.reconciliation",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = true
+)
 public class GroupMembershipReconciliationScheduler {
 
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Almaty");

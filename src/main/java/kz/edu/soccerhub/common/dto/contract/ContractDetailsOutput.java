@@ -32,6 +32,7 @@ public record ContractDetailsOutput(
         LocalDateTime lastPaidAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        List<ContractHistoryOutput> history
+        List<ContractHistoryOutput> history,
+        ContractCapabilitiesOutput capabilities
 ) {
 }

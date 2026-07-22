@@ -25,7 +25,6 @@ import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.BranchPort;
 import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
-import kz.edu.soccerhub.organization.application.service.GroupMembershipSyncService;
 import kz.edu.soccerhub.organization.domain.model.GroupMembership;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import lombok.RequiredArgsConstructor;
@@ -55,7 +54,6 @@ public class ClientService implements ClientPort {
     private final BranchPort branchPort;
     private final AuthPort authPort;
     private final GroupMembershipPort groupMembershipPort;
-    private final GroupMembershipSyncService groupMembershipSyncService;
     private final ClientStudentRelationSyncService relationSyncService;
     private final ClientStudentRelationRepository relationRepository;
 
@@ -281,9 +279,8 @@ public class ClientService implements ClientPort {
     }
 
     private Contract resolveOrCreateContract(UUID clientId, UUID playerId, ClientConversionCommand command) {
-        Contract contract = contractRepository.findFirstByPlayerIdAndGroupIdAndStartDateAndEndDate(
+        Contract contract = contractRepository.findFirstByPlayerIdAndStartDateAndEndDate(
                         playerId,
-                        command.groupId(),
                         command.contractStartDate(),
                         command.contractEndDate()
                 )
@@ -291,7 +288,6 @@ public class ClientService implements ClientPort {
                         .id(UUID.randomUUID())
                         .playerId(playerId)
                         .clientId(clientId)
-                        .groupId(command.groupId())
                         .contractNumber(generateContractNumber())
                         .leadType(command.leadType())
                         .status(ContractStatus.ACTIVE)
@@ -307,7 +303,20 @@ public class ClientService implements ClientPort {
             contract.setClientId(clientId);
         }
 
-        groupMembershipSyncService.syncFromContract(contract);
+        if (command.groupId() != null && !groupMembershipPort.existsActiveByGroupIdAndPlayerIdAsOfDate(
+                command.groupId(), playerId, command.contractStartDate()
+        )) {
+            groupMembershipPort.save(GroupMembership.builder()
+                    .groupId(command.groupId())
+                    .playerId(playerId)
+                    .status(command.contractStartDate().isAfter(LocalDate.now())
+                            ? GroupMembershipStatus.UPCOMING
+                            : GroupMembershipStatus.ACTIVE)
+                    .joinedAt(command.contractStartDate())
+                    .leftAt(command.contractEndDate())
+                    .joinReason("LEAD_CONVERSION")
+                    .build());
+        }
         return contract;
     }
 
@@ -358,7 +367,7 @@ public class ClientService implements ClientPort {
         return relationRepository
                 .findFirstByPlayerIdAndPrimaryContactTrueAndEndedAtIsNullOrderByStartedAtDesc(player.getId())
                 .flatMap(relation -> clientRepository.findById(relation.getClientId()))
-                .orElse(player.getParent());
+                .orElse(null);
     }
 
     private GroupMemberDto toGroupMember(

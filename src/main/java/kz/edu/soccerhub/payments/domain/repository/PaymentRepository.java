@@ -23,7 +23,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             from Payment p
             join kz.edu.soccerhub.client.domain.model.Contract c on c.id = p.contractId
             left join kz.edu.soccerhub.client.domain.model.Player pl on pl.id = p.playerId
-            left join pl.parent cl
+            left join kz.edu.soccerhub.client.domain.model.Client cl on cl.id = p.clientId
             where p.branchId = :branchId
               and (cast(:contractId as uuid) is null or p.contractId = :contractId)
               and (cast(:clientId as uuid) is null or p.clientId = :clientId)

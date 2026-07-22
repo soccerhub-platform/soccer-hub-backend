@@ -40,7 +40,10 @@ public interface ContractPort {
 
     ContractDetailsOutput update(UUID contractId, ContractUpdateCommand command, UUID actorUserId);
 
+    ContractDetailsOutput activate(UUID contractId, UUID actorUserId);
+
     ContractDetailsOutput extend(UUID contractId, ContractExtendCommand command, UUID actorUserId);
 
     ContractDetailsOutput cancel(UUID contractId, ContractCancelCommand command, UUID actorUserId);
+
 }

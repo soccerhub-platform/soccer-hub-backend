@@ -25,6 +25,12 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
             LocalDate endDate
     );
 
+    Optional<Contract> findFirstByPlayerIdAndStartDateAndEndDate(
+            UUID playerId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
+
     List<Contract> findByGroupId(UUID groupId);
 
     List<Contract> findByPlayerIdIn(Collection<UUID> playerIds);
@@ -44,7 +50,7 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
             from Contract c
             join kz.edu.soccerhub.client.domain.model.Player p on p.id = c.playerId
             join kz.edu.soccerhub.client.domain.model.Client cl on cl.id = c.clientId
-            join kz.edu.soccerhub.organization.domain.model.Group g on g.id = c.groupId
+            left join kz.edu.soccerhub.organization.domain.model.Group g on g.id = c.groupId
             where cl.branchId = :branchId
               and (:clientId is null or c.clientId = :clientId)
               and (:leadType is null or c.leadType = :leadType)

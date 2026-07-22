@@ -51,7 +51,7 @@ class AdminClientStudentRelationServiceTest {
         UUID clientId = UUID.randomUUID();
         UUID playerId = UUID.randomUUID();
         AdminCreateClientStudentRelationInput input = new AdminCreateClientStudentRelationInput(
-                playerId, ClientStudentRelationshipType.MOTHER, true, true, true, true, LocalDate.now()
+                playerId, ClientStudentRelationshipType.MOTHER, true, true, false, false, true, true, LocalDate.now()
         );
 
         when(relationPort.getClientBranchId(clientId)).thenReturn(branchId);
@@ -90,7 +90,7 @@ class AdminClientStudentRelationServiceTest {
                 adminId,
                 clientId,
                 new AdminCreateClientStudentRelationInput(
-                        playerId, ClientStudentRelationshipType.FATHER, false, false, true, true, LocalDate.now()
+                        playerId, ClientStudentRelationshipType.FATHER, false, false, false, false, true, true, LocalDate.now()
                 )
         ));
 

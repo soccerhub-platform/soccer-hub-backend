@@ -227,6 +227,8 @@ public class AdminGroupMembershipService {
         currentMembership.setLeaveReason(trimToNull(input.reason()));
         currentMembership.setComment(trimToNull(input.comment()));
 
+        groupMembershipPort.save(currentMembership);
+
         GroupMembership newMembership = groupMembershipPort.save(GroupMembership.builder()
                 .groupId(targetGroup.groupId())
                 .playerId(currentMembership.getPlayerId())
@@ -286,6 +288,16 @@ public class AdminGroupMembershipService {
         }
         if (input.leftAt().isBefore(membership.getJoinedAt())) {
             throw new BadRequestException("Membership leftAt cannot be before joinedAt", input.leftAt(), membership.getJoinedAt());
+        }
+        if (membership.getSourceContractId() != null) {
+            throw new ConflictException(
+                    "Contract-backed membership must be ended by cancelling the contract",
+                    "CONTRACT_BACKED_MEMBERSHIP_REQUIRES_CONTRACT_CANCELLATION",
+                    Map.of(
+                            "membershipId", membership.getId(),
+                            "contractId", membership.getSourceContractId()
+                    )
+            );
         }
 
         GroupDto group = groupPort.getGroupById(membership.getGroupId());

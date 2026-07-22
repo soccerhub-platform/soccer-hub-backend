@@ -76,16 +76,16 @@ public class ContractSnapshotService implements ContractSnapshotPort {
                 .map(Contract::getClientId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        players.values().stream()
-                .map(Player::getParent)
-                .filter(Objects::nonNull)
-                .map(Client::getId)
-                .forEach(clientIds::add);
         Map<UUID, Client> clients = clientRepository.findAllById(clientIds).stream()
                 .collect(Collectors.toMap(Client::getId, item -> item));
-        Map<UUID, GroupDto> groups = groupPort.getGroupsByIds(
-                contracts.stream().map(Contract::getGroupId).collect(Collectors.toSet())
-        ).stream().collect(Collectors.toMap(GroupDto::groupId, item -> item));
+        Set<UUID> groupIds = contracts.stream()
+                .map(Contract::getGroupId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, GroupDto> groups = groupIds.isEmpty()
+                ? Map.of()
+                : groupPort.getGroupsByIds(groupIds).stream()
+                        .collect(Collectors.toMap(GroupDto::groupId, item -> item));
         Set<UUID> coachIds = contracts.stream()
                 .map(Contract::getCoachId)
                 .filter(Objects::nonNull)
@@ -98,7 +98,7 @@ public class ContractSnapshotService implements ContractSnapshotPort {
                 .map(contract -> {
                     Player player = players.get(contract.getPlayerId());
                     Client client = resolveClient(contract, player, clients);
-                    GroupDto group = groups.get(contract.getGroupId());
+                    GroupDto group = contract.getGroupId() == null ? null : groups.get(contract.getGroupId());
                     CoachDto coach = contract.getCoachId() == null ? null : coaches.get(contract.getCoachId());
                     return new StudentContractSnapshotOutput(
                             contract.getId(),
@@ -120,24 +120,17 @@ public class ContractSnapshotService implements ContractSnapshotPort {
     }
 
     private boolean belongsToBranch(Contract contract, UUID branchId) {
-        if (contract.getClientId() != null) {
-            return clientRepository.findById(contract.getClientId())
-                    .map(Client::getBranchId)
-                    .filter(resolvedBranchId -> Objects.equals(resolvedBranchId, branchId))
-                    .isPresent();
+        if (contract.getClientId() == null) {
+            throw new IllegalStateException("Contract has no explicit client: " + contract.getId());
         }
-        return playerRepository.findWithParentById(contract.getPlayerId())
-                .map(Player::getParent)
+        return clientRepository.findById(contract.getClientId())
                 .map(Client::getBranchId)
                 .filter(resolvedBranchId -> Objects.equals(resolvedBranchId, branchId))
                 .isPresent();
     }
 
     private Client resolveClient(Contract contract, Player player, Map<UUID, Client> clients) {
-        if (contract.getClientId() != null) {
-            return clients.get(contract.getClientId());
-        }
-        return player == null || player.getParent() == null ? null : clients.get(player.getParent().getId());
+        return contract.getClientId() == null ? null : clients.get(contract.getClientId());
     }
 
     private void touchLifecycleStatuses(Collection<Contract> contracts) {

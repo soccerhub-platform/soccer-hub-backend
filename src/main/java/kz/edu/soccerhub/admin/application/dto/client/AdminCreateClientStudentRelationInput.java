@@ -11,6 +11,8 @@ public record AdminCreateClientStudentRelationInput(
         @NotNull ClientStudentRelationshipType relationshipType,
         boolean primaryContact,
         boolean primaryPayer,
+        boolean replacePrimaryContact,
+        boolean replacePrimaryPayer,
         boolean legalRepresentative,
         boolean receivesNotifications,
         @NotNull LocalDate startedAt

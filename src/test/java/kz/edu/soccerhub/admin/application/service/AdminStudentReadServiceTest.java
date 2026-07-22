@@ -423,7 +423,7 @@ class AdminStudentReadServiceTest {
         assertEquals("Tangy Football", output.items().getFirst().group().name());
         assertEquals("ACTIVE", output.items().getFirst().status());
         assertTrue(output.items().getFirst().capabilities().canTransfer());
-        assertTrue(output.items().getFirst().capabilities().canRemove());
+        assertFalse(output.items().getFirst().capabilities().canRemove());
         assertFalse(output.items().get(1).capabilities().canTransfer());
         assertFalse(output.items().get(1).capabilities().canRemove());
         assertEquals("SCHEDULE_CHANGE", output.items().get(1).leaveReason());

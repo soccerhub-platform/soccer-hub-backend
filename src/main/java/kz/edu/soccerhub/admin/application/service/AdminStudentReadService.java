@@ -494,7 +494,10 @@ public class AdminStudentReadService {
     private AdminStudentMembershipHistoryOutput.Capabilities buildMembershipCapabilities(GroupMembership membership) {
         boolean mutable = membership.getStatus() == GroupMembershipStatus.ACTIVE
                 || membership.getStatus() == GroupMembershipStatus.UPCOMING;
-        return new AdminStudentMembershipHistoryOutput.Capabilities(mutable, mutable);
+        return new AdminStudentMembershipHistoryOutput.Capabilities(
+                mutable,
+                mutable && membership.getSourceContractId() == null
+        );
     }
 
     private AdminStudentListItemOutput toListItem(

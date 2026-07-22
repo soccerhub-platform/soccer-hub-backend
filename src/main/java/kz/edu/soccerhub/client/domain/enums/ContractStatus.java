@@ -12,6 +12,6 @@ public enum ContractStatus {
     }
 
     public boolean canBeExtended() {
-        return this != CANCELLED;
+        return this == UPCOMING || this == ACTIVE || this == EXPIRED;
     }
 }

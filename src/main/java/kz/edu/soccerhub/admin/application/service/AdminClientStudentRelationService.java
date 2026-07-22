@@ -54,6 +54,7 @@ public class AdminClientStudentRelationService {
         verifyAdminAccess(adminId, clientBranchId);
         ClientStudentRelationOutput output = relationPort.create(new ClientStudentRelationCreateCommand(
                 clientId, input.playerId(), input.relationshipType(), input.primaryContact(), input.primaryPayer(),
+                input.replacePrimaryContact(), input.replacePrimaryPayer(),
                 input.legalRepresentative(), input.receivesNotifications(), input.startedAt()
         ));
         clientActivityPort.recordClientActivity(clientId, adminId, ClientActivityType.STUDENT_LINKED,

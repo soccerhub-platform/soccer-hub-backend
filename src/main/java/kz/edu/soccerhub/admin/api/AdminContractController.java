@@ -112,6 +112,15 @@ public class AdminContractController {
         return ResponseEntity.ok(adminContractService.update(UUID.fromString(jwt.getSubject()), contractId, command));
     }
 
+    @PostMapping("/{contractId}/activate")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<ContractDetailsOutput> activate(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID contractId
+    ) {
+        return ResponseEntity.ok(adminContractService.activate(UUID.fromString(jwt.getSubject()), contractId));
+    }
+
     @PostMapping("/{contractId}/extend")
     @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<ContractDetailsOutput> extend(

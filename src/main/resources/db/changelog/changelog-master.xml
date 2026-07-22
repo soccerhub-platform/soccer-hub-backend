@@ -32,5 +32,6 @@
     <include file="/db/changelog/2026-07-21-client-student-relations.sql"/>
     <include file="/db/changelog/2026-07-22-client-profile-identity.sql"/>
     <include file="/db/changelog/2026-07-23-client-activities.sql"/>
+    <include file="/db/changelog/2026-07-24-contract-workspace-v2.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>

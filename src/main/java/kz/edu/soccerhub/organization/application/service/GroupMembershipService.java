@@ -84,4 +84,10 @@ public class GroupMembershipService implements GroupMembershipPort {
     public GroupMembership save(GroupMembership membership) {
         return groupMembershipRepository.save(membership);
     }
+
+    @Override
+    @Transactional
+    public void flush() {
+        groupMembershipRepository.flush();
+    }
 }

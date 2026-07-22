@@ -40,7 +40,7 @@ class AdminClientStudentRelationControllerTest {
         when(jwt.getSubject()).thenReturn(adminId.toString());
         ClientStudentRelationOutput output = output(relationId, clientId, playerId);
         AdminCreateClientStudentRelationInput createInput = new AdminCreateClientStudentRelationInput(
-                playerId, ClientStudentRelationshipType.MOTHER, true, true, true, true, LocalDate.now()
+                playerId, ClientStudentRelationshipType.MOTHER, true, true, false, false, true, true, LocalDate.now()
         );
         AdminCreateClientStudentInput createStudentInput = new AdminCreateClientStudentInput(
                 "Student", "Name", LocalDate.of(2015, 1, 1), ClientStudentRelationshipType.MOTHER,

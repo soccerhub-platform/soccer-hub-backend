@@ -54,7 +54,7 @@ class ClientStudentRelationServiceTest {
         ClientStudentRelation oldRelation = relation(oldClient, player, ClientStudentRelationshipType.MOTHER, true, true);
         ClientStudentRelationCreateCommand command = new ClientStudentRelationCreateCommand(
                 newClient.getId(), player.getId(), ClientStudentRelationshipType.FATHER,
-                true, true, true, true, LocalDate.now()
+                true, true, true, true, true, true, LocalDate.now()
         );
 
         when(clientRepository.findById(newClient.getId())).thenReturn(Optional.of(newClient));
@@ -91,11 +91,34 @@ class ClientStudentRelationServiceTest {
         ConflictException exception = assertThrows(ConflictException.class, () -> service.create(
                 new ClientStudentRelationCreateCommand(
                         newClient.getId(), player.getId(), ClientStudentRelationshipType.SELF,
-                        true, true, true, true, LocalDate.now()
+                        true, true, true, true, true, true, LocalDate.now()
                 )
         ));
 
         assertEquals("CLIENT_STUDENT_SELF_EXISTS", exception.getErrorCode());
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void createShouldRequireExplicitPrimaryRoleReplacement() {
+        UUID branchId = UUID.randomUUID();
+        Client oldClient = client(branchId);
+        Client newClient = client(branchId);
+        Player player = player(oldClient);
+        ClientStudentRelation oldRelation = relation(oldClient, player, ClientStudentRelationshipType.MOTHER, true, true);
+
+        when(clientRepository.findById(newClient.getId())).thenReturn(Optional.of(newClient));
+        when(playerRepository.findWithParentById(player.getId())).thenReturn(Optional.of(player));
+        when(relationRepository.findByPlayerIdAndEndedAtIsNull(player.getId())).thenReturn(List.of(oldRelation));
+
+        ConflictException exception = assertThrows(ConflictException.class, () -> service.create(
+                new ClientStudentRelationCreateCommand(
+                        newClient.getId(), player.getId(), ClientStudentRelationshipType.FATHER,
+                        true, true, false, false, true, true, LocalDate.now()
+                )
+        ));
+
+        assertEquals("CLIENT_STUDENT_PRIMARY_CONTACT_REPLACEMENT_REQUIRED", exception.getErrorCode());
         verify(relationRepository, never()).save(any());
     }
 

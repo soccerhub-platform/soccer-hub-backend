@@ -29,4 +29,6 @@ public interface GroupMembershipPort {
     List<GroupMembership> findByPlayerIdOrderByJoinedAtDesc(UUID playerId);
 
     GroupMembership save(GroupMembership membership);
+
+    void flush();
 }
