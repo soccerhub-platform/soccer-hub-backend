@@ -48,9 +48,9 @@ public class AdminContractService {
     }
 
     @Transactional(readOnly = true)
-    public List<ContractParticipantLookupOutput> getParticipants(UUID adminId, UUID branchId) {
+    public List<ContractParticipantLookupOutput> getParticipants(UUID adminId, UUID branchId, UUID clientId) {
         verifyAdminAccessToBranch(adminId, branchId);
-        return contractPort.getParticipants(branchId);
+        return contractPort.getParticipants(branchId, clientId);
     }
 
     @Transactional(readOnly = true)

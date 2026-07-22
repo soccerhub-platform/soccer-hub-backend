@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.payments.application;
 
 import kz.edu.soccerhub.common.dto.admin.AdminDto;
+import kz.edu.soccerhub.common.dto.client.ClientActivityType;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentContextOutput;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryQueryInput;
@@ -13,6 +14,7 @@ import kz.edu.soccerhub.common.dto.payment.PaymentsPageOutput;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AdminPort;
+import kz.edu.soccerhub.common.port.ClientActivityPort;
 import kz.edu.soccerhub.common.port.ContractPort;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.common.port.PaymentPort;
@@ -43,6 +45,7 @@ public class PaymentService implements PaymentPort {
     private final ContractPort contractPort;
     private final LeadPort leadPort;
     private final AdminPort adminPort;
+    private final ClientActivityPort clientActivityPort;
     private final ContractPaymentCalculator contractPaymentCalculator;
 
     @Override
@@ -72,6 +75,7 @@ public class PaymentService implements PaymentPort {
         if (summary.paymentStatus() == kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus.PAID) {
             leadPort.markWonByContractIfWaitingPayment(contract.contractId(), actorUserId);
         }
+        recordPaymentActivity(payment, contract, actorUserId, ClientActivityType.PAYMENT_CREATED);
 
         return new PaymentCreateOutput(
                 payment.getId(),
@@ -164,6 +168,7 @@ public class PaymentService implements PaymentPort {
         payment.setRecordedAt(LocalDateTime.now());
 
         ContractPaymentContextOutput contractContext = contractPort.getPaymentContext(payment.getContractId());
+        recordPaymentActivity(payment, contractContext, actorUserId, ClientActivityType.PAYMENT_CANCELLED);
         return toOutput(payment, contractContext, Map.of(actorUserId, resolveAdminName(actorUserId)));
     }
 
@@ -226,6 +231,29 @@ public class PaymentService implements PaymentPort {
         return payments.stream()
                 .map(payment -> toOutput(payment, contractContext, actorNames))
                 .toList();
+    }
+
+    private void recordPaymentActivity(
+            Payment payment,
+            ContractPaymentContextOutput contract,
+            UUID actorUserId,
+            ClientActivityType activityType
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("paymentId", payment.getId());
+        payload.put("contractId", contract.contractId());
+        payload.put("contractNumber", contract.contractNumber());
+        payload.put("playerId", contract.playerId());
+        payload.put("playerName", contract.playerName());
+        payload.put("amount", payment.getAmount());
+        payload.put("currency", payment.getCurrency());
+        payload.put("method", payment.getMethod().name());
+        payload.put("status", payment.getStatus().name());
+        payload.put("paidAt", payment.getPaidAt().toString());
+        if (payment.getCancelReason() != null) {
+            payload.put("reason", payment.getCancelReason());
+        }
+        clientActivityPort.recordClientActivity(contract.clientId(), actorUserId, activityType, payload);
     }
 
     private void validateCreateCommand(PaymentCreateCommand command, ContractPaymentContextOutput contract) {

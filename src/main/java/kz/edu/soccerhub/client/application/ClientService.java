@@ -5,6 +5,7 @@ import kz.edu.soccerhub.client.domain.model.Client;
 import kz.edu.soccerhub.client.domain.model.Contract;
 import kz.edu.soccerhub.client.domain.model.Player;
 import kz.edu.soccerhub.client.domain.repository.ClientRepository;
+import kz.edu.soccerhub.client.domain.repository.ClientStudentRelationRepository;
 import kz.edu.soccerhub.client.domain.repository.ContractRepository;
 import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
 import kz.edu.soccerhub.client.domain.enums.ClientStatus;
@@ -55,6 +56,8 @@ public class ClientService implements ClientPort {
     private final AuthPort authPort;
     private final GroupMembershipPort groupMembershipPort;
     private final GroupMembershipSyncService groupMembershipSyncService;
+    private final ClientStudentRelationSyncService relationSyncService;
+    private final ClientStudentRelationRepository relationRepository;
 
     @Override
     @Transactional
@@ -65,7 +68,7 @@ public class ClientService implements ClientPort {
                 .firstName(names[0])
                 .lastName(names[1])
                 .phone(phone)
-                .comments(email)
+                .email(email)
                 .status(ClientStatus.NEW)
                 .build();
 
@@ -89,7 +92,9 @@ public class ClientService implements ClientPort {
                 .parent(parent)
                 .build();
 
-        return playerRepository.save(player).getId();
+        Player saved = playerRepository.save(player);
+        relationSyncService.syncLegacyParent(saved);
+        return saved.getId();
     }
 
     @Transactional
@@ -159,7 +164,7 @@ public class ClientService implements ClientPort {
     public ClientConversionOutput convertLead(ClientConversionCommand command) {
         Client client = resolveOrCreateClient(command);
         Player player = resolveOrCreatePlayer(client, command.participantName(), command.participantBirthDate());
-        Contract contract = resolveOrCreateContract(player.getId(), command);
+        Contract contract = resolveOrCreateContract(client.getId(), player.getId(), command);
 
         return new ClientConversionOutput(
                 client.getId(),
@@ -230,12 +235,14 @@ public class ClientService implements ClientPort {
         UUID userId = authPort.findUserIdByEmail(normalizedEmail)
                 .orElseGet(() -> registerClientUser(normalizedEmail));
 
-        return clientRepository.findById(userId)
+        return clientRepository.findByUserId(userId)
                 .orElseGet(() -> clientRepository.save(Client.builder()
-                        .id(userId)
+                        .id(UUID.randomUUID())
+                        .userId(userId)
                         .firstName(parentName[0])
                         .lastName(parentName[1])
                         .phone(command.phone())
+                        .email(command.email())
                         .branchId(command.branchId())
                         .source(command.source())
                         .comments(command.comments())
@@ -256,7 +263,7 @@ public class ClientService implements ClientPort {
     private Player resolveOrCreatePlayer(Client client, String participantFullName, LocalDate birthDate) {
         String[] childName = splitName(participantFullName);
 
-        return playerRepository.findFirstByParent_IdAndFirstNameAndLastNameAndBirthDate(
+        Player player = playerRepository.findFirstByParent_IdAndFirstNameAndLastNameAndBirthDate(
                         client.getId(),
                         childName[0],
                         childName[1],
@@ -269,9 +276,11 @@ public class ClientService implements ClientPort {
                         .birthDate(birthDate)
                         .parent(client)
                         .build()));
+        relationSyncService.syncLegacyParent(player);
+        return player;
     }
 
-    private Contract resolveOrCreateContract(UUID playerId, ClientConversionCommand command) {
+    private Contract resolveOrCreateContract(UUID clientId, UUID playerId, ClientConversionCommand command) {
         Contract contract = contractRepository.findFirstByPlayerIdAndGroupIdAndStartDateAndEndDate(
                         playerId,
                         command.groupId(),
@@ -281,6 +290,7 @@ public class ClientService implements ClientPort {
                 .orElseGet(() -> contractRepository.save(Contract.builder()
                         .id(UUID.randomUUID())
                         .playerId(playerId)
+                        .clientId(clientId)
                         .groupId(command.groupId())
                         .contractNumber(generateContractNumber())
                         .leadType(command.leadType())
@@ -292,6 +302,10 @@ public class ClientService implements ClientPort {
                         .currency("KZT")
                         .notes(command.comments())
                         .build()));
+
+        if (contract.getClientId() == null) {
+            contract.setClientId(clientId);
+        }
 
         groupMembershipSyncService.syncFromContract(contract);
         return contract;
@@ -322,7 +336,7 @@ public class ClientService implements ClientPort {
     }
 
     private StudentProfileDto toStudentProfile(Player player) {
-        Client client = player.getParent();
+        Client client = resolvePrimaryClient(player);
         return new StudentProfileDto(
                 client == null ? null : client.getBranchId(),
                 player.getId(),
@@ -335,9 +349,16 @@ public class ClientService implements ClientPort {
                 client == null ? null : client.getId(),
                 client == null ? null : joinName(client.getFirstName(), client.getLastName()),
                 client == null ? null : client.getPhone(),
-                client == null ? null : trimToNull(client.getComments()),
+                client == null ? null : trimToNull(client.getEmail()),
                 client == null || client.getStatus() == null ? null : client.getStatus().name()
         );
+    }
+
+    private Client resolvePrimaryClient(Player player) {
+        return relationRepository
+                .findFirstByPlayerIdAndPrimaryContactTrueAndEndedAtIsNullOrderByStartedAtDesc(player.getId())
+                .flatMap(relation -> clientRepository.findById(relation.getClientId()))
+                .orElse(player.getParent());
     }
 
     private GroupMemberDto toGroupMember(
@@ -356,10 +377,11 @@ public class ClientService implements ClientPort {
         GroupMembership latestMembership = sortedMemberships.getLast();
         LocalDate joinedAt = sortedMemberships.getFirst().getJoinedAt();
         Contract currentContract = selectCurrentContract(contracts, latestMembership.getGroupId());
+        Client primaryClient = resolvePrimaryClient(player);
 
         return new GroupMemberDto(
                 latestMembership.getId(),
-                player.getParent() == null ? null : player.getParent().getId(),
+                primaryClient == null ? null : primaryClient.getId(),
                 player.getId(),
                 buildPlayerName(player),
                 player.getBirthDate(),

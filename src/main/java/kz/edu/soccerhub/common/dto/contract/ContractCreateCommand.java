@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.common.dto.contract;
 
 import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
+import kz.edu.soccerhub.common.dto.client.ClientStudentRelationshipType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -13,6 +14,7 @@ public record ContractCreateCommand(
         ContractParticipantDraftInput participantDraft,
         UUID primaryContactId,
         ContractPrimaryContactDraftInput primaryContactDraft,
+        ClientStudentRelationshipType relationshipType,
         UUID groupId,
         UUID coachId,
         String contractNumber,

@@ -11,6 +11,7 @@ import kz.edu.soccerhub.common.port.PlayerPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -19,8 +20,10 @@ public class PlayerService implements PlayerPort {
 
     private final ClientRepository clientRepository;
     private final PlayerRepository playerRepository;
+    private final ClientStudentRelationSyncService relationSyncService;
 
     @Override
+    @Transactional
     public PlayerCreateCommandOutput create(PlayerCreateCommand command) {
         log.info("Creating player with command: {}", command);
         Client parent = clientRepository.findById(command.parentId())
@@ -33,6 +36,7 @@ public class PlayerService implements PlayerPort {
                 .build();
 
         Player saved = playerRepository.save(player);
+        relationSyncService.syncLegacyParent(saved);
         return new PlayerCreateCommandOutput(saved.getId());
     }
 }

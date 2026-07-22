@@ -72,11 +72,15 @@ public class ContractSnapshotService implements ContractSnapshotPort {
                         contracts.stream().map(Contract::getPlayerId).collect(Collectors.toSet())
                 ).stream()
                 .collect(Collectors.toMap(Player::getId, item -> item));
-        Set<UUID> clientIds = players.values().stream()
+        Set<UUID> clientIds = contracts.stream()
+                .map(Contract::getClientId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        players.values().stream()
                 .map(Player::getParent)
                 .filter(Objects::nonNull)
                 .map(Client::getId)
-                .collect(Collectors.toSet());
+                .forEach(clientIds::add);
         Map<UUID, Client> clients = clientRepository.findAllById(clientIds).stream()
                 .collect(Collectors.toMap(Client::getId, item -> item));
         Map<UUID, GroupDto> groups = groupPort.getGroupsByIds(
@@ -93,7 +97,7 @@ public class ContractSnapshotService implements ContractSnapshotPort {
         return contracts.stream()
                 .map(contract -> {
                     Player player = players.get(contract.getPlayerId());
-                    Client client = player == null || player.getParent() == null ? null : clients.get(player.getParent().getId());
+                    Client client = resolveClient(contract, player, clients);
                     GroupDto group = groups.get(contract.getGroupId());
                     CoachDto coach = contract.getCoachId() == null ? null : coaches.get(contract.getCoachId());
                     return new StudentContractSnapshotOutput(
@@ -116,11 +120,24 @@ public class ContractSnapshotService implements ContractSnapshotPort {
     }
 
     private boolean belongsToBranch(Contract contract, UUID branchId) {
+        if (contract.getClientId() != null) {
+            return clientRepository.findById(contract.getClientId())
+                    .map(Client::getBranchId)
+                    .filter(resolvedBranchId -> Objects.equals(resolvedBranchId, branchId))
+                    .isPresent();
+        }
         return playerRepository.findWithParentById(contract.getPlayerId())
                 .map(Player::getParent)
                 .map(Client::getBranchId)
                 .filter(resolvedBranchId -> Objects.equals(resolvedBranchId, branchId))
                 .isPresent();
+    }
+
+    private Client resolveClient(Contract contract, Player player, Map<UUID, Client> clients) {
+        if (contract.getClientId() != null) {
+            return clients.get(contract.getClientId());
+        }
+        return player == null || player.getParent() == null ? null : clients.get(player.getParent().getId());
     }
 
     private void touchLifecycleStatuses(Collection<Contract> contracts) {

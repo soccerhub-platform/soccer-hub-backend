@@ -31,6 +31,10 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
 
     List<Contract> findByPlayerId(UUID playerId);
 
+    List<Contract> findByClientId(UUID clientId);
+
+    List<Contract> findByClientIdIn(Collection<UUID> clientIds);
+
     Optional<Contract> findTopByPlayerIdOrderByCreatedAtDesc(UUID playerId);
 
     boolean existsByContractNumber(String contractNumber);
@@ -39,9 +43,10 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
             select c
             from Contract c
             join kz.edu.soccerhub.client.domain.model.Player p on p.id = c.playerId
-            join p.parent cl
+            join kz.edu.soccerhub.client.domain.model.Client cl on cl.id = c.clientId
             join kz.edu.soccerhub.organization.domain.model.Group g on g.id = c.groupId
             where cl.branchId = :branchId
+              and (:clientId is null or c.clientId = :clientId)
               and (:leadType is null or c.leadType = :leadType)
               and (:statusesEmpty = true or c.status in :statuses)
               and (
@@ -56,6 +61,7 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
             """)
     Page<Contract> search(
             UUID branchId,
+            UUID clientId,
             LeadType leadType,
             Collection<ContractStatus> statuses,
             boolean statusesEmpty,

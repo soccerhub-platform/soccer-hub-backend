@@ -46,6 +46,7 @@ public class AdminContractController {
     public ResponseEntity<ContractsPageOutput> getContracts(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID branchId,
+            @RequestParam(required = false) UUID clientId,
             @RequestParam(required = false) Set<ContractStatus> status,
             @RequestParam(required = false) LeadType leadType,
             @RequestParam(required = false) String search,
@@ -55,7 +56,7 @@ public class AdminContractController {
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(adminContractService.getContracts(
                 UUID.fromString(jwt.getSubject()),
-                new ContractSearchQuery(branchId, status, leadType, search),
+                new ContractSearchQuery(branchId, clientId, status, leadType, search),
                 pageable
         ));
     }
@@ -73,9 +74,12 @@ public class AdminContractController {
     @PreAuthorize("hasAuthority('ADMIN')")
     public ResponseEntity<List<ContractParticipantLookupOutput>> getParticipants(
             @AuthenticationPrincipal Jwt jwt,
-            @RequestParam UUID branchId
+            @RequestParam UUID branchId,
+            @RequestParam(required = false) UUID clientId
     ) {
-        return ResponseEntity.ok(adminContractService.getParticipants(UUID.fromString(jwt.getSubject()), branchId));
+        return ResponseEntity.ok(adminContractService.getParticipants(
+                UUID.fromString(jwt.getSubject()), branchId, clientId
+        ));
     }
 
     @GetMapping("/lookups/groups")

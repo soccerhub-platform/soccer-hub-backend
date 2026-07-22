@@ -28,7 +28,7 @@ public interface ContractPort {
 
     ContractPaymentContextOutput getPaymentContext(UUID contractId);
 
-    List<ContractParticipantLookupOutput> getParticipants(UUID branchId);
+    List<ContractParticipantLookupOutput> getParticipants(UUID branchId, UUID clientId);
 
     List<ContractGroupLookupOutput> getGroups(UUID branchId, LeadType leadType);
 

@@ -31,6 +31,9 @@ public class Contract extends AbstractAuditableEntity {
     @Column(name = "player_id", nullable = false)
     private UUID playerId;
 
+    @Column(name = "client_id")
+    private UUID clientId;
+
     @Column(name = "group_id", nullable = false)
     private UUID groupId;
 

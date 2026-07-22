@@ -4,8 +4,10 @@ import kz.edu.soccerhub.client.domain.enums.ClientStatus;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.client.domain.model.Client;
 import kz.edu.soccerhub.client.domain.model.Contract;
+import kz.edu.soccerhub.client.domain.model.ClientStudentRelation;
 import kz.edu.soccerhub.client.domain.model.Player;
 import kz.edu.soccerhub.client.domain.repository.ClientRepository;
+import kz.edu.soccerhub.client.domain.repository.ClientStudentRelationRepository;
 import kz.edu.soccerhub.client.domain.repository.ContractRepository;
 import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
@@ -48,6 +50,10 @@ class ClientServiceTest {
     private GroupMembershipPort groupMembershipPort;
     @Mock
     private GroupMembershipSyncService groupMembershipSyncService;
+    @Mock
+    private ClientStudentRelationSyncService relationSyncService;
+    @Mock
+    private ClientStudentRelationRepository relationRepository;
 
     @Test
     void shouldBuildGroupMembersFromMembershipAndContractSeparately() {
@@ -100,7 +106,9 @@ class ClientServiceTest {
                 branchPort,
                 authPort,
                 groupMembershipPort,
-                groupMembershipSyncService
+                groupMembershipSyncService,
+                relationSyncService,
+                relationRepository
         );
 
         List<GroupMemberDto> result = service.getGroupMembers(groupId);
@@ -134,7 +142,9 @@ class ClientServiceTest {
                 branchPort,
                 authPort,
                 groupMembershipPort,
-                groupMembershipSyncService
+                groupMembershipSyncService,
+                relationSyncService,
+                relationRepository
         );
 
         StudentProfileDto result = service.updateStudent(
@@ -148,5 +158,48 @@ class ClientServiceTest {
         assertEquals(birthDate, result.birthDate());
         assertEquals("Goalkeeper", result.position());
         verify(playerRepository).save(player);
+    }
+
+    @Test
+    void shouldUsePrimaryRelationClientInStudentProfile() {
+        UUID playerId = UUID.randomUUID();
+        Client legacyParent = Client.builder().id(UUID.randomUUID()).branchId(UUID.randomUUID()).build();
+        Client primaryClient = Client.builder()
+                .id(UUID.randomUUID())
+                .firstName("Primary")
+                .lastName("Client")
+                .branchId(legacyParent.getBranchId())
+                .status(ClientStatus.ACTIVE)
+                .build();
+        Player player = Player.builder().id(playerId).firstName("Student").lastName("One").parent(legacyParent).build();
+        ClientStudentRelation relation = ClientStudentRelation.builder()
+                .id(UUID.randomUUID())
+                .clientId(primaryClient.getId())
+                .playerId(playerId)
+                .primaryContact(true)
+                .startedAt(LocalDate.now())
+                .build();
+
+        when(playerRepository.findWithParentById(playerId)).thenReturn(java.util.Optional.of(player));
+        when(relationRepository.findFirstByPlayerIdAndPrimaryContactTrueAndEndedAtIsNullOrderByStartedAtDesc(playerId))
+                .thenReturn(java.util.Optional.of(relation));
+        when(clientRepository.findById(primaryClient.getId())).thenReturn(java.util.Optional.of(primaryClient));
+
+        ClientService service = new ClientService(
+                clientRepository,
+                playerRepository,
+                contractRepository,
+                branchPort,
+                authPort,
+                groupMembershipPort,
+                groupMembershipSyncService,
+                relationSyncService,
+                relationRepository
+        );
+
+        StudentProfileDto result = service.getStudentProfile(playerId);
+
+        assertEquals(primaryClient.getId(), result.clientId());
+        assertEquals("Primary Client", result.clientFullName());
     }
 }

@@ -2,6 +2,7 @@ package kz.edu.soccerhub.payments.application;
 
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentContextOutput;
+import kz.edu.soccerhub.common.dto.client.ClientActivityType;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryOutput;
 import kz.edu.soccerhub.common.dto.payment.ContractPaymentSummaryQueryInput;
@@ -10,6 +11,7 @@ import kz.edu.soccerhub.common.dto.payment.PaymentCreateCommand;
 import kz.edu.soccerhub.common.dto.payment.PaymentCreateOutput;
 import kz.edu.soccerhub.common.dto.payment.PaymentOutput;
 import kz.edu.soccerhub.common.port.AdminPort;
+import kz.edu.soccerhub.common.port.ClientActivityPort;
 import kz.edu.soccerhub.common.port.ContractPort;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.payments.domain.enums.PaymentMethod;
@@ -46,6 +48,8 @@ class PaymentServiceTest {
     private LeadPort leadPort;
     @Mock
     private AdminPort adminPort;
+    @Mock
+    private ClientActivityPort clientActivityPort;
 
     private PaymentService paymentService;
 
@@ -56,6 +60,7 @@ class PaymentServiceTest {
                 contractPort,
                 leadPort,
                 adminPort,
+                clientActivityPort,
                 new ContractPaymentCalculator()
         );
     }
@@ -77,6 +82,12 @@ class PaymentServiceTest {
         assertEquals(PaymentStatus.PAID, output.paymentStatus());
         assertEquals(BigDecimal.ZERO, output.outstandingAmount());
         verify(leadPort).markWonByContractIfWaitingPayment(contractId, actorId);
+        verify(clientActivityPort).recordClientActivity(
+                org.mockito.ArgumentMatchers.eq(context.clientId()),
+                org.mockito.ArgumentMatchers.eq(actorId),
+                org.mockito.ArgumentMatchers.eq(ClientActivityType.PAYMENT_CREATED),
+                any()
+        );
     }
 
     @Test
@@ -142,6 +153,12 @@ class PaymentServiceTest {
 
         assertEquals(PaymentStatus.CANCELLED, output.status());
         verify(leadPort, never()).markWonByContractIfWaitingPayment(any(), any());
+        verify(clientActivityPort).recordClientActivity(
+                org.mockito.ArgumentMatchers.eq(context.clientId()),
+                org.mockito.ArgumentMatchers.eq(actorId),
+                org.mockito.ArgumentMatchers.eq(ClientActivityType.PAYMENT_CANCELLED),
+                any()
+        );
     }
 
     private ContractPaymentContextOutput context(UUID contractId, BigDecimal amount) {

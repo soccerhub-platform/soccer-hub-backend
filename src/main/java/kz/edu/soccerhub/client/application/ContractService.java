@@ -16,6 +16,10 @@ import kz.edu.soccerhub.common.dto.admin.AdminDto;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
+import kz.edu.soccerhub.common.dto.client.ClientStudentRelationOutput;
+import kz.edu.soccerhub.common.dto.client.ClientStudentRelationCreateCommand;
+import kz.edu.soccerhub.common.dto.client.ClientStudentRelationshipType;
+import kz.edu.soccerhub.common.dto.client.ClientActivityType;
 import kz.edu.soccerhub.common.dto.contract.ContractCancelCommand;
 import kz.edu.soccerhub.common.dto.contract.ContractCoachOutput;
 import kz.edu.soccerhub.common.dto.contract.ContractCreateCommand;
@@ -43,6 +47,8 @@ import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.CoachPort;
+import kz.edu.soccerhub.common.port.ClientStudentRelationPort;
+import kz.edu.soccerhub.common.port.ClientActivityPort;
 import kz.edu.soccerhub.common.port.ContractPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
@@ -65,6 +71,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -89,13 +96,17 @@ public class ContractService implements ContractPort {
     private final AdminPort adminPort;
     private final AuthPort authPort;
     private final LeadPort leadPort;
+    private final ClientStudentRelationPort relationPort;
+    private final ClientActivityPort clientActivityPort;
     private final GroupMembershipSyncService groupMembershipSyncService;
+    private final ClientStudentRelationSyncService relationSyncService;
 
     @Override
     @Transactional(readOnly = true)
     public ContractsPageOutput search(ContractSearchQuery query, Pageable pageable) {
         Page<Contract> page = contractRepository.search(
                 query.branchId(),
+                query.clientId(),
                 query.leadType(),
                 query.statuses() == null ? Set.of() : query.statuses(),
                 query.statuses() == null || query.statuses().isEmpty(),
@@ -108,7 +119,7 @@ public class ContractService implements ContractPort {
         touchLifecycleStatuses(contracts);
 
         Map<UUID, Player> players = loadPlayers(contracts);
-        Map<UUID, Client> clients = loadClients(players.values());
+        Map<UUID, Client> clients = loadClients(contracts, players.values());
         Map<UUID, GroupDto> groups = loadGroups(contracts);
         Map<UUID, CoachDto> coaches = loadCoaches(contracts);
 
@@ -132,7 +143,7 @@ public class ContractService implements ContractPort {
         touchLifecycleStatus(contract);
 
         Player player = findPlayer(contract.getPlayerId());
-        Client client = requireParent(player);
+        Client client = requireClient(contract, player);
         GroupDto group = groupPort.getGroupById(contract.getGroupId());
         CoachDto coach = contract.getCoachId() == null ? null : coachPort.getCoach(contract.getCoachId());
 
@@ -142,8 +153,9 @@ public class ContractService implements ContractPort {
     @Override
     @Transactional(readOnly = true)
     public UUID getBranchId(UUID contractId) {
-        Player player = findPlayer(findContract(contractId).getPlayerId());
-        return requireParent(player).getBranchId();
+        Contract contract = findContract(contractId);
+        Player player = findPlayer(contract.getPlayerId());
+        return requireClient(contract, player).getBranchId();
     }
 
     @Override
@@ -151,7 +163,7 @@ public class ContractService implements ContractPort {
     public ContractPaymentContextOutput getPaymentContext(UUID contractId) {
         Contract contract = findContract(contractId);
         Player player = findPlayer(contract.getPlayerId());
-        Client client = requireParent(player);
+        Client client = requireClient(contract, player);
         touchLifecycleStatus(contract);
 
         return new ContractPaymentContextOutput(
@@ -170,8 +182,22 @@ public class ContractService implements ContractPort {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ContractParticipantLookupOutput> getParticipants(UUID branchId) {
-        List<Player> players = playerRepository.findAllByParentBranchId(branchId);
+    public List<ContractParticipantLookupOutput> getParticipants(UUID branchId, UUID clientId) {
+        Client selectedClient = null;
+        List<Player> players;
+        if (clientId == null) {
+            players = playerRepository.findAllByParentBranchId(branchId);
+        } else {
+            selectedClient = clientRepository.findById(clientId)
+                    .filter(client -> Objects.equals(client.getBranchId(), branchId))
+                    .orElseThrow(() -> new NotFoundException("Client not found in branch", clientId));
+            List<UUID> playerIds = relationPort.getClientStudents(clientId).stream()
+                    .filter(ClientStudentRelationOutput::active)
+                    .map(ClientStudentRelationOutput::playerId)
+                    .distinct()
+                    .toList();
+            players = playerIds.isEmpty() ? List.of() : playerRepository.findAllById(playerIds);
+        }
         if (players.isEmpty()) {
             return List.of();
         }
@@ -185,13 +211,14 @@ public class ContractService implements ContractPort {
                 players.stream().map(Player::getId).toList()
         );
 
+        Client primaryContact = selectedClient;
         return players.stream()
                 .map(player -> new ContractParticipantLookupOutput(
                         player.getId(),
                         buildPlayerName(player),
                         player.getBirthDate(),
                         resolveLeadType(player.getId(), latestContracts, latestLeadTypes),
-                        toPrimaryContact(requireParent(player))
+                        toPrimaryContact(primaryContact == null ? requireParent(player) : primaryContact)
                 ))
                 .toList();
     }
@@ -276,6 +303,7 @@ public class ContractService implements ContractPort {
         Contract contract = Contract.builder()
                 .id(UUID.randomUUID())
                 .playerId(resolved.player.getId())
+                .clientId(resolved.client.getId())
                 .groupId(group.groupId())
                 .contractNumber(resolveContractNumber(command.contractNumber()))
                 .leadType(command.leadType())
@@ -290,6 +318,7 @@ public class ContractService implements ContractPort {
         contractRepository.save(contract);
         groupMembershipSyncService.syncFromContract(contract);
         appendHistory(contract.getId(), ContractHistoryType.CREATED, actorUserId, command.notes(), "Initial create");
+        recordContractActivity(contract, resolved.player, resolved.client, actorUserId, ClientActivityType.CONTRACT_CREATED);
 
         return toDetails(contract, resolved.player, resolved.client, group, coach, loadHistory(contract.getId()));
     }
@@ -305,19 +334,12 @@ public class ContractService implements ContractPort {
         validateUpdateCommand(command, contract, errors);
 
         Player player = command.participantId() == null ? null : playerRepository.findById(command.participantId()).orElse(null);
-        Client client = player == null ? null : requireParent(player);
+        Client client = player == null ? null : resolveRelatedClient(
+                player, command.primaryContactId(), command.branchId(), errors
+        );
         if (player == null) {
             errors.add(error("REQUIRED", "participantId", "Выберите участника"));
         }
-        if (command.primaryContactId() == null) {
-            errors.add(error("REQUIRED", "primaryContactId", "Выберите основной контакт"));
-        } else if (client != null && !Objects.equals(client.getId(), command.primaryContactId())) {
-            errors.add(error("MISMATCH", "primaryContactId", "Контакт не соответствует участнику"));
-        }
-        if (client != null && command.branchId() != null && !Objects.equals(client.getBranchId(), command.branchId())) {
-            errors.add(error("BRANCH_MISMATCH", "participantId", "Участник не относится к выбранному филиалу"));
-        }
-
         GroupDto group = resolveGroup(command.branchId(), command.groupId(), command.leadType(), errors);
         CoachDto coach = resolveCoach(command.coachId(), errors);
 
@@ -328,6 +350,7 @@ public class ContractService implements ContractPort {
         throwIfErrors(errors);
 
         contract.setPlayerId(player.getId());
+        contract.setClientId(client.getId());
         contract.setGroupId(group.groupId());
         contract.setLeadType(command.leadType());
         contract.setCoachId(command.coachId());
@@ -340,6 +363,7 @@ public class ContractService implements ContractPort {
         groupMembershipSyncService.syncFromContract(contract);
 
         appendHistory(contract.getId(), ContractHistoryType.UPDATED, actorUserId, command.notes(), "Contract updated");
+        recordContractActivity(contract, player, client, actorUserId, ClientActivityType.CONTRACT_UPDATED);
         return toDetails(contract, player, client, group, coach, loadHistory(contract.getId()));
     }
 
@@ -373,11 +397,12 @@ public class ContractService implements ContractPort {
         groupMembershipSyncService.syncFromContract(contract);
 
         Player player = findPlayer(contract.getPlayerId());
-        Client client = requireParent(player);
+        Client client = requireClient(contract, player);
         GroupDto group = groupPort.getGroupById(contract.getGroupId());
         CoachDto coach = contract.getCoachId() == null ? null : coachPort.getCoach(contract.getCoachId());
 
         appendHistory(contract.getId(), ContractHistoryType.EXTENDED, actorUserId, command.notes(), "Contract extended");
+        recordContractActivity(contract, player, client, actorUserId, ClientActivityType.CONTRACT_EXTENDED);
         return toDetails(contract, player, client, group, coach, loadHistory(contract.getId()));
     }
 
@@ -403,11 +428,12 @@ public class ContractService implements ContractPort {
         groupMembershipSyncService.syncFromContract(contract);
 
         Player player = findPlayer(contract.getPlayerId());
-        Client client = requireParent(player);
+        Client client = requireClient(contract, player);
         GroupDto group = groupPort.getGroupById(contract.getGroupId());
         CoachDto coach = contract.getCoachId() == null ? null : coachPort.getCoach(contract.getCoachId());
 
         appendHistory(contract.getId(), ContractHistoryType.CANCELLED, actorUserId, command.comment(), "Contract cancelled");
+        recordContractActivity(contract, player, client, actorUserId, ClientActivityType.CONTRACT_CANCELLED);
         return toDetails(contract, player, client, group, coach, loadHistory(contract.getId()));
     }
 
@@ -460,17 +486,9 @@ public class ContractService implements ContractPort {
                 errors.add(error("NOT_FOUND", "participantId", "Участник не найден"));
                 return ResolvedParticipant.empty();
             }
-            Client client = requireParent(player);
-            if (command.primaryContactId() == null) {
-                errors.add(error("REQUIRED", "primaryContactId", "Выберите основной контакт"));
-            } else if (!Objects.equals(client.getId(), command.primaryContactId())) {
-                errors.add(error("MISMATCH", "primaryContactId", "Контакт не соответствует участнику"));
-            }
+            Client client = resolveRelatedClient(player, command.primaryContactId(), command.branchId(), errors);
             if (command.primaryContactDraft() != null) {
                 errors.add(error("CONFLICT", "contactFullName", "Нельзя передавать draft-контакт для существующего участника"));
-            }
-            if (command.branchId() != null && !Objects.equals(client.getBranchId(), command.branchId())) {
-                errors.add(error("BRANCH_MISMATCH", "participantId", "Участник не относится к выбранному филиалу"));
             }
             return new ResolvedParticipant(player, client);
         }
@@ -485,7 +503,33 @@ public class ContractService implements ContractPort {
         if (client == null || !errors.isEmpty()) {
             return ResolvedParticipant.empty();
         }
-        return new ResolvedParticipant(resolveOrCreatePlayer(client, command.participantDraft()), client);
+        return new ResolvedParticipant(resolveOrCreatePlayer(client, command.participantDraft(), command.relationshipType()), client);
+    }
+
+    private Client resolveRelatedClient(
+            Player player,
+            UUID clientId,
+            UUID branchId,
+            List<ContractValidationError> errors
+    ) {
+        if (clientId == null) {
+            errors.add(error("REQUIRED", "primaryContactId", "Выберите основной контакт"));
+            return null;
+        }
+        Client client = clientRepository.findById(clientId).orElse(null);
+        if (client == null) {
+            errors.add(error("NOT_FOUND", "primaryContactId", "Контакт не найден"));
+            return null;
+        }
+        if (branchId != null && !Objects.equals(client.getBranchId(), branchId)) {
+            errors.add(error("BRANCH_MISMATCH", "primaryContactId", "Контакт не относится к выбранному филиалу"));
+        }
+        boolean hasActiveRelation = relationPort.getStudentClients(player.getId()).stream()
+                .anyMatch(relation -> relation.active() && Objects.equals(relation.clientId(), clientId));
+        if (!hasActiveRelation) {
+            errors.add(error("MISMATCH", "primaryContactId", "Клиент не связан с выбранным участником"));
+        }
+        return client;
     }
 
     private Client resolvePrimaryContact(ContractCreateCommand command, List<ContractValidationError> errors) {
@@ -608,6 +652,14 @@ public class ContractService implements ContractPort {
         return player.getParent();
     }
 
+    private Client requireClient(Contract contract, Player player) {
+        if (contract.getClientId() != null) {
+            return clientRepository.findById(contract.getClientId())
+                    .orElseThrow(() -> new NotFoundException("Client not found for contract", contract.getId()));
+        }
+        return requireParent(player);
+    }
+
     private boolean touchLifecycleStatus(Contract contract) {
         if (contract.getStatus() == ContractStatus.CANCELLED) {
             return false;
@@ -641,12 +693,16 @@ public class ContractService implements ContractPort {
                 .collect(Collectors.toMap(Player::getId, item -> item));
     }
 
-    private Map<UUID, Client> loadClients(Collection<Player> players) {
-        Set<UUID> clientIds = players.stream()
+    private Map<UUID, Client> loadClients(Collection<Contract> contracts, Collection<Player> players) {
+        Set<UUID> clientIds = contracts.stream()
+                .map(Contract::getClientId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        players.stream()
                 .map(Player::getParent)
                 .filter(Objects::nonNull)
                 .map(Client::getId)
-                .collect(Collectors.toSet());
+                .forEach(clientIds::add);
         return clientRepository.findAllById(clientIds).stream()
                 .collect(Collectors.toMap(Client::getId, item -> item));
     }
@@ -688,14 +744,14 @@ public class ContractService implements ContractPort {
 
         touchLifecycleStatuses(contracts);
         Map<UUID, Player> players = loadPlayers(contracts);
-        Map<UUID, Client> clients = loadClients(players.values());
+        Map<UUID, Client> clients = loadClients(contracts, players.values());
         Map<UUID, GroupDto> groups = loadGroups(contracts);
         Map<UUID, CoachDto> coaches = loadCoaches(contracts);
 
         return contracts.stream()
                 .map(contract -> {
                     Player player = players.get(contract.getPlayerId());
-                    Client client = player == null || player.getParent() == null ? null : clients.get(player.getParent().getId());
+                    Client client = resolveClient(contract, player, clients);
                     GroupDto group = groups.get(contract.getGroupId());
                     CoachDto coach = contract.getCoachId() == null ? null : coaches.get(contract.getCoachId());
                     return new StudentContractSnapshotOutput(
@@ -724,7 +780,7 @@ public class ContractService implements ContractPort {
             Map<UUID, GroupDto> groups,
             Map<UUID, CoachDto> coaches
     ) {
-        Client client = player == null || player.getParent() == null ? null : clients.get(player.getParent().getId());
+        Client client = resolveClient(contract, player, clients);
         GroupDto group = groups.get(contract.getGroupId());
         CoachDto coach = contract.getCoachId() == null ? null : coaches.get(contract.getCoachId());
         return new ContractListItemOutput(
@@ -816,6 +872,28 @@ public class ContractService implements ContractPort {
                 .build());
     }
 
+    private void recordContractActivity(
+            Contract contract,
+            Player player,
+            Client client,
+            UUID actorUserId,
+            ClientActivityType activityType
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("contractId", contract.getId());
+        payload.put("contractNumber", contract.getContractNumber());
+        payload.put("playerId", player.getId());
+        payload.put("playerName", buildPlayerName(player));
+        payload.put("amount", contract.getAmount());
+        payload.put("currency", contract.getCurrency());
+        payload.put("status", contract.getStatus().name());
+        payload.put("endDate", contract.getEndDate().toString());
+        if (contract.getCancelReasonCode() != null) {
+            payload.put("reasonCode", contract.getCancelReasonCode().name());
+        }
+        clientActivityPort.recordClientActivity(client.getId(), actorUserId, activityType, payload);
+    }
+
     private String resolveActorName(UUID actorUserId) {
         return adminPort.findById(actorUserId)
                 .map(this::buildAdminName)
@@ -843,33 +921,63 @@ public class ContractService implements ContractPort {
                 .orElseGet(() -> registerClientUser(normalizedEmail));
 
         String[] names = splitName(draft.fullName());
-        return clientRepository.findById(userId)
+        return clientRepository.findByUserId(userId)
                 .orElseGet(() -> clientRepository.save(Client.builder()
-                        .id(userId)
+                        .id(UUID.randomUUID())
+                        .userId(userId)
                         .firstName(names[0])
                         .lastName(names[1])
                         .phone(phone)
+                        .email(draft.email())
                         .branchId(branchId)
-                        .comments(trimToNull(draft.email()))
+                        .source(trimToNull(draft.source()))
+                        .comments(trimToNull(draft.comments()))
                         .status(ClientStatus.ACTIVE)
                         .build()));
     }
 
-    private Player resolveOrCreatePlayer(Client client, ContractParticipantDraftInput draft) {
+    private Player resolveOrCreatePlayer(
+            Client client,
+            ContractParticipantDraftInput draft,
+            ClientStudentRelationshipType relationshipType
+    ) {
         String[] names = splitName(draft.fullName());
-        return playerRepository.findFirstByParent_IdAndFirstNameAndLastNameAndBirthDate(
+        Optional<Player> existing = playerRepository.findFirstByParent_IdAndFirstNameAndLastNameAndBirthDate(
                         client.getId(),
                         names[0],
                         names[1],
                         draft.birthDate()
-                )
-                .orElseGet(() -> playerRepository.save(Player.builder()
+                );
+        Player player = existing.orElseGet(() -> playerRepository.save(Player.builder()
                         .id(UUID.randomUUID())
                         .firstName(names[0])
                         .lastName(names[1])
                         .birthDate(draft.birthDate())
                         .parent(client)
                         .build()));
+        if (relationshipType == null) {
+            relationSyncService.syncLegacyParent(player);
+        } else if (relationPort.getStudentClients(player.getId()).stream()
+                .noneMatch(relation -> relation.active() && Objects.equals(relation.clientId(), client.getId()))) {
+            relationPort.create(new ClientStudentRelationCreateCommand(
+                    client.getId(),
+                    player.getId(),
+                    relationshipType,
+                    true,
+                    true,
+                    true,
+                    true,
+                    LocalDate.now()
+            ));
+        }
+        return player;
+    }
+
+    private Client resolveClient(Contract contract, Player player, Map<UUID, Client> clients) {
+        if (contract.getClientId() != null) {
+            return clients.get(contract.getClientId());
+        }
+        return player == null || player.getParent() == null ? null : clients.get(player.getParent().getId());
     }
 
     private UUID registerClientUser(String email) {
@@ -929,7 +1037,7 @@ public class ContractService implements ContractPort {
 
     private boolean belongsToBranch(Contract contract, UUID branchId) {
         Player player = findPlayer(contract.getPlayerId());
-        return Objects.equals(requireParent(player).getBranchId(), branchId);
+        return Objects.equals(requireClient(contract, player).getBranchId(), branchId);
     }
 
     private String buildCoachName(CoachDto coach) {
@@ -943,8 +1051,7 @@ public class ContractService implements ContractPort {
     }
 
     private String extractClientEmail(Client client) {
-        String comments = trimToNull(client.getComments());
-        return comments != null && comments.contains("@") ? comments : null;
+        return trimToNull(client.getEmail());
     }
 
     private String resolveClientEmail(String email, String phone) {

@@ -20,11 +20,16 @@ public class Client extends AbstractAuditableEntity implements Persistable<UUID>
     @Id
     private UUID id;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     private String firstName;
 
     private String lastName;
 
     private String phone;
+
+    private String email;
 
     private String source;
 
@@ -51,8 +56,15 @@ public class Client extends AbstractAuditableEntity implements Persistable<UUID>
     }
 
     @PostLoad
-    @PrePersist
     void markNotNew() {
         this.isNew = false;
+    }
+
+    @PrePersist
+    void prePersist() {
+        if (id == null) {
+            id = UUID.randomUUID();
+        }
+        isNew = false;
     }
 }

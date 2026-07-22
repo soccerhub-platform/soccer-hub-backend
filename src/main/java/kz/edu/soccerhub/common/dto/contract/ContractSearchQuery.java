@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public record ContractSearchQuery(
         UUID branchId,
+        UUID clientId,
         Set<ContractStatus> statuses,
         LeadType leadType,
         String search

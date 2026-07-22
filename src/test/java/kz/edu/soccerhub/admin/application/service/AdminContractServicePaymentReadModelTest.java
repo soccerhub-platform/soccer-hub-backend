@@ -137,7 +137,7 @@ class AdminContractServicePaymentReadModelTest {
 
         ContractsPageOutput output = service.getContracts(
                 adminId,
-                new ContractSearchQuery(branchId, Set.of(), null, null),
+                new ContractSearchQuery(branchId, null, Set.of(), null, null),
                 PageRequest.of(0, 20)
         );
 
