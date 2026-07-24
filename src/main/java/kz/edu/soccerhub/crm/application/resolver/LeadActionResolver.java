@@ -25,12 +25,7 @@ public class LeadActionResolver {
                     secondary(LeadActionType.CLOSE_LEAD, "Отказ / Закрыть", LeadEvent.REJECT, true, true, branchAllowed)
             );
 
-            case CONTACTED -> List.of(
-                    primary(LeadActionType.QUALIFY_LEAD, "Квалифицировать", LeadEvent.QUALIFY, true, branchAllowed),
-                    secondary(LeadActionType.CLOSE_LEAD, "Отказ / Закрыть", LeadEvent.REJECT, true, true, branchAllowed)
-            );
-
-            case QUALIFIED -> List.of(
+            case IN_PROGRESS -> List.of(
                     primary(LeadActionType.SCHEDULE_TRIAL, "Назначить пробное", LeadEvent.SCHEDULE_TRIAL, hasParticipants(lead), branchAllowed),
                     secondary(LeadActionType.CLOSE_LEAD, "Отказ / Закрыть", LeadEvent.REJECT, true, true, branchAllowed)
             );
@@ -42,22 +37,12 @@ public class LeadActionResolver {
                     secondary(LeadActionType.MARK_NO_SHOW, "Не пришел", LeadEvent.NO_SHOW, true, true, branchAllowed)
             );
 
-            case TRIAL_DONE -> lead.getContractId() == null
-                    ? List.of(
-                    primary(LeadActionType.CONVERT_TO_CONTRACT, "Оформить договор", null, hasCompletedTrial(lead), branchAllowed),
-                    secondary(LeadActionType.CLOSE_LEAD, "Отказ после пробного", LeadEvent.POST_TRIAL_REJECT, true, true, branchAllowed)
-            )
-                    : List.of(
-                    primary(LeadActionType.ADD_PAYMENT, "Добавить оплату", null, hasPaymentRequestReady(lead), branchAllowed),
+            case DECISION_PENDING -> List.of(
+                    primary(LeadActionType.CONVERT_TO_CLIENT, "Оформить клиента", null, hasParticipants(lead), branchAllowed),
                     secondary(LeadActionType.CLOSE_LEAD, "Отказ после пробного", LeadEvent.POST_TRIAL_REJECT, true, true, branchAllowed)
             );
 
-            case WAITING_PAYMENT -> List.of(
-                    primary(LeadActionType.ADD_PAYMENT, "Добавить оплату", null, lead.getContractId() != null, branchAllowed),
-                    secondary(LeadActionType.CLOSE_LEAD, "Отказ / Закрыть", LeadEvent.REJECT, true, true, branchAllowed)
-            );
-
-            case WON, LOST -> List.of();
+            case CONVERTED, LOST -> List.of();
         };
     }
 
@@ -84,7 +69,4 @@ public class LeadActionResolver {
         return lead.getTrial() != null && lead.getTrial().getStatus() == LeadTrialStatus.COMPLETED;
     }
 
-    private boolean hasPaymentRequestReady(Lead lead) {
-        return hasCompletedTrial(lead) && lead.getContractId() != null;
-    }
 }

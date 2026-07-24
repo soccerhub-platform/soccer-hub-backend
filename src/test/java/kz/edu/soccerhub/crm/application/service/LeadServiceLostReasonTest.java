@@ -187,10 +187,10 @@ class LeadServiceLostReasonTest {
     void rejectWithReasonNotAllowedForStageShouldFail() {
         UUID leadId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
-        Lead lead = lead(leadId, LeadStatus.WAITING_PAYMENT);
+        Lead lead = lead(leadId, LeadStatus.DECISION_PENDING);
 
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
-        when(stateMachineService.process(leadId, LeadStatus.WAITING_PAYMENT, LeadEvent.REJECT)).thenReturn(LeadStatus.LOST);
+        when(stateMachineService.process(leadId, LeadStatus.DECISION_PENDING, LeadEvent.REJECT)).thenReturn(LeadStatus.LOST);
         when(leadLossReasonRepository.findByCodeAndActiveTrue("NO_RESPONSE"))
                 .thenReturn(Optional.of(LeadLossReasonEntity.builder()
                         .code("NO_RESPONSE")
@@ -198,9 +198,9 @@ class LeadServiceLostReasonTest {
                         .active(true)
                         .sortOrder(40)
                         .build()));
-        when(leadLossReasonPolicy.resolveStage(LeadEvent.REJECT, LeadStatus.WAITING_PAYMENT))
-                .thenReturn(LeadLossReasonStage.PAYMENT_REJECT);
-        when(leadLossReasonPolicy.isAllowed("NO_RESPONSE", LeadLossReasonStage.PAYMENT_REJECT)).thenReturn(false);
+        when(leadLossReasonPolicy.resolveStage(LeadEvent.REJECT, LeadStatus.DECISION_PENDING))
+                .thenReturn(LeadLossReasonStage.POST_TRIAL_REJECT);
+        when(leadLossReasonPolicy.isAllowed("NO_RESPONSE", LeadLossReasonStage.POST_TRIAL_REJECT)).thenReturn(false);
 
         BadRequestException ex = assertThrows(
                 BadRequestException.class,

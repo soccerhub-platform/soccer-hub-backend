@@ -13,7 +13,6 @@ import kz.edu.soccerhub.common.dto.payment.PaymentOutput;
 import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.common.port.ClientActivityPort;
 import kz.edu.soccerhub.common.port.ContractPort;
-import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.payments.domain.enums.PaymentMethod;
 import kz.edu.soccerhub.payments.domain.enums.PaymentStatus;
 import kz.edu.soccerhub.payments.domain.model.Payment;
@@ -45,8 +44,6 @@ class PaymentServiceTest {
     @Mock
     private ContractPort contractPort;
     @Mock
-    private LeadPort leadPort;
-    @Mock
     private AdminPort adminPort;
     @Mock
     private ClientActivityPort clientActivityPort;
@@ -58,7 +55,6 @@ class PaymentServiceTest {
         paymentService = new PaymentService(
                 paymentRepository,
                 contractPort,
-                leadPort,
                 adminPort,
                 clientActivityPort,
                 new ContractPaymentCalculator()
@@ -81,7 +77,6 @@ class PaymentServiceTest {
 
         assertEquals(PaymentStatus.PAID, output.paymentStatus());
         assertEquals(BigDecimal.ZERO, output.outstandingAmount());
-        verify(leadPort).markWonByContractIfWaitingPayment(contractId, actorId);
         verify(clientActivityPort).recordClientActivity(
                 org.mockito.ArgumentMatchers.eq(context.clientId()),
                 org.mockito.ArgumentMatchers.eq(actorId),
@@ -105,7 +100,6 @@ class PaymentServiceTest {
         PaymentCreateOutput output = paymentService.createPayment(command, actorId);
 
         assertEquals(BigDecimal.valueOf(30000), output.outstandingAmount());
-        verify(leadPort, never()).markWonByContractIfWaitingPayment(contractId, actorId);
     }
 
     @Test
@@ -136,7 +130,7 @@ class PaymentServiceTest {
     }
 
     @Test
-    void cancelPaymentShouldNotRollbackLeadFromWon() {
+    void cancelPaymentShouldOnlyCancelPayment() {
         UUID contractId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
         ContractPaymentContextOutput context = context(contractId, BigDecimal.valueOf(80000));
@@ -152,7 +146,6 @@ class PaymentServiceTest {
         );
 
         assertEquals(PaymentStatus.CANCELLED, output.status());
-        verify(leadPort, never()).markWonByContractIfWaitingPayment(any(), any());
         verify(clientActivityPort).recordClientActivity(
                 org.mockito.ArgumentMatchers.eq(context.clientId()),
                 org.mockito.ArgumentMatchers.eq(actorId),

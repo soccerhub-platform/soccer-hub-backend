@@ -10,8 +10,8 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -158,8 +158,8 @@ public class AnalyticsService implements AnalyticsPort {
         Map<LeadStatus, Long> totals = loadFunnelTotals(branchId, dateFrom, dateTo, resolvedTimezone, coachId, groupId);
         LeadTimingOutput leadTiming = loadLeadTiming(branchId, dateFrom, dateTo, resolvedTimezone, coachId, groupId);
         long newCount = totals.getOrDefault(LeadStatus.NEW, 0L);
-        long qualified = totals.getOrDefault(LeadStatus.QUALIFIED, 0L);
-        long won = totals.getOrDefault(LeadStatus.WON, 0L);
+        long qualified = totals.getOrDefault(LeadStatus.IN_PROGRESS, 0L);
+        long won = totals.getOrDefault(LeadStatus.CONVERTED, 0L);
         long lost = totals.getOrDefault(LeadStatus.LOST, 0L);
         AnalyticsKpiSummaryOutput summary = new AnalyticsKpiSummaryOutput(
                 newCount,
@@ -200,8 +200,8 @@ public class AnalyticsService implements AnalyticsPort {
 
         return new DashboardLeadAnalyticsOutput(
                 funnelTotals.getOrDefault(LeadStatus.NEW, 0L),
-                loadAverageLeadDurationMinutes(branchId, kpiDateFrom, date, resolvedTimezone, "CONTACTED"),
-                loadLeadBreachCount(branchId, kpiDateFrom, date, resolvedTimezone, "CONTACTED", 120),
+                loadAverageLeadDurationMinutes(branchId, kpiDateFrom, date, resolvedTimezone, "IN_PROGRESS"),
+                loadLeadBreachCount(branchId, kpiDateFrom, date, resolvedTimezone, "IN_PROGRESS", 120),
                 funnelTotals,
                 loadDashboardWeeklyTrend(branchId, weekStart, date, resolvedTimezone)
         );
@@ -335,9 +335,9 @@ public class AnalyticsService implements AnalyticsPort {
 
     private FunnelRatesOutput buildFunnelRates(Map<LeadStatus, Long> totals) {
         long newCount = totals.getOrDefault(LeadStatus.NEW, 0L);
-        long qualified = totals.getOrDefault(LeadStatus.QUALIFIED, 0L);
+        long qualified = totals.getOrDefault(LeadStatus.IN_PROGRESS, 0L);
         long trialScheduled = totals.getOrDefault(LeadStatus.TRIAL_SCHEDULED, 0L);
-        long won = totals.getOrDefault(LeadStatus.WON, 0L);
+        long won = totals.getOrDefault(LeadStatus.CONVERTED, 0L);
         long lost = totals.getOrDefault(LeadStatus.LOST, 0L);
 
         return new FunnelRatesOutput(
@@ -749,7 +749,7 @@ public class AnalyticsService implements AnalyticsPort {
                 dateFrom,
                 dateTo,
                 timezone,
-                "CONTACTED",
+                "IN_PROGRESS",
                 ChronoUnit.MINUTES,
                 coachId,
                 groupId
@@ -760,7 +760,7 @@ public class AnalyticsService implements AnalyticsPort {
                 dateFrom,
                 dateTo,
                 timezone,
-                "QUALIFIED",
+                "IN_PROGRESS",
                 ChronoUnit.HOURS,
                 coachId,
                 groupId
@@ -788,8 +788,8 @@ public class AnalyticsService implements AnalyticsPort {
             UUID coachId,
             UUID groupId
     ) {
-        String firstContactSql = leadDurationSql("CONTACTED");
-        String qualificationSql = leadDurationSql("QUALIFIED");
+        String firstContactSql = leadDurationSql("IN_PROGRESS");
+        String qualificationSql = leadDurationSql("IN_PROGRESS");
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("branchId", branchId)
@@ -942,7 +942,7 @@ public class AnalyticsService implements AnalyticsPort {
             items.add(new DashboardLeadWeeklyTrendItemOutput(
                     bucket,
                     counts.getOrDefault(LeadStatus.NEW, 0L),
-                    counts.getOrDefault(LeadStatus.WON, 0L),
+                    counts.getOrDefault(LeadStatus.CONVERTED, 0L),
                     counts.getOrDefault(LeadStatus.LOST, 0L)
             ));
             cursor = cursor.plusWeeks(1);

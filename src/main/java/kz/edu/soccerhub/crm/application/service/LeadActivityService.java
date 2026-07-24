@@ -168,9 +168,7 @@ public class LeadActivityService {
             case CANCEL_TRIAL -> "Пробное отменено";
             case COMPLETE_TRIAL -> "Пробное завершено";
             case NO_SHOW -> "Не пришел";
-            case REQUEST_PAYMENT -> "Запрошена оплата";
             case POST_TRIAL_REJECT -> "Отказ после пробного";
-            case CONFIRM_PAYMENT -> "Оплата подтверждена";
             case CONTACT -> "Связались с клиентом";
             case REJECT -> "Лид закрыт";
         };

@@ -51,5 +51,4 @@ public interface LeadPort {
 
     Map<UUID, LeadType> getLatestLeadTypesByParticipantIds(Collection<UUID> participantIds);
 
-    boolean markWonByContractIfWaitingPayment(UUID contractId, UUID currentAdminId);
 }

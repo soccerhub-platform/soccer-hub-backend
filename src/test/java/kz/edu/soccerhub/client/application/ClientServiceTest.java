@@ -16,6 +16,7 @@ import kz.edu.soccerhub.common.dto.student.StudentUpdateCommand;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.BranchPort;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
+import kz.edu.soccerhub.common.port.ClientStudentRelationPort;
 import kz.edu.soccerhub.organization.domain.model.GroupMembership;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,8 @@ class ClientServiceTest {
     private ClientStudentRelationSyncService relationSyncService;
     @Mock
     private ClientStudentRelationRepository relationRepository;
+    @Mock
+    private ClientStudentRelationPort clientStudentRelationPort;
 
     @Test
     void shouldBuildGroupMembersFromMembershipAndContractSeparately() {
@@ -104,7 +107,8 @@ class ClientServiceTest {
                 authPort,
                 groupMembershipPort,
                 relationSyncService,
-                relationRepository
+                relationRepository,
+                clientStudentRelationPort
         );
 
         List<GroupMemberDto> result = service.getGroupMembers(groupId);
@@ -139,7 +143,8 @@ class ClientServiceTest {
                 authPort,
                 groupMembershipPort,
                 relationSyncService,
-                relationRepository
+                relationRepository,
+                clientStudentRelationPort
         );
 
         StudentProfileDto result = service.updateStudent(
@@ -188,7 +193,8 @@ class ClientServiceTest {
                 authPort,
                 groupMembershipPort,
                 relationSyncService,
-                relationRepository
+                relationRepository,
+                clientStudentRelationPort
         );
 
         StudentProfileDto result = service.getStudentProfile(playerId);

@@ -16,7 +16,6 @@ import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.common.port.ClientActivityPort;
 import kz.edu.soccerhub.common.port.ContractPort;
-import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.common.port.PaymentPort;
 import kz.edu.soccerhub.payments.domain.enums.PaymentStatus;
 import kz.edu.soccerhub.payments.domain.model.Payment;
@@ -43,7 +42,6 @@ public class PaymentService implements PaymentPort {
 
     private final PaymentRepository paymentRepository;
     private final ContractPort contractPort;
-    private final LeadPort leadPort;
     private final AdminPort adminPort;
     private final ClientActivityPort clientActivityPort;
     private final ContractPaymentCalculator contractPaymentCalculator;
@@ -72,9 +70,6 @@ public class PaymentService implements PaymentPort {
                 .build());
 
         ContractPaymentSummaryOutput summary = getContractPaymentSummary(contract.contractId());
-        if (summary.paymentStatus() == kz.edu.soccerhub.common.dto.payment.ContractPaymentStatus.PAID) {
-            leadPort.markWonByContractIfWaitingPayment(contract.contractId(), actorUserId);
-        }
         recordPaymentActivity(payment, contract, actorUserId, ClientActivityType.PAYMENT_CREATED);
 
         return new PaymentCreateOutput(

@@ -84,9 +84,6 @@ public class Lead extends AbstractAuditableEntity {
     @Column(name = "participant_id")
     private UUID participantId;
 
-    @Column(name = "contract_id")
-    private UUID contractId;
-
     @Column(name = "lost_reason_code")
     private String lostReasonCode;
 
@@ -161,10 +158,10 @@ public class Lead extends AbstractAuditableEntity {
         );
     }
 
-    public void markConverted(UUID clientId, UUID participantId, UUID contractId) {
+    public void markConverted(UUID clientId, UUID participantId) {
         this.clientId = clientId;
         this.participantId = participantId;
-        this.contractId = contractId;
+        this.status = LeadStatus.CONVERTED;
     }
 
     public void markLost(String reasonCode, String comment, LocalDateTime at) {

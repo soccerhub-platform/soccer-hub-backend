@@ -8,8 +8,6 @@ public enum LeadEvent {
     CANCEL_TRIAL,
     NO_SHOW,
     COMPLETE_TRIAL,
-    REQUEST_PAYMENT,
     POST_TRIAL_REJECT,
-    CONFIRM_PAYMENT,
     REJECT
 }

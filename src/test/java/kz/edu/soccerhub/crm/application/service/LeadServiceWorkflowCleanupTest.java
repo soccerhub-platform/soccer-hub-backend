@@ -83,36 +83,6 @@ class LeadServiceWorkflowCleanupTest {
     }
 
     @Test
-    void manualConfirmPaymentShouldBeRejected() {
-        UUID leadId = UUID.randomUUID();
-        Lead lead = lead(leadId, LeadStatus.WAITING_PAYMENT);
-
-        when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
-
-        assertThrows(
-                BadRequestException.class,
-                () -> leadService.processEvent(leadId, LeadEvent.CONFIRM_PAYMENT, null, null, UUID.randomUUID())
-        );
-
-        verify(stateMachineService, never()).process(any(), any(), any());
-    }
-
-    @Test
-    void requestPaymentShouldRequireContract() {
-        UUID leadId = UUID.randomUUID();
-        Lead lead = lead(leadId, LeadStatus.TRIAL_DONE);
-
-        when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
-
-        assertThrows(
-                BadRequestException.class,
-                () -> leadService.processEvent(leadId, LeadEvent.REQUEST_PAYMENT, null, null, UUID.randomUUID())
-        );
-
-        verify(stateMachineService, never()).process(any(), any(), any());
-    }
-
-    @Test
     void cancelTrialShouldReturnLeadToQualifiedAndCancelTrial() {
         UUID leadId = UUID.randomUUID();
         UUID participantId = UUID.randomUUID();
@@ -131,12 +101,12 @@ class LeadServiceWorkflowCleanupTest {
 
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
         when(stateMachineService.process(leadId, LeadStatus.TRIAL_SCHEDULED, LeadEvent.CANCEL_TRIAL))
-                .thenReturn(LeadStatus.QUALIFIED);
+                .thenReturn(LeadStatus.IN_PROGRESS);
 
         LeadStatus status = leadService.processEvent(leadId, LeadEvent.CANCEL_TRIAL, null, null, UUID.randomUUID());
 
-        assertEquals(LeadStatus.QUALIFIED, status);
-        assertEquals(LeadStatus.QUALIFIED, lead.getStatus());
+        assertEquals(LeadStatus.IN_PROGRESS, status);
+        assertEquals(LeadStatus.IN_PROGRESS, lead.getStatus());
         assertEquals(kz.edu.soccerhub.crm.domain.model.enums.LeadTrialStatus.CANCELED, lead.getTrial().getStatus());
     }
 

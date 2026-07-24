@@ -1,6 +1,7 @@
 -- liquibase formatted sql
 
 -- changeset codex:2026-07-24-contract-workspace-v2
+-- validCheckSum: 9:ea01a4f8201f004dbeda7df7ea827fc9
 ALTER TABLE public.contracts
     ALTER COLUMN group_id DROP NOT NULL;
 

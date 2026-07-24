@@ -59,8 +59,8 @@ public class LeadLossReasonPolicy {
         return switch (event) {
             case NO_SHOW -> LeadLossReasonStage.TRIAL_NO_SHOW;
             case POST_TRIAL_REJECT -> LeadLossReasonStage.POST_TRIAL_REJECT;
-            case REJECT -> previousStatus == LeadStatus.WAITING_PAYMENT
-                    ? LeadLossReasonStage.PAYMENT_REJECT
+            case REJECT -> previousStatus == LeadStatus.DECISION_PENDING
+                    ? LeadLossReasonStage.POST_TRIAL_REJECT
                     : LeadLossReasonStage.PRE_QUALIFICATION;
             default -> null;
         };

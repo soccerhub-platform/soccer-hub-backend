@@ -236,10 +236,10 @@ class AdminDashboardSummaryServiceTest {
                         1,
                         Map.of(
                                 LeadStatus.NEW, 3L,
-                                LeadStatus.CONTACTED, 2L,
-                                LeadStatus.QUALIFIED, 1L,
+                                LeadStatus.IN_PROGRESS, 2L,
+                                LeadStatus.DECISION_PENDING, 1L,
                                 LeadStatus.TRIAL_SCHEDULED, 1L,
-                                LeadStatus.WON, 1L,
+                                LeadStatus.CONVERTED, 1L,
                                 LeadStatus.LOST, 0L
                         ),
                         List.of()

@@ -17,6 +17,7 @@ import kz.edu.soccerhub.common.dto.client.ClientCreateCommand;
 import kz.edu.soccerhub.common.dto.client.ClientCreateCommandOutput;
 import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
 import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
+import kz.edu.soccerhub.common.dto.client.ClientStudentRelationCreateCommand;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
 import kz.edu.soccerhub.common.dto.student.StudentUpdateCommand;
@@ -24,6 +25,7 @@ import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.BranchPort;
 import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.ClientStudentRelationPort;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
 import kz.edu.soccerhub.organization.domain.model.GroupMembership;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
@@ -56,6 +58,7 @@ public class ClientService implements ClientPort {
     private final GroupMembershipPort groupMembershipPort;
     private final ClientStudentRelationSyncService relationSyncService;
     private final ClientStudentRelationRepository relationRepository;
+    private final ClientStudentRelationPort clientStudentRelationPort;
 
     @Override
     @Transactional
@@ -161,13 +164,31 @@ public class ClientService implements ClientPort {
     @Transactional
     public ClientConversionOutput convertLead(ClientConversionCommand command) {
         Client client = resolveOrCreateClient(command);
-        Player player = resolveOrCreatePlayer(client, command.participantName(), command.participantBirthDate());
-        Contract contract = resolveOrCreateContract(client.getId(), player.getId(), command);
+        String[] studentName = splitName(command.participantName());
+        Player player = playerRepository.save(Player.builder()
+                .id(UUID.randomUUID())
+                .firstName(studentName[0])
+                .lastName(studentName[1])
+                .birthDate(command.participantBirthDate())
+                .parent(client)
+                .build());
+        var relation = clientStudentRelationPort.create(new ClientStudentRelationCreateCommand(
+                client.getId(),
+                player.getId(),
+                command.relationshipType(),
+                true,
+                true,
+                command.replacePrimaryContact(),
+                command.replacePrimaryPayer(),
+                command.relationshipType() == kz.edu.soccerhub.common.dto.client.ClientStudentRelationshipType.SELF,
+                true,
+                LocalDate.now()
+        ));
 
         return new ClientConversionOutput(
                 client.getId(),
-                player.getId(),
-                contract.getId()
+                relation.playerId(),
+                relation.id()
         );
     }
 
@@ -258,67 +279,6 @@ public class ClientService implements ClientPort {
         return output.id();
     }
 
-    private Player resolveOrCreatePlayer(Client client, String participantFullName, LocalDate birthDate) {
-        String[] childName = splitName(participantFullName);
-
-        Player player = playerRepository.findFirstByParent_IdAndFirstNameAndLastNameAndBirthDate(
-                        client.getId(),
-                        childName[0],
-                        childName[1],
-                        birthDate
-                )
-                .orElseGet(() -> playerRepository.save(Player.builder()
-                        .id(UUID.randomUUID())
-                        .firstName(childName[0])
-                        .lastName(childName[1])
-                        .birthDate(birthDate)
-                        .parent(client)
-                        .build()));
-        relationSyncService.syncLegacyParent(player);
-        return player;
-    }
-
-    private Contract resolveOrCreateContract(UUID clientId, UUID playerId, ClientConversionCommand command) {
-        Contract contract = contractRepository.findFirstByPlayerIdAndStartDateAndEndDate(
-                        playerId,
-                        command.contractStartDate(),
-                        command.contractEndDate()
-                )
-                .orElseGet(() -> contractRepository.save(Contract.builder()
-                        .id(UUID.randomUUID())
-                        .playerId(playerId)
-                        .clientId(clientId)
-                        .contractNumber(generateContractNumber())
-                        .leadType(command.leadType())
-                        .status(ContractStatus.ACTIVE)
-                        .coachId(null)
-                        .startDate(command.contractStartDate())
-                        .endDate(command.contractEndDate())
-                        .amount(command.amount())
-                        .currency("KZT")
-                        .notes(command.comments())
-                        .build()));
-
-        if (contract.getClientId() == null) {
-            contract.setClientId(clientId);
-        }
-
-        if (command.groupId() != null && !groupMembershipPort.existsActiveByGroupIdAndPlayerIdAsOfDate(
-                command.groupId(), playerId, command.contractStartDate()
-        )) {
-            groupMembershipPort.save(GroupMembership.builder()
-                    .groupId(command.groupId())
-                    .playerId(playerId)
-                    .status(command.contractStartDate().isAfter(LocalDate.now())
-                            ? GroupMembershipStatus.UPCOMING
-                            : GroupMembershipStatus.ACTIVE)
-                    .joinedAt(command.contractStartDate())
-                    .leftAt(command.contractEndDate())
-                    .joinReason("LEAD_CONVERSION")
-                    .build());
-        }
-        return contract;
-    }
 
     private String resolveClientEmail(String email, String phone) {
         String normalizedEmail = email == null ? null : email.trim();
@@ -327,21 +287,6 @@ public class ClientService implements ClientPort {
         }
         String normalizedPhone = phone == null ? UUID.randomUUID().toString().replace("-", "") : phone.replaceAll("[^0-9]", "");
         return "client+" + normalizedPhone + "@soccerhub.local";
-    }
-
-    private String generateContractNumber() {
-        String year = String.valueOf(LocalDate.now().getYear());
-        long seed = contractRepository.count() + 1;
-        String candidate = buildContractNumber(year, seed);
-        while (contractRepository.existsByContractNumber(candidate)) {
-            seed++;
-            candidate = buildContractNumber(year, seed);
-        }
-        return candidate;
-    }
-
-    private String buildContractNumber(String year, long seed) {
-        return "CNT-" + year + "-" + String.format(java.util.Locale.ROOT, "%05d", seed);
     }
 
     private StudentProfileDto toStudentProfile(Player player) {

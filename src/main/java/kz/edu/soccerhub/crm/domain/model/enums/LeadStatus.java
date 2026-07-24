@@ -3,15 +3,15 @@ package kz.edu.soccerhub.crm.domain.model.enums;
 public enum LeadStatus {
 
     NEW,
-    CONTACTED,
-    QUALIFIED,
+    IN_PROGRESS,
     TRIAL_SCHEDULED,
-    TRIAL_DONE,
-    WAITING_PAYMENT,
-    WON,
-    LOST;
+    DECISION_PENDING,
+    CONVERTED,
+    LOST,
+
+    ;
 
     public boolean isFinal() {
-        return this == WON || this == LOST;
+        return this == CONVERTED || this == LOST;
     }
 }

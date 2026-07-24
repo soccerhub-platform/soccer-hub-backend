@@ -1,15 +1,15 @@
 package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.dashboard.*;
-import kz.edu.soccerhub.common.dto.analytics.AnalyticsResponseOutput;
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
+import kz.edu.soccerhub.common.dto.analytics.AnalyticsResponseOutput;
 import kz.edu.soccerhub.common.dto.analytics.DashboardLeadAnalyticsOutput;
 import kz.edu.soccerhub.common.dto.branch.BranchDto;
+import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.coach.CoachDto;
 import kz.edu.soccerhub.common.dto.coach.CoachSessionAdminView;
 import kz.edu.soccerhub.common.dto.coach.PlayerAttendanceRateDto;
 import kz.edu.soccerhub.common.dto.coach.SessionAttendanceSummaryDto;
-import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
 import kz.edu.soccerhub.common.dto.contract.StudentContractSnapshotOutput;
 import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
@@ -17,15 +17,7 @@ import kz.edu.soccerhub.common.dto.payment.PaymentOutput;
 import kz.edu.soccerhub.common.dto.payment.PaymentSearchQuery;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
-import kz.edu.soccerhub.common.port.AnalyticsPort;
-import kz.edu.soccerhub.common.port.BranchPort;
-import kz.edu.soccerhub.common.port.ClientPort;
-import kz.edu.soccerhub.common.port.CoachPort;
-import kz.edu.soccerhub.common.port.ContractPort;
-import kz.edu.soccerhub.common.port.GroupCoachPort;
-import kz.edu.soccerhub.common.port.GroupPort;
-import kz.edu.soccerhub.common.port.GroupSchedulePort;
-import kz.edu.soccerhub.common.port.PaymentPort;
+import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import kz.edu.soccerhub.payments.domain.enums.PaymentStatus;
@@ -34,15 +26,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
+import java.math.BigDecimal;
+import java.time.*;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
@@ -54,11 +42,10 @@ public class AdminDashboardSummaryService {
     private static final int ENDING_SOON_DAYS = 7;
     private static final List<LeadStatus> FUNNEL_STATUSES = List.of(
             LeadStatus.NEW,
-            LeadStatus.CONTACTED,
-            LeadStatus.QUALIFIED,
+            LeadStatus.IN_PROGRESS,
             LeadStatus.TRIAL_SCHEDULED,
-            LeadStatus.WAITING_PAYMENT,
-            LeadStatus.WON
+            LeadStatus.DECISION_PENDING,
+            LeadStatus.CONVERTED
     );
 
     private final AdminService adminService;
@@ -768,7 +755,7 @@ public class AdminDashboardSummaryService {
 
         return new AdminDashboardLeadFunnelDto(
                 rows,
-                percentage(totals.getOrDefault(LeadStatus.WON, 0L), newLeads)
+                percentage(totals.getOrDefault(LeadStatus.CONVERTED, 0L), newLeads)
         );
     }
 
@@ -802,11 +789,10 @@ public class AdminDashboardSummaryService {
     private String funnelLabel(LeadStatus status) {
         return switch (status) {
             case NEW -> "Новый";
-            case CONTACTED -> "Связались";
-            case QUALIFIED -> "Квалифицирован";
+            case IN_PROGRESS -> "В работе";
             case TRIAL_SCHEDULED -> "Пробная назначена";
-            case WAITING_PAYMENT -> "Ждет оплату";
-            case WON -> "Клиент";
+            case DECISION_PENDING -> "Ожидают решения";
+            case CONVERTED -> "Клиент";
             default -> status.name();
         };
     }

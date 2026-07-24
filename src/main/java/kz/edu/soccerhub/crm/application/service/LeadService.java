@@ -301,26 +301,6 @@ public class LeadService implements LeadPort {
         return result;
     }
 
-    @Override
-    @Transactional
-    public boolean markWonByContractIfWaitingPayment(UUID contractId, UUID currentAdminId) {
-        if (contractId == null) {
-            return false;
-        }
-
-        Lead lead = leadRepository.findTopByContractIdOrderByUpdatedAtDesc(contractId).orElse(null);
-        if (lead == null || lead.getStatus() != LeadStatus.WAITING_PAYMENT) {
-            return false;
-        }
-
-        LeadStatus previousStatus = lead.getStatus();
-        LeadStatus newStatus = stateMachineService.process(lead.getId(), previousStatus, LeadEvent.CONFIRM_PAYMENT);
-        lead.updateStatus(newStatus);
-        leadRepository.save(lead);
-        leadActivityService.logStatusChanged(lead, LeadEvent.CONFIRM_PAYMENT, previousStatus, currentAdminId);
-        return true;
-    }
-
     @Transactional
     @Override
     public void assignLead(UUID leadId, UUID assignedAdminId, UUID currentAdminId) {
@@ -384,13 +364,6 @@ public class LeadService implements LeadPort {
     }
 
     private void validateManualEvent(Lead lead, LeadEvent event) {
-        if (event == LeadEvent.CONFIRM_PAYMENT) {
-            throw new BadRequestException("Manual CONFIRM_PAYMENT is not allowed. Lead is moved to WON by payment coverage.");
-        }
-
-        if (event == LeadEvent.REQUEST_PAYMENT && lead.getContractId() == null) {
-            throw new BadRequestException("REQUEST_PAYMENT requires an existing contract", lead.getId());
-        }
     }
 
     private LeadLossReasonEntity validateAndResolveLossReason(
