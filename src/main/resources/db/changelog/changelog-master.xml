@@ -34,5 +34,8 @@
     <include file="/db/changelog/2026-07-22-lead-lifecycle-v2.sql"/>
     <include file="/db/changelog/2026-07-23-client-activities.sql"/>
     <include file="/db/changelog/2026-07-24-contract-workspace-v2.sql"/>
+    <include file="/db/changelog/2026-07-24-trial-bookings.sql"/>
+    <include file="/db/changelog/2026-07-24-trial-booking-lifecycle.sql"/>
+    <include file="/db/changelog/2026-07-25-trial-lead-participant.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>

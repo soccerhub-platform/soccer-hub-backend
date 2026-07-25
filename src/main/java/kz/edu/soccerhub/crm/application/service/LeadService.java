@@ -347,18 +347,20 @@ public class LeadService implements LeadPort {
     }
 
     private void syncTrialStatusByEvent(Lead lead, LeadEvent event) {
+        // TrialBooking is now the source of truth for trial lifecycle. The old
+        // LeadTrial relation is kept only for compatibility with historical data.
+        // A new trial therefore must not fail a lead status transition merely
+        // because the legacy relation is absent.
+        if (lead.getTrial() == null) {
+            return;
+        }
+
         if (event == LeadEvent.COMPLETE_TRIAL) {
-            if (lead.getTrial() == null) {
-                throw new BadRequestException("Trial is not scheduled", lead.getId());
-            }
             lead.getTrial().markCompleted();
             return;
         }
 
         if (event == LeadEvent.NO_SHOW || event == LeadEvent.CANCEL_TRIAL) {
-            if (lead.getTrial() == null) {
-                throw new BadRequestException("Trial is not scheduled", lead.getId());
-            }
             lead.getTrial().markCanceled();
         }
     }

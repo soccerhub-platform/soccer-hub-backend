@@ -9,6 +9,8 @@ import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.TrialPort;
+import kz.edu.soccerhub.common.dto.trial.LinkTrialStudentCommand;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
@@ -34,6 +36,7 @@ public class DefaultLeadConversionService implements LeadConversionService {
     private final ClientPort clientPort;
     private final LeadActivityService leadActivityService;
     private final ObjectMapper objectMapper;
+    private final TrialPort trialPort;
 
     @Override
     @Transactional
@@ -69,6 +72,14 @@ public class DefaultLeadConversionService implements LeadConversionService {
         LeadStatus previousStatus = lead.getStatus();
         lead.markConverted(conversion.clientId(), conversion.playerId());
         leadRepository.save(lead);
+        trialPort.linkConvertedStudent(
+                LinkTrialStudentCommand.builder()
+                        .leadId(leadId)
+                        .participantId(request.participantId())
+                        .clientId(conversion.clientId())
+                        .studentId(conversion.playerId())
+                        .build()
+        );
         leadActivityService.logLeadConverted(
                 lead,
                 currentAdminId,

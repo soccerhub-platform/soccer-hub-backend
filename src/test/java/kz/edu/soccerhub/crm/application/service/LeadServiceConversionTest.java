@@ -7,6 +7,7 @@ import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.port.ClientPort;
+import kz.edu.soccerhub.common.port.TrialPort;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
 import kz.edu.soccerhub.crm.domain.model.enums.Gender;
@@ -39,6 +40,8 @@ class LeadServiceConversionTest {
     private ClientPort clientPort;
     @Mock
     private LeadActivityService leadActivityService;
+    @Mock
+    private TrialPort trialPort;
 
     private DefaultLeadConversionService conversionService;
 
@@ -48,7 +51,8 @@ class LeadServiceConversionTest {
                 leadRepository,
                 clientPort,
                 leadActivityService,
-                new ObjectMapper()
+                new ObjectMapper(),
+                trialPort
         );
     }
 
