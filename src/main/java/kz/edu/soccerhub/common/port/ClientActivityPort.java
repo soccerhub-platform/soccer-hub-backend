@@ -12,5 +12,21 @@ public interface ClientActivityPort {
 
     Page<ClientActivityDto> getClientActivity(UUID clientId, Pageable pageable);
 
-    void recordClientActivity(UUID clientId, UUID actorUserId, ClientActivityType activityType, Map<String, Object> payload);
+    default void recordClientActivity(
+            UUID clientId,
+            UUID actorUserId,
+            ClientActivityType activityType,
+            Map<String, Object> payload
+    ) {
+        recordClientActivity(clientId, actorUserId, activityType, null, null, payload);
+    }
+
+    void recordClientActivity(
+            UUID clientId,
+            UUID actorUserId,
+            ClientActivityType activityType,
+            String sourceType,
+            UUID sourceId,
+            Map<String, Object> payload
+    );
 }

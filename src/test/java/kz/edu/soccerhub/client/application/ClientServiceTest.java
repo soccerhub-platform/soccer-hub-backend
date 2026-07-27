@@ -11,10 +11,15 @@ import kz.edu.soccerhub.client.domain.repository.ClientStudentRelationRepository
 import kz.edu.soccerhub.client.domain.repository.ContractRepository;
 import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
 import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
+import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
+import kz.edu.soccerhub.common.dto.client.ClientActivityType;
+import kz.edu.soccerhub.common.dto.client.ClientStudentRelationOutput;
+import kz.edu.soccerhub.common.dto.client.ClientStudentRelationshipType;
 import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
 import kz.edu.soccerhub.common.dto.student.StudentUpdateCommand;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.BranchPort;
+import kz.edu.soccerhub.common.port.ClientActivityPort;
 import kz.edu.soccerhub.common.port.GroupMembershipPort;
 import kz.edu.soccerhub.common.port.ClientStudentRelationPort;
 import kz.edu.soccerhub.organization.domain.model.GroupMembership;
@@ -30,6 +35,9 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
@@ -54,6 +62,8 @@ class ClientServiceTest {
     private ClientStudentRelationRepository relationRepository;
     @Mock
     private ClientStudentRelationPort clientStudentRelationPort;
+    @Mock
+    private ClientActivityPort clientActivityPort;
 
     @Test
     void shouldBuildGroupMembersFromMembershipAndContractSeparately() {
@@ -108,7 +118,8 @@ class ClientServiceTest {
                 groupMembershipPort,
                 relationSyncService,
                 relationRepository,
-                clientStudentRelationPort
+                clientStudentRelationPort,
+                clientActivityPort
         );
 
         List<GroupMemberDto> result = service.getGroupMembers(groupId);
@@ -144,7 +155,8 @@ class ClientServiceTest {
                 groupMembershipPort,
                 relationSyncService,
                 relationRepository,
-                clientStudentRelationPort
+                clientStudentRelationPort,
+                clientActivityPort
         );
 
         StudentProfileDto result = service.updateStudent(
@@ -194,12 +206,79 @@ class ClientServiceTest {
                 groupMembershipPort,
                 relationSyncService,
                 relationRepository,
-                clientStudentRelationPort
+                clientStudentRelationPort,
+                clientActivityPort
         );
 
         StudentProfileDto result = service.getStudentProfile(playerId);
 
         assertEquals(primaryClient.getId(), result.clientId());
         assertEquals("Primary Client", result.clientFullName());
+    }
+
+    @Test
+    void shouldRecordClientActivitiesWhenConvertingLeadForExistingClient() {
+        UUID clientId = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        UUID leadId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        Client client = Client.builder()
+                .id(clientId)
+                .branchId(UUID.randomUUID())
+                .firstName("Maria")
+                .lastName("Ivanova")
+                .status(ClientStatus.ACTIVE)
+                .build();
+        Player player = Player.builder()
+                .id(playerId)
+                .firstName("Arman")
+                .lastName("Ivanov")
+                .birthDate(LocalDate.of(2015, 5, 15))
+                .parent(client)
+                .build();
+        ClientStudentRelationOutput relation = new ClientStudentRelationOutput(
+                UUID.randomUUID(), clientId, "Maria Ivanova", playerId, "Arman Ivanov",
+                ClientStudentRelationshipType.MOTHER, true, true, true, true,
+                LocalDate.now(), null, true
+        );
+
+        when(clientRepository.findById(clientId)).thenReturn(java.util.Optional.of(client));
+        when(playerRepository.save(any(Player.class))).thenReturn(player);
+        when(clientStudentRelationPort.create(any())).thenReturn(relation);
+
+        ClientService service = new ClientService(
+                clientRepository,
+                playerRepository,
+                contractRepository,
+                branchPort,
+                authPort,
+                groupMembershipPort,
+                relationSyncService,
+                relationRepository,
+                clientStudentRelationPort,
+                clientActivityPort
+        );
+
+        service.convertLead(ClientConversionCommand.builder()
+                .existingClientId(clientId)
+                .participantName("Arman Ivanov")
+                .participantBirthDate(player.getBirthDate())
+                .relationshipType(ClientStudentRelationshipType.MOTHER)
+                .sourceLeadId(leadId)
+                .actorUserId(actorId)
+                .build());
+
+        verify(clientActivityPort).recordClientActivity(
+                eq(clientId), eq(actorId), eq(ClientActivityType.LEAD_CONVERTED),
+                eq("LEAD"), eq(leadId), anyMap()
+        );
+        verify(clientActivityPort).recordClientActivity(
+                eq(clientId), eq(actorId), eq(ClientActivityType.STUDENT_LINKED),
+                eq("LEAD"), eq(leadId), anyMap()
+        );
+        verify(clientActivityPort, never()).recordClientActivity(
+                eq(clientId), eq(actorId), eq(ClientActivityType.CLIENT_CREATED),
+                eq("LEAD"), eq(leadId), anyMap()
+        );
     }
 }

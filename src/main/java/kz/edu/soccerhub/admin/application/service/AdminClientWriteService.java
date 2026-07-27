@@ -33,7 +33,7 @@ public class AdminClientWriteService {
         verifyAdminAccess(adminId, input.branchId());
         ClientWorkspaceDetailsOutput output = clientWorkspacePort.create(new ClientWorkspaceCreateCommand(
                 input.branchId(), input.firstName(), input.lastName(), input.phone(), input.email(),
-                input.source(), input.comments()
+                input.source(), input.sourceDetails(), input.comments()
         ));
         clientActivityPort.recordClientActivity(output.client().id(), adminId, ClientActivityType.CLIENT_CREATED,
                 Map.of("clientName", output.client().fullName()));
@@ -44,7 +44,8 @@ public class AdminClientWriteService {
     public ClientWorkspaceDetailsOutput update(UUID adminId, UUID clientId, AdminClientUpdateInput input) {
         verifyAdminAccess(adminId, clientWorkspacePort.getClientBranchId(clientId));
         ClientWorkspaceDetailsOutput output = clientWorkspacePort.update(new ClientWorkspaceUpdateCommand(
-                clientId, input.firstName(), input.lastName(), input.phone(), input.email(), input.source(), input.comments()
+                clientId, input.firstName(), input.lastName(), input.phone(), input.email(),
+                input.source(), input.sourceDetails(), input.comments()
         ));
         clientActivityPort.recordClientActivity(clientId, adminId, ClientActivityType.CLIENT_UPDATED,
                 Map.of("clientName", output.client().fullName()));

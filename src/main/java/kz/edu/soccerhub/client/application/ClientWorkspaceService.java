@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.client.application;
 
 import kz.edu.soccerhub.client.domain.enums.ContractStatus;
+import kz.edu.soccerhub.client.domain.enums.ClientSource;
 import kz.edu.soccerhub.client.domain.enums.ClientStatus;
 import kz.edu.soccerhub.client.domain.model.Client;
 import kz.edu.soccerhub.client.domain.model.ClientStudentRelation;
@@ -65,11 +66,32 @@ public class ClientWorkspaceService implements ClientWorkspacePort {
     @Transactional(readOnly = true)
     public ClientWorkspacePageOutput getClients(UUID branchId, ClientWorkspaceListQuery query, Pageable pageable) {
         String search = query == null ? null : query.search();
+
+        boolean databasePaging = canUseDatabasePaging(query, pageable.getSort());
+
+        Pageable requestedPageable = databasePaging
+                ? pageable
+                : Pageable.unpaged();
+
         Page<Client> page = clientRepository.search(
-                branchId, normalizeSearch(search), parseUuid(search), Pageable.unpaged()
+                branchId,
+                normalizeSearch(search),
+                parseUuid(search),
+                requestedPageable
         );
+
         List<Client> clients = page.getContent();
         if (clients.isEmpty()) {
+            if (databasePaging) {
+                return new ClientWorkspacePageOutput(
+                        List.of(),
+                        page.getTotalElements(),
+                        page.getTotalPages(),
+                        page.getNumber(),
+                        page.getSize(),
+                        summarizePage(List.of())
+                );
+            }
             return emptyPage(pageable);
         }
 
@@ -89,9 +111,25 @@ public class ClientWorkspaceService implements ClientWorkspacePort {
                         contractsByClient.getOrDefault(client.getId(), List.of()),
                         payments
                 ))
-                .filter(item -> matchesFilters(item, query))
-                .sorted(listComparator(pageable.getSort()))
+                .filter(item -> databasePaging || matchesFilters(item, query))
                 .toList();
+
+        if (!databasePaging) {
+            items = items.stream()
+                    .sorted(listComparator(pageable.getSort()))
+                    .toList();
+        }
+
+        if (databasePaging) {
+            return new ClientWorkspacePageOutput(
+                    items,
+                    page.getTotalElements(),
+                    page.getTotalPages(),
+                    page.getNumber(),
+                    page.getSize(),
+                    summarizePage(items)
+            );
+        }
 
         int size = pageable.isPaged() ? pageable.getPageSize() : Math.max(items.size(), 1);
         int requestedPage = pageable.isPaged() ? pageable.getPageNumber() : 0;
@@ -119,8 +157,9 @@ public class ClientWorkspaceService implements ClientWorkspacePort {
                 new ClientWorkspaceDetailsOutput.ClientBlock(
                         client.getId(), client.getBranchId(), fullName(client), client.getFirstName(), client.getLastName(),
                         client.getPhone(), client.getEmail(),
-                        client.getStatus() == null ? null : client.getStatus().name(), client.getSource(),
-                        client.getComments(), client.getCreatedAt()
+                        client.getStatus() == null ? null : client.getStatus().name(),
+                        client.getSource(), client.getSourceDetails(), client.getComments(),
+                        client.getCreatedAt(), client.getUpdatedAt()
                 ),
                 new ClientWorkspaceDetailsOutput.SummaryBlock(
                         (int) students.stream().filter(ClientStudentRelationOutput::active).count(),
@@ -142,7 +181,8 @@ public class ClientWorkspaceService implements ClientWorkspacePort {
                 .lastName(trimToNull(command.lastName()))
                 .phone(trimToNull(command.phone()))
                 .email(normalizeEmail(command.email()))
-                .source(trimToNull(command.source()))
+                .source(command.source() == null ? ClientSource.UNKNOWN : command.source())
+                .sourceDetails(normalizeSourceDetails(command.source(), command.sourceDetails()))
                 .comments(trimToNull(command.comments()))
                 .status(ClientStatus.NEW)
                 .build());
@@ -158,7 +198,8 @@ public class ClientWorkspaceService implements ClientWorkspacePort {
         client.setLastName(trimToNull(command.lastName()));
         client.setPhone(trimToNull(command.phone()));
         client.setEmail(normalizeEmail(command.email()));
-        client.setSource(trimToNull(command.source()));
+        client.setSource(command.source() == null ? ClientSource.UNKNOWN : command.source());
+        client.setSourceDetails(normalizeSourceDetails(command.source(), command.sourceDetails()));
         client.setComments(trimToNull(command.comments()));
         return getClient(client.getId());
     }
@@ -222,8 +263,48 @@ public class ClientWorkspaceService implements ClientWorkspacePort {
                 client.getId(), fullName(client), client.getPhone(), client.getEmail(),
                 client.getStatus() == null ? null : client.getStatus().name(), studentsCount, activeContracts.size(),
                 money.paidAmount(), money.outstandingAmount(), money.currency(), money.mixedCurrencies(), money.lastPaidAt(),
-                paymentStatus(activeContracts, money)
+                paymentStatus(activeContracts, money), client.getCreatedAt(), client.getUpdatedAt()
         );
+    }
+
+
+    private boolean canUseDatabasePaging(
+            ClientWorkspaceListQuery query,
+            Sort sort
+    ) {
+        if (hasDerivedFilters(query)) {
+            return false;
+        }
+
+        Sort.Order order = sort.stream()
+                .findFirst()
+                .orElse(null);
+
+        if (order == null) {
+            return true;
+        }
+
+        return Set.of(
+                "createdAt",
+                "updatedAt",
+                "status",
+                "firstName"
+        ).contains(order.getProperty());
+    }
+
+    private boolean hasDerivedFilters(ClientWorkspaceListQuery query) {
+        if (query == null) {
+            return false;
+        }
+
+        return hasValue(query.students())
+                || hasValue(query.contracts())
+                || hasValue(query.payment())
+                || query.statuses() != null && !query.statuses().isEmpty();
+    }
+
+    private boolean hasValue(String value) {
+        return value != null && !value.isBlank() && !"ALL".equalsIgnoreCase(value);
     }
 
     private Map<UUID, ContractPaymentSummaryOutput> loadPayments(List<Contract> contracts) {
@@ -315,6 +396,10 @@ public class ClientWorkspaceService implements ClientWorkspacePort {
         }
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String normalizeSourceDetails(ClientSource source, String sourceDetails) {
+        return source == ClientSource.OTHER ? trimToNull(sourceDetails) : null;
     }
 
     private BigDecimal amount(Contract contract) {
@@ -413,6 +498,14 @@ public class ClientWorkspaceService implements ClientWorkspacePort {
                     Comparator.nullsLast(dateComparator));
             case "fullName", "firstName" -> Comparator.comparing(ClientWorkspacePageOutput.Item::fullName,
                     descending ? String.CASE_INSENSITIVE_ORDER.reversed() : String.CASE_INSENSITIVE_ORDER);
+            case "createdAt" -> Comparator.comparing(
+                    ClientWorkspacePageOutput.Item::createdAt,
+                    Comparator.nullsLast(dateComparator)
+            );
+            case "updatedAt" -> Comparator.comparing(
+                    ClientWorkspacePageOutput.Item::updatedAt,
+                    Comparator.nullsLast(dateComparator)
+            );
             default -> throw new BadRequestException("Unsupported client list sort", property);
         };
         return comparator.thenComparing(ClientWorkspacePageOutput.Item::fullName, String.CASE_INSENSITIVE_ORDER)

@@ -1,6 +1,8 @@
 package kz.edu.soccerhub.client.application;
 
 import kz.edu.soccerhub.client.application.dto.ClientDto;
+import kz.edu.soccerhub.client.domain.enums.ClientStatus;
+import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.client.domain.model.Client;
 import kz.edu.soccerhub.client.domain.model.Contract;
 import kz.edu.soccerhub.client.domain.model.Player;
@@ -8,25 +10,14 @@ import kz.edu.soccerhub.client.domain.repository.ClientRepository;
 import kz.edu.soccerhub.client.domain.repository.ClientStudentRelationRepository;
 import kz.edu.soccerhub.client.domain.repository.ContractRepository;
 import kz.edu.soccerhub.client.domain.repository.PlayerRepository;
-import kz.edu.soccerhub.client.domain.enums.ClientStatus;
-import kz.edu.soccerhub.client.domain.enums.ContractStatus;
 import kz.edu.soccerhub.common.domain.enums.Role;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
-import kz.edu.soccerhub.common.dto.client.ClientCreateCommand;
-import kz.edu.soccerhub.common.dto.client.ClientCreateCommandOutput;
-import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
-import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
-import kz.edu.soccerhub.common.dto.client.ClientStudentRelationCreateCommand;
-import kz.edu.soccerhub.common.dto.client.GroupMemberDto;
+import kz.edu.soccerhub.common.dto.client.*;
 import kz.edu.soccerhub.common.dto.student.StudentProfileDto;
 import kz.edu.soccerhub.common.dto.student.StudentUpdateCommand;
 import kz.edu.soccerhub.common.exception.NotFoundException;
-import kz.edu.soccerhub.common.port.AuthPort;
-import kz.edu.soccerhub.common.port.BranchPort;
-import kz.edu.soccerhub.common.port.ClientPort;
-import kz.edu.soccerhub.common.port.ClientStudentRelationPort;
-import kz.edu.soccerhub.common.port.GroupMembershipPort;
+import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.organization.domain.model.GroupMembership;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupMembershipStatus;
 import lombok.RequiredArgsConstructor;
@@ -36,12 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Set;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -59,6 +45,7 @@ public class ClientService implements ClientPort {
     private final ClientStudentRelationSyncService relationSyncService;
     private final ClientStudentRelationRepository relationRepository;
     private final ClientStudentRelationPort clientStudentRelationPort;
+    private final ClientActivityPort clientActivityPort;
 
     @Override
     @Transactional
@@ -112,6 +99,7 @@ public class ClientService implements ClientPort {
                 .phone(command.phone())
                 .branchId(command.branchId())
                 .source(command.source())
+                .sourceDetails(command.sourceDetails())
                 .comments(command.comments())
                 .status(ClientStatus.NEW)
                 .build();
@@ -163,31 +151,85 @@ public class ClientService implements ClientPort {
     @Override
     @Transactional
     public ClientConversionOutput convertLead(ClientConversionCommand command) {
-        Client client = resolveOrCreateClient(command);
+        ResolvedClient resolved = resolveOrCreateClient(command);
+        Client client = resolved.client();
+
+        if (resolved.created()) {
+            Map<String, Object> createdPayload = new LinkedHashMap<>();
+            createdPayload.put("source", "LEAD_CONVERSION");
+            if (command.sourceLeadId() != null) {
+                createdPayload.put("leadId", command.sourceLeadId());
+            }
+
+            clientActivityPort.recordClientActivity(
+                    client.getId(),
+                    command.actorUserId(),
+                    ClientActivityType.CLIENT_CREATED,
+                    "LEAD",
+                    command.sourceLeadId(),
+                    createdPayload
+            );
+        }
+
         String[] studentName = splitName(command.participantName());
-        Player player = playerRepository.save(Player.builder()
-                .id(UUID.randomUUID())
-                .firstName(studentName[0])
-                .lastName(studentName[1])
-                .birthDate(command.participantBirthDate())
-                .parent(client)
-                .build());
-        var relation = clientStudentRelationPort.create(new ClientStudentRelationCreateCommand(
+
+        Player player = playerRepository.save(
+                Player.builder()
+                        .id(UUID.randomUUID())
+                        .firstName(studentName[0])
+                        .lastName(studentName[1])
+                        .birthDate(command.participantBirthDate())
+                        .parent(client)
+                        .build()
+        );
+
+        ClientStudentRelationOutput relation =
+                clientStudentRelationPort.create(
+                        new ClientStudentRelationCreateCommand(
+                                client.getId(),
+                                player.getId(),
+                                command.relationshipType(),
+                                true,
+                                true,
+                                command.replacePrimaryContact(),
+                                command.replacePrimaryPayer(),
+                                command.relationshipType()
+                                        == ClientStudentRelationshipType.SELF,
+                                true,
+                                LocalDate.now()
+                        )
+                );
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (command.sourceLeadId() != null) {
+            payload.put("leadId", command.sourceLeadId());
+        }
+        payload.put("playerId", player.getId());
+        payload.put("playerName", buildPlayerName(player));
+        payload.put("relationId", relation.id());
+        payload.put("relationshipType", command.relationshipType().name());
+
+        clientActivityPort.recordClientActivity(
                 client.getId(),
-                player.getId(),
-                command.relationshipType(),
-                true,
-                true,
-                command.replacePrimaryContact(),
-                command.replacePrimaryPayer(),
-                command.relationshipType() == kz.edu.soccerhub.common.dto.client.ClientStudentRelationshipType.SELF,
-                true,
-                LocalDate.now()
-        ));
+                command.actorUserId(),
+                ClientActivityType.LEAD_CONVERTED,
+                "LEAD",
+                command.sourceLeadId(),
+                payload
+        );
+
+        clientActivityPort.recordClientActivity(
+                client.getId(),
+                command.actorUserId(),
+                ClientActivityType.STUDENT_LINKED,
+                "LEAD",
+                command.sourceLeadId(),
+                payload
+        );
 
         return new ClientConversionOutput(
                 client.getId(),
-                relation.playerId(),
+                player.getId(),
                 relation.id()
         );
     }
@@ -243,19 +285,31 @@ public class ClientService implements ClientPort {
         );
     }
 
-    private Client resolveOrCreateClient(ClientConversionCommand command) {
+    private ResolvedClient resolveOrCreateClient(ClientConversionCommand command) {
         if (command.existingClientId() != null) {
-            return clientRepository.findById(command.existingClientId())
-                    .orElseThrow(() -> new NotFoundException("Client from lead.clientId not found", command.existingClientId()));
+            Client client = clientRepository.findById(command.existingClientId())
+                    .orElseThrow(() -> new NotFoundException(
+                            "Client from lead.clientId not found",
+                            command.existingClientId()
+                    ));
+
+            return new ResolvedClient(client, false);
         }
 
         String[] parentName = splitName(command.primaryContactName());
         String normalizedEmail = resolveClientEmail(command.email(), command.phone());
+
         UUID userId = authPort.findUserIdByEmail(normalizedEmail)
                 .orElseGet(() -> registerClientUser(normalizedEmail));
 
-        return clientRepository.findByUserId(userId)
-                .orElseGet(() -> clientRepository.save(Client.builder()
+        Optional<Client> existingClient = clientRepository.findByUserId(userId);
+
+        if (existingClient.isPresent()) {
+            return new ResolvedClient(existingClient.get(), false);
+        }
+
+        Client createdClient = clientRepository.save(
+                Client.builder()
                         .id(UUID.randomUUID())
                         .userId(userId)
                         .firstName(parentName[0])
@@ -264,9 +318,13 @@ public class ClientService implements ClientPort {
                         .email(command.email())
                         .branchId(command.branchId())
                         .source(command.source())
+                        .sourceDetails(command.sourceDetails())
                         .comments(command.comments())
                         .status(ClientStatus.ACTIVE)
-                        .build()));
+                        .build()
+        );
+
+        return new ResolvedClient(createdClient, true);
     }
 
     private UUID registerClientUser(String email) {
@@ -358,12 +416,10 @@ public class ClientService implements ClientPort {
         LocalDate today = LocalDate.now();
         return contracts.stream()
                 .filter(contract -> groupId.equals(contract.getGroupId()))
-                .filter(contract -> contract.getStatus() != ContractStatus.CANCELLED)
-                .sorted(Comparator
+                .filter(contract -> contract.getStatus() != ContractStatus.CANCELLED).min(Comparator
                         .comparing((Contract contract) -> isContractActiveOn(contract, today)).reversed()
                         .thenComparing(Contract::getStartDate, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(Contract::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .findFirst()
                 .orElse(null);
     }
 
@@ -430,4 +486,9 @@ public class ClientService implements ClientPort {
         return parts;
     }
 
+    private record ResolvedClient(
+            Client client,
+            boolean created
+    ) {
+    }
 }

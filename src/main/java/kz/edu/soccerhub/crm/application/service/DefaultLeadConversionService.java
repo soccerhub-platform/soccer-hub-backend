@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kz.edu.soccerhub.common.dto.client.ClientConversionCommand;
 import kz.edu.soccerhub.common.dto.client.ClientConversionOutput;
+import kz.edu.soccerhub.client.domain.enums.ClientSource;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
 import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
 import kz.edu.soccerhub.common.exception.BadRequestException;
@@ -13,6 +14,7 @@ import kz.edu.soccerhub.common.port.TrialPort;
 import kz.edu.soccerhub.common.dto.trial.LinkTrialStudentCommand;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
+import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import lombok.RequiredArgsConstructor;
@@ -54,20 +56,24 @@ public class DefaultLeadConversionService implements LeadConversionService {
                         Map.of("leadId", leadId, "participantId", request.participantId())
                 ));
 
-        ClientConversionOutput conversion = clientPort.convertLead(new ClientConversionCommand(
-                lead.getClientId(),
-                lead.getPrimaryContactName(),
-                lead.getPrimaryContactPhone(),
-                lead.getPrimaryContactEmail(),
-                lead.getBranchId(),
-                lead.getSource() == null ? null : lead.getSource().name(),
-                lead.getComment(),
-                participant.getFullName(),
-                request.participantBirthDate(),
-                request.relationshipType(),
-                request.replacePrimaryContact(),
-                request.replacePrimaryPayer()
-        ));
+        ClientConversionOutput conversion = clientPort.convertLead(
+                ClientConversionCommand.builder()
+                        .existingClientId(lead.getClientId())
+                        .primaryContactName(lead.getPrimaryContactName())
+                        .phone(lead.getPrimaryContactPhone())
+                        .email(lead.getPrimaryContactEmail())
+                        .branchId(lead.getBranchId())
+                        .source(toClientSource(lead.getSource()))
+                        .comments(lead.getComment())
+                        .participantName(participant.getFullName())
+                        .participantBirthDate(request.participantBirthDate())
+                        .relationshipType(request.relationshipType())
+                        .replacePrimaryContact(request.replacePrimaryContact())
+                        .replacePrimaryPayer(request.replacePrimaryPayer())
+                        .sourceLeadId(leadId)
+                        .actorUserId(currentAdminId)
+                        .build()
+        );
 
         LeadStatus previousStatus = lead.getStatus();
         lead.markConverted(conversion.clientId(), conversion.playerId());
@@ -123,5 +129,20 @@ public class DefaultLeadConversionService implements LeadConversionService {
         } catch (JsonProcessingException ex) {
             return "Lead converted to client " + conversion.clientId();
         }
+    }
+
+    private ClientSource toClientSource(LeadSource source) {
+        if (source == null) {
+            return null;
+        }
+
+        return switch (source) {
+            case WHATSAPP -> ClientSource.WHATSAPP;
+            case INSTAGRAM -> ClientSource.INSTAGRAM;
+            case CALL -> ClientSource.PHONE;
+            case WEBSITE -> ClientSource.WEBSITE;
+            case WALK_IN -> ClientSource.WALK_IN;
+            case OTHER -> ClientSource.OTHER;
+        };
     }
 }

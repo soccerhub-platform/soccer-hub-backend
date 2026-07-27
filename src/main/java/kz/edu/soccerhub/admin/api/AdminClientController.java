@@ -49,7 +49,7 @@ public class AdminClientController {
             @RequestParam(required = false) String students,
             @RequestParam(required = false) String contracts,
             @RequestParam(required = false) String payment,
-            @PageableDefault(size = 20, sort = "firstName") Pageable pageable
+            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable
     ) {
         return ResponseEntity.ok(clientReadService.getClients(
                 adminId(jwt), branchId,

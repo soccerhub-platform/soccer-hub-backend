@@ -38,7 +38,9 @@ public record ClientWorkspacePageOutput(
             String currency,
             boolean mixedCurrencies,
             LocalDateTime lastPaidAt,
-            String paymentStatus
+            String paymentStatus,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
     ) {
     }
 }

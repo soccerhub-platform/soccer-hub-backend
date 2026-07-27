@@ -29,15 +29,31 @@ public class ClientActivityService implements ClientActivityPort {
                         activity.getOccurredAt(), activity.getActorUserId(), activity.getPayload()));
     }
 
+
     @Override
     @Transactional
-    public void recordClientActivity(UUID clientId, UUID actorUserId, ClientActivityType activityType, Map<String, Object> payload) {
-        repository.save(ClientActivity.builder()
-                .id(UUID.randomUUID())
-                .clientId(clientId)
-                .actorUserId(actorUserId)
-                .activityType(activityType)
-                .payload(payload == null ? Map.of() : new LinkedHashMap<>(payload))
-                .build());
+    public void recordClientActivity(UUID clientId,
+                                     UUID actorUserId,
+                                     ClientActivityType activityType,
+                                     String sourceType,
+                                     UUID sourceId,
+                                     Map<String, Object> payload) {
+        if (sourceId != null && repository.existsByClientIdAndActivityTypeAndSourceTypeAndSourceId(
+                clientId, activityType, sourceType, sourceId
+        )) {
+            return;
+        }
+
+        repository.save(
+                ClientActivity.builder()
+                        .id(UUID.randomUUID())
+                        .clientId(clientId)
+                        .actorUserId(actorUserId)
+                        .activityType(activityType)
+                        .sourceType(sourceType)
+                        .sourceId(sourceId)
+                        .payload(payload == null ? Map.of() : new LinkedHashMap<>(payload))
+                        .build()
+        );
     }
 }

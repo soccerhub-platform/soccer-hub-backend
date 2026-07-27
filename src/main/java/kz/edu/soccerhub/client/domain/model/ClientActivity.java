@@ -19,13 +19,26 @@ import java.util.UUID;
 @AllArgsConstructor
 public class ClientActivity {
 
-    @Id private UUID id;
-    @Column(name = "client_id", nullable = false) private UUID clientId;
-    @Enumerated(EnumType.STRING) @Column(name = "activity_type", nullable = false) private ClientActivityType activityType;
-    @Column(name = "actor_user_id") private UUID actorUserId;
-    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "payload", columnDefinition = "jsonb", nullable = false) private Map<String, Object> payload;
-    @Column(name = "occurred_at", nullable = false) private LocalDateTime occurredAt;
-    @Column(name = "created_at", nullable = false) private LocalDateTime createdAt;
+    @Id
+    private UUID id;
+    @Column(name = "client_id", nullable = false)
+    private UUID clientId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "activity_type", nullable = false)
+    private ClientActivityType activityType;
+    @Column(name = "actor_user_id")
+    private UUID actorUserId;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "payload", columnDefinition = "jsonb", nullable = false)
+    private Map<String, Object> payload;
+    @Column(name = "occurred_at", nullable = false)
+    private LocalDateTime occurredAt;
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+    @Column(name = "source_type", length = 50)
+    private String sourceType;
+    @Column(name = "source_id")
+    private UUID sourceId;
 
     @PrePersist
     void prePersist() {

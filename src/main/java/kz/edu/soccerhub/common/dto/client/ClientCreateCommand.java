@@ -1,5 +1,6 @@
 package kz.edu.soccerhub.common.dto.client;
 
+import kz.edu.soccerhub.client.domain.enums.ClientSource;
 import lombok.Builder;
 
 import java.util.UUID;
@@ -10,7 +11,8 @@ public record ClientCreateCommand(
         String lastName,
         String phone,
         UUID branchId,
-        String source,
+        ClientSource source,
+        String sourceDetails,
         String comments
 ) {
 }

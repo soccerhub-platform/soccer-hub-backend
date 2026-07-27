@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.client.domain.model;
 
 import jakarta.persistence.*;
+import kz.edu.soccerhub.client.domain.enums.ClientSource;
 import kz.edu.soccerhub.client.domain.enums.ClientStatus;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import lombok.*;
@@ -31,7 +32,13 @@ public class Client extends AbstractAuditableEntity implements Persistable<UUID>
 
     private String email;
 
-    private String source;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source")
+    @Builder.Default
+    private ClientSource source = ClientSource.UNKNOWN;
+
+    @Column(name = "source_details")
+    private String sourceDetails;
 
     @Enumerated(EnumType.STRING)
     private ClientStatus status;

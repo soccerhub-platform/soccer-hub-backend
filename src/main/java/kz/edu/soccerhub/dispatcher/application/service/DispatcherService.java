@@ -6,6 +6,7 @@ import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommand;
 import kz.edu.soccerhub.common.dto.auth.AuthRegisterCommandOutput;
 import kz.edu.soccerhub.common.dto.client.ClientCreateCommand;
 import kz.edu.soccerhub.common.dto.client.ClientCreateCommandOutput;
+import kz.edu.soccerhub.client.domain.enums.ClientSource;
 import kz.edu.soccerhub.common.port.AuthPort;
 import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.dispatcher.application.dto.DispatcherClientRegisterInput;
@@ -65,12 +66,24 @@ public class DispatcherService {
                 .firstName(input.firstName())
                 .lastName(input.lastName())
                 .phone(input.phoneNumber())
-                .source(input.source())
+                .source(toClientSource(input.source()))
                 .comments(input.comments())
                 .build();
 
         ClientCreateCommandOutput clientCreateCommandOutput = clientPort.create(clientCreateCommand);
         return new DispatcherClientRegisterOutput(clientCreateCommandOutput.clientId());
+    }
+
+    private ClientSource toClientSource(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        try {
+            return ClientSource.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException ignored) {
+            return ClientSource.OTHER;
+        }
     }
 
 }
