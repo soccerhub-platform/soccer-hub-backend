@@ -1,13 +1,6 @@
 package kz.edu.soccerhub.common.port;
 
-import kz.edu.soccerhub.common.dto.trial.CreateTrialBookingCommand;
-import kz.edu.soccerhub.common.dto.trial.CancelTrialCommand;
-import kz.edu.soccerhub.common.dto.trial.MarkTrialAttendanceCommand;
-import kz.edu.soccerhub.common.dto.trial.RecordTrialResultCommand;
-import kz.edu.soccerhub.common.dto.trial.LinkTrialStudentCommand;
-import kz.edu.soccerhub.common.dto.trial.TrialBookingDetailsDto;
-import kz.edu.soccerhub.common.dto.trial.TrialBookingDto;
-import kz.edu.soccerhub.common.dto.trial.TrialBookingSearchCommand;
+import kz.edu.soccerhub.common.dto.trial.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -43,4 +36,9 @@ public interface TrialPort {
     TrialBookingDetailsDto recordResult(RecordTrialResultCommand command);
 
     void linkConvertedStudent(LinkTrialStudentCommand command);
+
+    Page<TrialBookingListItemDto> findList(
+            TrialBookingSearchCommand command,
+            Pageable pageable
+    );
 }

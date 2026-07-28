@@ -9,7 +9,11 @@ import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -71,5 +75,50 @@ public class TrialLeadAdapter implements TrialLeadPort {
                 .phone(lead.getPrimaryContactPhone())
                 .email(lead.getPrimaryContactEmail())
                 .build();
+    }
+
+    @Override
+    public Map<UUID, TrialBookingDetailsDto.Lead> getDetails(
+            Collection<UUID> leadIds
+    ) {
+        if (leadIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return repository.findAllById(leadIds).stream()
+                .collect(Collectors.toMap(
+                        Lead::getId,
+                        lead -> TrialBookingDetailsDto.Lead.builder()
+                                .id(lead.getId())
+                                .fullName(lead.getPrimaryContactName())
+                                .phone(lead.getPrimaryContactPhone())
+                                .email(lead.getPrimaryContactEmail())
+                                .build()
+                ));
+    }
+
+    @Override
+    public Map<UUID, TrialBookingDetailsDto.Student> getParticipantDetails(
+            Collection<UUID> participantIds
+    ) {
+        if (participantIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<UUID, TrialBookingDetailsDto.Student> result = new HashMap<>();
+
+        repository.findByParticipantIdInOrderByUpdatedAtDesc(participantIds)
+                .forEach(lead -> lead.getParticipants().stream()
+                        .filter(participant -> participantIds.contains(participant.getId()))
+                        .forEach(participant -> result.putIfAbsent(
+                                participant.getId(),
+                                TrialBookingDetailsDto.Student.builder()
+                                        .id(participant.getId())
+                                        .fullName(participant.getFullName())
+                                        .birthDate(participant.getBirthDate())
+                                        .build()
+                        )));
+
+        return result;
     }
 }

@@ -11,7 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -60,6 +63,25 @@ public class TrainingSessionTrialAdapter implements TrialSessionPort {
                         sessionId
                 ));
 
+        return toContext(session);
+    }
+
+    @Override
+    public Map<UUID, TrialSessionContext> getSessionDetails(
+            Collection<UUID> sessionIds
+    ) {
+        if (sessionIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return repository.findAllById(sessionIds).stream()
+                .collect(Collectors.toMap(
+                        TrainingSession::getId,
+                        this::toContext
+                ));
+    }
+
+    private TrialSessionContext toContext(TrainingSession session) {
         return TrialSessionContext.builder()
                 .sessionId(session.getId())
                 .groupId(session.getGroupId())

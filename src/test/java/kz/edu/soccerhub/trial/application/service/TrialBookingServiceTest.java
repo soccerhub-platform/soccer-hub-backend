@@ -51,6 +51,8 @@ class TrialBookingServiceTest {
     private TrialLeadPort leadPort;
     @Mock
     private TrialBookingDetailsReader detailsReader;
+    @Mock
+    private TrialBookingListReader listReader;
 
     private TrialBookingService service;
 
@@ -62,7 +64,8 @@ class TrialBookingServiceTest {
                 sessionPort,
                 studentPort,
                 leadPort,
-                detailsReader
+                detailsReader,
+                listReader
         );
     }
 

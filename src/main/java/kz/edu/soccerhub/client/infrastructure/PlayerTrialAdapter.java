@@ -11,7 +11,10 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -35,10 +38,29 @@ public class PlayerTrialAdapter
                         studentId
                 ));
 
+        return toStudent(player);
+    }
+
+    @Override
+    public Map<UUID, TrialBookingDetailsDto.Student> getDetails(
+            Collection<UUID> studentIds
+    ) {
+        if (studentIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return repository.findAllById(studentIds).stream()
+                .collect(Collectors.toMap(
+                        Player::getId,
+                        this::toStudent
+                ));
+    }
+
+    private TrialBookingDetailsDto.Student toStudent(Player player) {
         return TrialBookingDetailsDto.Student.builder()
                 .id(player.getId())
                 .fullName(
-                        player.getFirstName() + " " + player.getLastName()
+                        (player.getFirstName() + " " + player.getLastName()).trim()
                 )
                 .birthDate(player.getBirthDate())
                 .age(calculateAge(player.getBirthDate()))

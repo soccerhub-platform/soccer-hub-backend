@@ -1,13 +1,9 @@
 package kz.edu.soccerhub.admin.api;
 
 import jakarta.validation.Valid;
-import kz.edu.soccerhub.admin.application.dto.trial.AdminTrialDetailsOutput;
-import kz.edu.soccerhub.admin.application.dto.trial.AdminCancelTrialInput;
-import kz.edu.soccerhub.admin.application.dto.trial.AdminMarkTrialAttendanceInput;
-import kz.edu.soccerhub.admin.application.dto.trial.AdminRecordTrialResultInput;
-import kz.edu.soccerhub.admin.application.dto.trial.CreateTrialBookingInput;
-import kz.edu.soccerhub.admin.application.dto.trial.TrialBookingOutput;
+import kz.edu.soccerhub.admin.application.dto.trial.*;
 import kz.edu.soccerhub.admin.application.service.AdminTrialService;
+import kz.edu.soccerhub.common.dto.trial.TrialBookingListItemDto;
 import kz.edu.soccerhub.common.dto.trial.TrialBookingSearchCommand;
 import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +26,7 @@ public class AdminTrialController {
     private final AdminTrialService adminTrialService;
 
     @GetMapping
-    public Page<TrialBookingOutput> find(
+    public Page<TrialBookingListItemDto> find(
             @RequestParam(required = false) TrialBookingStatus status,
             @RequestParam(required = false) UUID leadId,
             @RequestParam(required = false) UUID clientId,
@@ -46,8 +42,7 @@ public class AdminTrialController {
                 trainingSessionId
         );
 
-        return adminTrialService.find(command, pageable)
-                .map(TrialBookingOutput::from);
+        return adminTrialService.findList(command, pageable);
     }
 
     @PostMapping

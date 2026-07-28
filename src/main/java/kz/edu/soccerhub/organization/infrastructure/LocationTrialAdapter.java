@@ -8,7 +8,10 @@ import kz.edu.soccerhub.organization.domain.repository.LocationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -25,5 +28,23 @@ public class LocationTrialAdapter implements TrialLocationPort {
                 .id(location.getId())
                 .name(location.getName())
                 .build();
+    }
+
+    @Override
+    public Map<UUID, TrialBookingDetailsDto.Location> getDetails(
+            Collection<UUID> locationIds
+    ) {
+        if (locationIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return repository.findAllById(locationIds).stream()
+                .collect(Collectors.toMap(
+                        Location::getId,
+                        location -> TrialBookingDetailsDto.Location.builder()
+                                .id(location.getId())
+                                .name(location.getName())
+                                .build()
+                ));
     }
 }

@@ -12,7 +12,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -81,5 +85,23 @@ public class TrialGroupAdapter implements TrialGroupPort {
                 .id(group.groupId())
                 .name(group.name())
                 .build();
+    }
+
+    @Override
+    public Map<UUID, TrialBookingDetailsDto.Group> getDetails(
+            Collection<UUID> groupIds
+    ) {
+        if (groupIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return groupPort.getGroupsByIds(Set.copyOf(groupIds)).stream()
+                .collect(Collectors.toMap(
+                        GroupDto::groupId,
+                        group -> TrialBookingDetailsDto.Group.builder()
+                                .id(group.groupId())
+                                .name(group.name())
+                                .build()
+                ));
     }
 }

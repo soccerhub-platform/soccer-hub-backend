@@ -1,15 +1,7 @@
 package kz.edu.soccerhub.admin.application.service;
 
-import kz.edu.soccerhub.admin.application.dto.trial.AdminTrialDetailsOutput;
-import kz.edu.soccerhub.admin.application.dto.trial.AdminMarkTrialAttendanceInput;
-import kz.edu.soccerhub.admin.application.dto.trial.AdminRecordTrialResultInput;
-import kz.edu.soccerhub.admin.application.dto.trial.CreateTrialBookingInput;
-import kz.edu.soccerhub.common.dto.trial.CancelTrialCommand;
-import kz.edu.soccerhub.common.dto.trial.CreateTrialBookingCommand;
-import kz.edu.soccerhub.common.dto.trial.MarkTrialAttendanceCommand;
-import kz.edu.soccerhub.common.dto.trial.RecordTrialResultCommand;
-import kz.edu.soccerhub.common.dto.trial.TrialBookingDto;
-import kz.edu.soccerhub.common.dto.trial.TrialBookingSearchCommand;
+import kz.edu.soccerhub.admin.application.dto.trial.*;
+import kz.edu.soccerhub.common.dto.trial.*;
 import kz.edu.soccerhub.common.port.TrialPort;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.application.state.LeadEvent;
@@ -58,12 +50,12 @@ public class AdminTrialService {
         return booking;
     }
 
-    @Transactional
-    public Page<TrialBookingDto> find(
+    @Transactional(readOnly = true)
+    public Page<TrialBookingListItemDto> findList(
             TrialBookingSearchCommand command,
             Pageable pageable
     ) {
-        return trialPort.findTrials(command, pageable);
+        return trialPort.findList(command, pageable);
     }
 
     @Transactional

@@ -31,6 +31,7 @@ public class TrialBookingService implements TrialPort {
     private final TrialStudentPort studentPort;
     private final TrialLeadPort leadPort;
     private final TrialBookingDetailsReader detailsReader;
+    private final TrialBookingListReader listReader;
 
     @Override
     @Transactional
@@ -212,6 +213,24 @@ public class TrialBookingService implements TrialPort {
         repository.findAllByLeadIdAndParticipantIdAndStudentIdIsNull(
                         command.leadId(), command.participantId())
                 .forEach(booking -> booking.linkStudent(command.clientId(), command.studentId()));
+    }
+
+    @Override
+    @Transactional(Transactional.TxType.SUPPORTS)
+    public Page<TrialBookingListItemDto> findList(
+            TrialBookingSearchCommand command,
+            Pageable pageable
+    ) {
+        if (command == null) {
+            throw new BadRequestException("Trial search query is required");
+        }
+
+        Page<TrialBooking> bookings = repository.findAll(
+                TrialBookingSpecifications.byQuery(command),
+                pageable
+        );
+
+        return listReader.read(bookings);
     }
 
     private TrialBooking getBooking(UUID trialId) {
