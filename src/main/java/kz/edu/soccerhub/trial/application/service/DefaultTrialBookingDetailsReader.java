@@ -92,7 +92,7 @@ public class DefaultTrialBookingDetailsReader
         }
 
         return TrialBookingDetailsDto.NextAction.builder()
-                .type(booking.getNextActionType())
+                .type(booking.getNextActionType().name())
                 .dueAt(booking.getNextActionAt())
                 .build();
     }
@@ -119,9 +119,11 @@ public class DefaultTrialBookingDetailsReader
                 .canCancel(scheduled || confirmed)
                 .canReschedule(scheduled || confirmed)
                 .canMarkAttendance(!canceled && !completed)
-                .canRecordResult(completed
-                        && booking.getAttendanceStatus()
-                        != TrialAttendanceStatus.UNMARKED)
+                .canRecordResult(
+                        completed
+                                && booking.getAttendanceStatus()
+                                == TrialAttendanceStatus.ATTENDED
+                )
                 .build();
     }
 }

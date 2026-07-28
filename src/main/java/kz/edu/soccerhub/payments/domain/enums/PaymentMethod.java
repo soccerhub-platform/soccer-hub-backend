@@ -5,5 +5,6 @@ public enum PaymentMethod {
     CARD,
     BANK_TRANSFER,
     KASPI,
+    GOVERNMENT,
     OTHER
 }

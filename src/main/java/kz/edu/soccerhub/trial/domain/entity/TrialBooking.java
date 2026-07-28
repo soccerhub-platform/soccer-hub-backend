@@ -5,6 +5,7 @@ import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialNextActionType;
 import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 import lombok.*;
 
@@ -77,8 +78,9 @@ public class TrialBooking extends AbstractAuditableEntity {
     @Column(name = "recommended_group_id")
     private UUID recommendedGroupId;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "next_action_type")
-    private String nextActionType;
+    private TrialNextActionType nextActionType;
 
     @Column(name = "next_action_at")
     private LocalDateTime nextActionAt;
@@ -168,7 +170,9 @@ public class TrialBooking extends AbstractAuditableEntity {
     public void recordResult(
             TrialResult result,
             UUID recommendedGroupId,
-            String coachFeedback
+            String coachFeedback,
+            TrialNextActionType nextActionType,
+            LocalDateTime nextActionAt
     ) {
         if (status != TrialBookingStatus.COMPLETED) {
             throw new BadRequestException(
@@ -176,9 +180,30 @@ public class TrialBooking extends AbstractAuditableEntity {
             );
         }
 
+        if (attendanceStatus != TrialAttendanceStatus.ATTENDED) {
+            throw new BadRequestException(
+                    "Result can be recorded only for attended trial"
+            );
+        }
+
+        if (result == TrialResult.FOLLOW_UP
+                && (nextActionType == null || nextActionAt == null)) {
+            throw new BadRequestException(
+                    "Follow-up action and due date are required"
+            );
+        }
+
         this.result = result;
         this.recommendedGroupId = recommendedGroupId;
         this.coachFeedback = coachFeedback;
+
+        this.nextActionType = result == TrialResult.FOLLOW_UP
+                ? nextActionType
+                : null;
+
+        this.nextActionAt = result == TrialResult.FOLLOW_UP
+                ? nextActionAt
+                : null;
     }
 
     public void linkStudent(UUID clientId, UUID studentId) {

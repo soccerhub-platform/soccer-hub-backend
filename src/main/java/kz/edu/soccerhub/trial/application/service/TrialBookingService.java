@@ -192,7 +192,9 @@ public class TrialBookingService implements TrialPort {
         booking.recordResult(
                 command.result(),
                 command.recommendedGroupId(),
-                command.coachFeedback()
+                command.coachFeedback(),
+                command.nextActionType(),
+                command.nextActionAt()
         );
 
         return detailsReader.read(booking);

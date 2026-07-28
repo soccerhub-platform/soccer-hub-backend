@@ -13,6 +13,7 @@ import kz.edu.soccerhub.common.dto.trial.TrialBookingSearchCommand;
 import kz.edu.soccerhub.common.port.TrialPort;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.application.state.LeadEvent;
+import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -107,7 +108,8 @@ public class AdminTrialService {
             UUID adminId,
             AdminMarkTrialAttendanceInput input
     ) {
-        return AdminTrialDetailsOutput.from(
+
+        AdminTrialDetailsOutput output = AdminTrialDetailsOutput.from(
                 trialPort.markAttendance(
                         MarkTrialAttendanceCommand.builder()
                                 .trialId(trialId)
@@ -117,6 +119,22 @@ public class AdminTrialService {
                                 .build()
                 )
         );
+
+        if (output.lead() != null) {
+            LeadEvent event = input.status() == TrialAttendanceStatus.ATTENDED
+                    ? LeadEvent.COMPLETE_TRIAL
+                    : LeadEvent.NO_SHOW;
+
+            leadPort.processEvent(
+                    output.lead().id(),
+                    event,
+                    null,
+                    null,
+                    adminId
+            );
+        }
+
+        return output;
     }
 
     @Transactional
@@ -133,6 +151,8 @@ public class AdminTrialService {
                                 .result(input.result())
                                 .recommendedGroupId(input.recommendedGroupId())
                                 .coachFeedback(input.coachFeedback())
+                                .nextActionType(input.nextActionType())
+                                .nextActionAt(input.nextActionAt())
                                 .build()
                 )
         );
