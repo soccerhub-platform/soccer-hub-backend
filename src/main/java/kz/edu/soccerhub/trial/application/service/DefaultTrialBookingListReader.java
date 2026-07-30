@@ -93,31 +93,30 @@ public class DefaultTrialBookingListReader
                 locationPort.getDetails(locationIds);
 
         return bookings.map(booking -> {
-            TrialSessionContext session =
-                    sessions.get(booking.getTrainingSessionId());
+            TrialSessionContext session = getOrNull(sessions, booking.getTrainingSessionId());
 
             TrialBookingDetailsDto.Student student =
                     booking.getStudentId() != null
-                            ? students.get(booking.getStudentId())
-                            : participants.get(booking.getParticipantId());
+                            ? getOrNull(students, booking.getStudentId())
+                            : getOrNull(participants, booking.getParticipantId());
 
             TrialBookingDetailsDto.Lead lead =
-                    leads.get(booking.getLeadId());
+                    getOrNull(leads, booking.getLeadId());
 
             TrialBookingDetailsDto.Group group =
                     session == null
                             ? null
-                            : groups.get(session.groupId());
+                            : getOrNull(groups, session.groupId());
 
             TrialBookingDetailsDto.Coach coach =
                     session == null
                             ? null
-                            : coaches.get(session.coachId());
+                            : getOrNull(coaches, session.coachId());
 
             TrialBookingDetailsDto.Location location =
                     session == null
                             ? null
-                            : locations.get(session.locationId());
+                            : getOrNull(locations, session.locationId());
 
             return TrialBookingListItemDto.builder()
                     .id(booking.getId())
@@ -148,5 +147,9 @@ public class DefaultTrialBookingListReader
                     .nextActionAt(booking.getNextActionAt())
                     .build();
         });
+    }
+
+    private static <K, V> V getOrNull(Map<K, V> map, K key) {
+        return key == null ? null : map.get(key);
     }
 }
