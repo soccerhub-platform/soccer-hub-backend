@@ -21,7 +21,7 @@ import java.util.UUID;
 
 public interface LeadPort {
 
-    UUID createLead(@Valid LeadCreateCommand command);
+    List<UUID> createLeads(@Valid LeadCreateCommand command);
 
     void qualifyLead(UUID leadId, @Valid LeadQualificationInput input, UUID currentAdminId);
 

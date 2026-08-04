@@ -52,7 +52,7 @@ public class AdminLeadController {
         LeadCreateOutput output = adminLeadService.createLead(adminId, input);
 
         return ResponseEntity
-                .created(URI.create("/leads/" + output.leadId()))
+                .created(URI.create("/leads/" + output.primaryLeadId()))
                 .body(output);
     }
 

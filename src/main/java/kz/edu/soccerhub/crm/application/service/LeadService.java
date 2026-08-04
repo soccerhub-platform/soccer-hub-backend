@@ -3,25 +3,14 @@ package kz.edu.soccerhub.crm.application.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
-import kz.edu.soccerhub.common.dto.lead.ConvertLeadRequest;
-import kz.edu.soccerhub.common.dto.lead.ConvertLeadResponse;
-import kz.edu.soccerhub.common.dto.lead.LeadActivityOutput;
-import kz.edu.soccerhub.common.dto.lead.LeadCreateCommand;
-import kz.edu.soccerhub.common.dto.lead.LeadLossReasonResponse;
-import kz.edu.soccerhub.common.dto.lead.LeadLossReasonStage;
-import kz.edu.soccerhub.common.dto.lead.LeadOutput;
-import kz.edu.soccerhub.common.dto.lead.LeadParticipantInput;
-import kz.edu.soccerhub.common.dto.lead.LeadQualificationInput;
-import kz.edu.soccerhub.common.dto.lead.ScheduleTrialInput;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
+import kz.edu.soccerhub.common.dto.lead.*;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
-import kz.edu.soccerhub.common.port.AdminPort;
-import kz.edu.soccerhub.common.port.CoachPort;
-import kz.edu.soccerhub.common.port.GroupSchedulePort;
-import kz.edu.soccerhub.common.port.GroupPort;
-import kz.edu.soccerhub.common.port.LeadPort;
+import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.crm.application.mapper.LeadMapper;
+import kz.edu.soccerhub.crm.application.state.LeadEvent;
+import kz.edu.soccerhub.crm.application.state.LeadStateMachineService;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadLossReasonEntity;
 import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
@@ -30,8 +19,6 @@ import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.crm.domain.repository.LeadLossReasonRepository;
 import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import kz.edu.soccerhub.crm.infrastructure.LeadSpecification;
-import kz.edu.soccerhub.crm.application.state.LeadEvent;
-import kz.edu.soccerhub.crm.application.state.LeadStateMachineService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -41,15 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.EnumMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -69,39 +48,65 @@ public class LeadService implements LeadPort {
     private final LeadLossReasonPolicy leadLossReasonPolicy;
     private final ObjectMapper objectMapper;
 
-    @Transactional
     @Override
-    public UUID createLead(@Valid LeadCreateCommand command) {
+    @Transactional
+    public List<UUID> createLeads(
+            @Valid LeadCreateCommand command
+    ) {
+        validateCreateCommand(command);
         validateAssignedAdmin(command.assignedAdminId());
 
-        String normalizedPhone = PhoneNormalizer.normalize(command.primaryContact().phone());
-        ensureNoActiveDuplicate(normalizedPhone);
+        String normalizedPhone =
+                PhoneNormalizer.normalize(command.primaryContact().phone());
 
-        Lead lead = Lead.builder()
-                .id(UUID.randomUUID())
-                .leadType(command.leadType())
-                .primaryContactName(trim(command.primaryContact().fullName()))
-                .primaryContactPhone(normalizedPhone)
-                .primaryContactEmail(trim(command.primaryContact().email()))
-                .source(LeadSource.OTHER)
-                .status(LeadStatus.NEW)
-                .assignedAdminId(command.assignedAdminId())
-                .branchId(command.branchId())
-                .comment(trim(command.comment()))
-                .build();
+        validateNoDuplicateParticipants(command.participants());
+
+        List<UUID> leadIds = new ArrayList<>();
 
         for (LeadParticipantInput participant : command.participants()) {
+            String participantName =
+                    normalizeParticipantDisplayName(participant.fullName());
+
+            String normalizedParticipantName =
+                    participantName.toLowerCase(Locale.ROOT);
+
+            ensureNoActiveDuplicate(
+                    normalizedPhone,
+                    normalizedParticipantName,
+                    participant
+            );
+
+            Lead lead = Lead.builder()
+                    .id(UUID.randomUUID())
+                    .leadType(command.leadType())
+                    .primaryContactName(
+                            trim(command.primaryContact().fullName())
+                    )
+                    .primaryContactPhone(normalizedPhone)
+                    .primaryContactEmail(
+                            trim(command.primaryContact().email())
+                    )
+                    .source(LeadSource.OTHER)
+                    .status(LeadStatus.NEW)
+                    .assignedAdminId(command.assignedAdminId())
+                    .branchId(command.branchId())
+                    .comment(trim(command.comment()))
+                    .build();
+
             lead.addParticipant(
-                    trim(participant.fullName()),
+                    participantName,
                     participant.birthDate(),
                     participant.gender(),
                     trim(participant.experience())
             );
+
+            leadRepository.save(lead);
+            leadActivityService.logLeadCreated(lead);
+
+            leadIds.add(lead.getId());
         }
 
-        leadRepository.save(lead);
-        leadActivityService.logLeadCreated(lead);
-        return lead.getId();
+        return List.copyOf(leadIds);
     }
 
     @Override
@@ -447,12 +452,77 @@ public class LeadService implements LeadPort {
         }
     }
 
+    private void validateCreateCommand(LeadCreateCommand command) {
+        if (command == null) {
+            throw new BadRequestException("Lead creation command is required");
+        }
 
-    private void ensureNoActiveDuplicate(String normalizedPhone) {
-        boolean exists = leadRepository.existsActiveLeadByPhone(normalizedPhone);
+        if (command.primaryContact() == null) {
+            throw new BadRequestException("Primary contact is required");
+        }
+
+        if (command.participants() == null || command.participants().isEmpty()) {
+            throw new BadRequestException("At least one participant is required");
+        }
+    }
+
+    private void ensureNoActiveDuplicate(
+            String normalizedPhone,
+            String normalizedParticipantName,
+            LeadParticipantInput participant
+    ) {
+        boolean exists = leadRepository.existsActiveLead(
+                normalizedPhone,
+                normalizedParticipantName,
+                participant.birthDate()
+        );
 
         if (exists) {
-            throw new BadRequestException("Lead with this phone already exists in active pipeline", normalizedPhone);
+            throw new BadRequestException(
+                    "Active lead for this participant already exists",
+                    normalizedPhone,
+                    participant.fullName(),
+                    participant.birthDate()
+            );
+        }
+    }
+
+    private String normalizeParticipantDisplayName(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value.trim().replaceAll("\\s+", " ");
+    }
+
+    private String normalizeParticipantName(String value) {
+        return normalizeParticipantDisplayName(value)
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private void validateNoDuplicateParticipants(
+            List<LeadParticipantInput> participants
+    ) {
+        Set<String> fingerprints = new HashSet<>();
+
+        for (LeadParticipantInput participant : participants) {
+            String normalizedName =
+                    normalizeParticipantName(participant.fullName());
+
+            String fingerprint =
+                    normalizedName
+                            + "|"
+                            + (participant.birthDate() == null
+                            ? ""
+                            : participant.birthDate());
+
+            if (!fingerprints.add(fingerprint)) {
+                throw new BadRequestException(
+                        "Participant is duplicated in lead creation request",
+                        participant.fullName(),
+                        participant.birthDate()
+                );
+            }
         }
     }
 

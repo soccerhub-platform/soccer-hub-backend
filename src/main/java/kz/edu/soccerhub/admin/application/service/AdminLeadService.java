@@ -48,8 +48,8 @@ public class AdminLeadService {
                 input.participants()
         );
 
-        UUID leadId = leadPort.createLead(command);
-        return new LeadCreateOutput(leadId);
+        List<UUID> leadIds = leadPort.createLeads(command);
+        return new LeadCreateOutput(leadIds);
     }
 
     @Transactional

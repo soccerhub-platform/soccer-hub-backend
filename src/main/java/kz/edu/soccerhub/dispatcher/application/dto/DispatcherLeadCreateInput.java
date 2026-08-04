@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.dispatcher.application.dto;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import kz.edu.soccerhub.common.dto.lead.LeadParticipantInput;
@@ -25,7 +26,7 @@ public record DispatcherLeadCreateInput(
         String comment,
 
         @Valid
-        @NotNull(message = "Participants are required")
+        @NotEmpty(message = "At least one participant is required")
         List<LeadParticipantInput> participants
 ) {
 }

@@ -26,7 +26,7 @@ public class DispatcherLeadController {
     public ResponseEntity<LeadCreateOutput> createLead(@RequestBody @Valid DispatcherLeadCreateInput input) {
         LeadCreateOutput output = dispatcherLeadService.createLead(input);
         return ResponseEntity
-                .created(URI.create("/leads/" + output.leadId()))
+                .created(URI.create("/leads/" + output.primaryLeadId()))
                 .body(output);
     }
 }

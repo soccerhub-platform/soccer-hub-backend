@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.admin.application.dto.lead;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import kz.edu.soccerhub.common.dto.lead.LeadParticipantInput;
@@ -24,7 +25,7 @@ public record AdminLeadCreateInput(
         String comment,
 
         @Valid
-        @NotNull(message = "Participants are required")
+        @NotEmpty(message = "At least one participant is required")
         List<LeadParticipantInput> participants,
 
         @NotNull(message = "Branch id is required")
