@@ -20,6 +20,8 @@ import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import kz.edu.soccerhub.common.exception.ConflictException;
+import kz.edu.soccerhub.crm.domain.model.enums.LeadParticipantStage;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -56,6 +58,8 @@ public class DefaultLeadConversionService implements LeadConversionService {
                         Map.of("leadId", leadId, "participantId", request.participantId())
                 ));
 
+        validateParticipantReadyForConversion(participant);
+
         ClientConversionOutput conversion = clientPort.convertLead(
                 ClientConversionCommand.builder()
                         .existingClientId(lead.getClientId())
@@ -76,7 +80,11 @@ public class DefaultLeadConversionService implements LeadConversionService {
         );
 
         LeadStatus previousStatus = lead.getStatus();
-        lead.markConverted(conversion.clientId(), conversion.playerId());
+
+        lead.linkClient(conversion.clientId());
+        participant.linkPlayer(conversion.playerId());
+        participant.awaitContract();
+
         leadRepository.save(lead);
         trialPort.linkConvertedStudent(
                 LinkTrialStudentCommand.builder()
@@ -100,8 +108,35 @@ public class DefaultLeadConversionService implements LeadConversionService {
                 lead.getPrimaryContactName(),
                 conversion.playerId(),
                 participant.getFullName(),
-                "CONVERTED"
+                "PARTICIPANT_CONVERTED"
         );
+    }
+
+    private void validateParticipantReadyForConversion(LeadParticipant participant) {
+        if (participant.getPlayerId() != null) {
+            throw new ConflictException(
+                    "Lead participant is already converted",
+                    "LEAD_PARTICIPANT_ALREADY_CONVERTED",
+                    Map.of(
+                            "participantId", String.valueOf(participant.getId()),
+                            "playerId", participant.getPlayerId()
+                    )
+            );
+        }
+
+        if (participant.getStage() != LeadParticipantStage.TRIAL) {
+            throw new ConflictException(
+                    "Lead participant must complete the trial stage before conversion",
+                    "LEAD_PARTICIPANT_STAGE_CONFLICT",
+                    Map.of(
+                            "participantId", String.valueOf(participant.getId()),
+                            "currentStage", participant.getStage() == null
+                                    ? "UNINITIALIZED"
+                                    : participant.getStage().name(),
+                            "requiredStage", LeadParticipantStage.TRIAL.name()
+                    )
+            );
+        }
     }
 
     private void validateRequest(ConvertLeadRequest request) {

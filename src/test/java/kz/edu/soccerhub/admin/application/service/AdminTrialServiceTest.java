@@ -14,6 +14,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import kz.edu.soccerhub.admin.application.dto.trial.CreateTrialBookingInput;
+import kz.edu.soccerhub.common.dto.trial.TrialBookingDto;
 
 import java.util.UUID;
 
@@ -31,6 +33,46 @@ class AdminTrialServiceTest {
 
     @InjectMocks
     private AdminTrialService service;
+
+    @Test
+    void createShouldStartJourneyForSelectedLeadParticipant() {
+        UUID adminId = UUID.randomUUID();
+        UUID leadId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
+        UUID trainingSessionId = UUID.randomUUID();
+        UUID bookingId = UUID.randomUUID();
+
+        CreateTrialBookingInput input = CreateTrialBookingInput.builder()
+                .leadId(leadId)
+                .participantId(participantId)
+                .trainingSessionId(trainingSessionId)
+                .build();
+
+        when(trialPort.createTrial(any()))
+                .thenReturn(TrialBookingDto.builder()
+                        .id(bookingId)
+                        .leadId(leadId)
+                        .participantId(participantId)
+                        .trainingSessionId(trainingSessionId)
+                        .status(TrialBookingStatus.SCHEDULED)
+                        .build());
+
+        service.create(adminId, input);
+
+        verify(leadPort).startParticipantTrial(
+                leadId,
+                participantId,
+                adminId
+        );
+
+        verify(leadPort).processEvent(
+                leadId,
+                LeadEvent.SCHEDULE_TRIAL,
+                null,
+                null,
+                adminId
+        );
+    }
 
     @Test
     void markAttendanceShouldCompleteLeadWhenStudentAttended() {

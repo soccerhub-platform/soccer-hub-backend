@@ -8,6 +8,9 @@ import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
 import kz.edu.soccerhub.crm.domain.model.enums.TimePreference;
 import lombok.*;
+import kz.edu.soccerhub.common.exception.BadRequestException;
+import kz.edu.soccerhub.common.exception.ConflictException;
+
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -15,6 +18,8 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.Objects;
 
 @Entity
 @Table(name = "leads")
@@ -158,10 +163,27 @@ public class Lead extends AbstractAuditableEntity {
         );
     }
 
-    public void markConverted(UUID clientId, UUID participantId) {
-        this.clientId = clientId;
-        this.participantId = participantId;
-        this.status = LeadStatus.CONVERTED;
+    public void linkClient(UUID requestedClientId) {
+        if (requestedClientId == null) {
+            throw new BadRequestException("Client id is required");
+        }
+
+        if (clientId == null) {
+            clientId = requestedClientId;
+            return;
+        }
+
+        if (!Objects.equals(clientId, requestedClientId)) {
+            throw new ConflictException(
+                    "Lead is already linked to another client",
+                    "LEAD_CLIENT_CONFLICT",
+                    Map.of(
+                            "leadId", String.valueOf(id),
+                            "currentClientId", clientId,
+                            "requestedClientId", requestedClientId
+                    )
+            );
+        }
     }
 
     public void markLost(String reasonCode, String comment, LocalDateTime at) {

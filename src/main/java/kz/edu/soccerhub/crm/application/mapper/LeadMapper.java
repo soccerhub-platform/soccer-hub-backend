@@ -85,13 +85,16 @@ public class LeadMapper {
 
     private List<LeadParticipantOutput> mapParticipants(Lead lead) {
         return lead.getParticipants().stream()
-                .map(participant -> new LeadParticipantOutput(
-                        participant.getId(),
-                        participant.getFullName(),
-                        participant.getBirthDate(),
-                        participant.getGender(),
-                        participant.getExperience()
-                ))
+                .map(participant -> LeadParticipantOutput.builder()
+                        .id(participant.getId())
+                        .fullName(participant.getFullName())
+                        .birthDate(participant.getBirthDate())
+                        .gender(participant.getGender())
+                        .experience(participant.getExperience())
+                        .stage(participant.getStage())
+                        .playerId(participant.getPlayerId())
+                        .stageChangedAt(participant.getStageChangedAt())
+                        .build())
                 .toList();
     }
 

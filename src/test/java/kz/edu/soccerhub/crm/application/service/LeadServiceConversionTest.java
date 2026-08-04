@@ -10,10 +10,7 @@ import kz.edu.soccerhub.common.port.ClientPort;
 import kz.edu.soccerhub.common.port.TrialPort;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
-import kz.edu.soccerhub.crm.domain.model.enums.Gender;
-import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
-import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
-import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
+import kz.edu.soccerhub.crm.domain.model.enums.*;
 import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -64,6 +61,8 @@ class LeadServiceConversionTest {
         UUID playerId = UUID.randomUUID();
         UUID relationId = UUID.randomUUID();
         Lead lead = lead(leadId, LeadStatus.DECISION_PENDING, participantId, "Alex Doe");
+        LeadParticipant participant = lead.getParticipants().getFirst();
+        participant.startTrial();
         ConvertLeadRequest request = new ConvertLeadRequest(
                 participantId,
                 LocalDate.of(2016, 5, 20),
@@ -77,11 +76,18 @@ class LeadServiceConversionTest {
 
         ConvertLeadResponse response = conversionService.convertLeadToClient(leadId, request, UUID.randomUUID());
 
-        assertEquals(LeadStatus.CONVERTED, response.leadStatus());
+        assertEquals(LeadStatus.DECISION_PENDING, response.leadStatus());
+        assertEquals("PARTICIPANT_CONVERTED", response.status());
         assertEquals(clientId, response.clientId());
         assertEquals(playerId, response.playerId());
-        assertEquals(LeadStatus.CONVERTED, lead.getStatus());
+
+        assertEquals(LeadStatus.DECISION_PENDING, lead.getStatus());
+        assertEquals(clientId, lead.getClientId());
+        assertEquals(playerId, participant.getPlayerId());
+        assertEquals(LeadParticipantStage.CONTRACT, participant.getStage());
+
         verify(leadRepository).save(lead);
+        verify(trialPort).linkConvertedStudent(any());
     }
 
     @Test

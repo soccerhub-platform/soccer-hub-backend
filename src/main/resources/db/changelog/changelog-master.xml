@@ -39,5 +39,6 @@
     <include file="/db/changelog/2026-07-25-trial-lead-participant.sql"/>
     <include file="/db/changelog/2026-07-27-client-activities-changes.sql"/>
     <include file="/db/changelog/2026-07-27-client-source.sql"/>
+    <include file="/db/changelog/2026-08-03-lead-participant-journey.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>

@@ -24,6 +24,7 @@ import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.application.mapper.LeadMapper;
 import kz.edu.soccerhub.crm.domain.model.Lead;
 import kz.edu.soccerhub.crm.domain.model.LeadLossReasonEntity;
+import kz.edu.soccerhub.crm.domain.model.LeadParticipant;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadSource;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.crm.domain.repository.LeadLossReasonRepository;
@@ -183,6 +184,21 @@ public class LeadService implements LeadPort {
         leadRepository.save(lead);
         leadActivityService.logStatusChanged(lead, LeadEvent.SCHEDULE_TRIAL, previousStatus, currentAdminId);
         log.info("Trial scheduled for lead {}", leadId);
+    }
+
+    @Override
+    @Transactional
+    public void startParticipantTrial(
+            UUID leadId,
+            UUID participantId,
+            UUID currentAdminId
+    ) {
+        Lead lead = findById(leadId);
+        LeadParticipant participant = findParticipant(lead, participantId);
+
+        participant.startTrial();
+
+        leadRepository.save(lead);
     }
 
     @Transactional(readOnly = true)
@@ -482,16 +498,11 @@ public class LeadService implements LeadPort {
         }
     }
 
-    private void validateParticipantBelongsToLead(Lead lead, UUID participantId) {
-        boolean exists = lead.getParticipants().stream()
-                .anyMatch(participant -> Objects.equals(participant.getId(), participantId));
-
-        if (!exists) {
-            throw new BadRequestException(
-                    "Participant does not belong to lead",
-                    Map.of("leadId", lead.getId(), "participantId", participantId)
-            );
-        }
+    private void validateParticipantBelongsToLead(
+            Lead lead,
+            UUID participantId
+    ) {
+        findParticipant(lead, participantId);
     }
 
     private void validateGroupAndCoach(Lead lead, UUID groupId, UUID coachId) {
@@ -563,6 +574,29 @@ public class LeadService implements LeadPort {
         if (!groupSlot.coachId().equals(resolvedCoachId) || !coachSlot.groupId().equals(resolvedGroupId)) {
             throw new BadRequestException("Coach and group are not available in the same schedule slot");
         }
+    }
+
+    private LeadParticipant findParticipant(
+            Lead lead,
+            UUID participantId
+    ) {
+        if (participantId == null) {
+            throw new BadRequestException("Participant id is required");
+        }
+
+        return lead.getParticipants().stream()
+                .filter(participant -> Objects.equals(
+                        participant.getId(),
+                        participantId
+                ))
+                .findFirst()
+                .orElseThrow(() -> new BadRequestException(
+                        "Participant does not belong to lead",
+                        Map.of(
+                                "leadId", lead.getId(),
+                                "participantId", participantId
+                        )
+                ));
     }
 
 }

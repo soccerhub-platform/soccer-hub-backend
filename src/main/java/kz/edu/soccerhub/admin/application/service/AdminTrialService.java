@@ -37,9 +37,17 @@ public class AdminTrialService {
                         .build()
         );
 
-        if (input.leadId() != null) {
+        if (booking.leadId() != null) {
+            if (booking.participantId() != null) {
+                leadPort.startParticipantTrial(
+                        booking.leadId(),
+                        booking.participantId(),
+                        adminId
+                );
+            }
+
             leadPort.processEvent(
-                    input.leadId(),
+                    booking.leadId(),
                     LeadEvent.SCHEDULE_TRIAL,
                     null,
                     null,
