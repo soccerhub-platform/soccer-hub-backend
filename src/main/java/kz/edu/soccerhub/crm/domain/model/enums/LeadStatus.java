@@ -6,10 +6,10 @@ public enum LeadStatus {
     IN_PROGRESS,
     TRIAL_SCHEDULED,
     DECISION_PENDING,
+    CONTRACT_PENDING,
+    PAYMENT_PENDING,
     CONVERTED,
-    LOST,
-
-    ;
+    LOST;
 
     public boolean isFinal() {
         return this == CONVERTED || this == LOST;

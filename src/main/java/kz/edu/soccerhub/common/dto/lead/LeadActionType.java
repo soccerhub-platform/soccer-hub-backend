@@ -8,5 +8,7 @@ public enum LeadActionType {
     MARK_TRIAL_DONE,
     MARK_NO_SHOW,
     CONVERT_TO_CLIENT,
+    CREATE_CONTRACT,
+    RECORD_PAYMENT,
     CLOSE_LEAD
 }

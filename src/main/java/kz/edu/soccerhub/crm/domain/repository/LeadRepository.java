@@ -29,7 +29,9 @@ public interface LeadRepository extends JpaRepository<Lead, UUID>, JpaSpecificat
               kz.edu.soccerhub.crm.domain.model.enums.LeadStatus.NEW,
               kz.edu.soccerhub.crm.domain.model.enums.LeadStatus.IN_PROGRESS,
               kz.edu.soccerhub.crm.domain.model.enums.LeadStatus.TRIAL_SCHEDULED,
-              kz.edu.soccerhub.crm.domain.model.enums.LeadStatus.DECISION_PENDING
+              kz.edu.soccerhub.crm.domain.model.enums.LeadStatus.DECISION_PENDING,
+              kz.edu.soccerhub.crm.domain.model.enums.LeadStatus.CONTRACT_PENDING,
+              kz.edu.soccerhub.crm.domain.model.enums.LeadStatus.PAYMENT_PENDING
           )
         """)
     boolean existsActiveLead(

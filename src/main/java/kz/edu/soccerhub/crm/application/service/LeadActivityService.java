@@ -170,6 +170,9 @@ public class LeadActivityService {
             case NO_SHOW -> "Не пришел";
             case POST_TRIAL_REJECT -> "Отказ после пробного";
             case CONTACT -> "Связались с клиентом";
+            case START_CONTRACT -> "Начало оформления договора";
+            case CONTRACT_ACTIVATED -> "Договор активирован";
+            case FIRST_PAYMENT_RECEIVED -> "Первый платеж получен";
             case REJECT -> "Лид закрыт";
         };
     }

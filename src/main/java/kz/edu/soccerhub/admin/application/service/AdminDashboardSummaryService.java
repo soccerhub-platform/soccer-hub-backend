@@ -45,6 +45,8 @@ public class AdminDashboardSummaryService {
             LeadStatus.IN_PROGRESS,
             LeadStatus.TRIAL_SCHEDULED,
             LeadStatus.DECISION_PENDING,
+            LeadStatus.CONTRACT_PENDING,
+            LeadStatus.PAYMENT_PENDING,
             LeadStatus.CONVERTED
     );
 
@@ -792,6 +794,8 @@ public class AdminDashboardSummaryService {
             case IN_PROGRESS -> "В работе";
             case TRIAL_SCHEDULED -> "Пробная назначена";
             case DECISION_PENDING -> "Ожидают решения";
+            case CONTRACT_PENDING -> "Ожидают договор";
+            case PAYMENT_PENDING -> "Ожидают оплату";
             case CONVERTED -> "Клиент";
             default -> status.name();
         };

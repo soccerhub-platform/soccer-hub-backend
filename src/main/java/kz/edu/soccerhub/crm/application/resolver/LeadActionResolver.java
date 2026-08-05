@@ -26,8 +26,29 @@ public class LeadActionResolver {
             );
 
             case IN_PROGRESS -> List.of(
-                    primary(LeadActionType.SCHEDULE_TRIAL, "Назначить пробное", LeadEvent.SCHEDULE_TRIAL, hasParticipants(lead), branchAllowed),
-                    secondary(LeadActionType.CLOSE_LEAD, "Отказ / Закрыть", LeadEvent.REJECT, true, true, branchAllowed)
+                    primary(
+                            LeadActionType.SCHEDULE_TRIAL,
+                            "Назначить пробное",
+                            LeadEvent.SCHEDULE_TRIAL,
+                            hasParticipants(lead),
+                            branchAllowed
+                    ),
+                    secondary(
+                            LeadActionType.CONVERT_TO_CLIENT,
+                            "Оформить без пробного",
+                            null,
+                            false,
+                            hasParticipants(lead),
+                            branchAllowed
+                    ),
+                    secondary(
+                            LeadActionType.CLOSE_LEAD,
+                            "Отказ / Закрыть",
+                            LeadEvent.REJECT,
+                            true,
+                            true,
+                            branchAllowed
+                    )
             );
 
             case TRIAL_SCHEDULED -> List.of(
@@ -38,12 +59,69 @@ public class LeadActionResolver {
             );
 
             case DECISION_PENDING -> List.of(
-                    primary(LeadActionType.CONVERT_TO_CLIENT, "Оформить клиента", null, hasParticipants(lead), branchAllowed),
-                    secondary(LeadActionType.CLOSE_LEAD, "Отказ после пробного", LeadEvent.POST_TRIAL_REJECT, true, true, branchAllowed)
+                    primary(
+                            LeadActionType.CONVERT_TO_CLIENT,
+                            "Оформить ребёнка",
+                            null,
+                            hasParticipants(lead),
+                            branchAllowed
+                    ),
+                    secondary(
+                            LeadActionType.CLOSE_LEAD,
+                            "Отказ после пробного",
+                            LeadEvent.POST_TRIAL_REJECT,
+                            true,
+                            true,
+                            branchAllowed
+                    )
+            );
+
+            case CONTRACT_PENDING -> List.of(
+                    primary(
+                            LeadActionType.CREATE_CONTRACT,
+                            "Создать договор",
+                            null,
+                            lead.getClientId() != null && hasLinkedPlayer(lead),
+                            branchAllowed
+                    ),
+                    secondary(
+                            LeadActionType.CLOSE_LEAD,
+                            "Отказ от договора",
+                            LeadEvent.REJECT,
+                            true,
+                            true,
+                            branchAllowed
+                    )
+            );
+
+            case PAYMENT_PENDING -> List.of(
+                    primary(
+                            LeadActionType.RECORD_PAYMENT,
+                            "Принять первую оплату",
+                            null,
+                            lead.getClientId() != null,
+                            branchAllowed
+                    ),
+                    secondary(
+                            LeadActionType.CLOSE_LEAD,
+                            "Отказ от оплаты",
+                            LeadEvent.REJECT,
+                            true,
+                            true,
+                            branchAllowed
+                    )
             );
 
             case CONVERTED, LOST -> List.of();
         };
+    }
+
+    private boolean hasLinkedPlayer(Lead lead) {
+        return lead.getParticipants() != null
+                && lead.getParticipants().stream()
+                .anyMatch(participant ->
+                        participant.getPlayerId() != null
+                );
     }
 
     private LeadActionOutput primary(LeadActionType type, String label, LeadEvent event, boolean businessEnabled, boolean isOwner) {
