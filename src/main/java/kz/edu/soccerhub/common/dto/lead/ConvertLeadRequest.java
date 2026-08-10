@@ -16,6 +16,11 @@ public record ConvertLeadRequest(
         @NotNull(message = "relationshipType is required")
         ClientStudentRelationshipType relationshipType,
 
+        UUID existingClientId,
+
+        @NotNull(message = "conversionMode is required")
+        LeadConversionMode conversionMode,
+
         boolean replacePrimaryContact,
         boolean replacePrimaryPayer
 ) {
