@@ -191,21 +191,6 @@ public class LeadService implements LeadPort {
         log.info("Trial scheduled for lead {}", leadId);
     }
 
-    @Override
-    @Transactional
-    public void startParticipantTrial(
-            UUID leadId,
-            UUID participantId,
-            UUID currentAdminId
-    ) {
-        Lead lead = findById(leadId);
-        LeadParticipant participant = findParticipant(lead, participantId);
-
-        participant.startTrial();
-
-        leadRepository.save(lead);
-    }
-
     @Transactional(readOnly = true)
     public Page<Lead> getLeads(
             List<LeadStatus> statuses,

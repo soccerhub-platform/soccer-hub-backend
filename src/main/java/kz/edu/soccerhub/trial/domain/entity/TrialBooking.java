@@ -10,6 +10,7 @@ import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 @Entity
@@ -56,9 +57,6 @@ public class TrialBooking extends AbstractAuditableEntity {
 
     @Column(name = "cancellation_reason")
     private String cancellationReason;
-
-    @Column(name = "confirmed_at")
-    private LocalDateTime confirmedAt;
 
     @Column(name = "canceled_at")
     private LocalDateTime canceledAt;
@@ -114,28 +112,49 @@ public class TrialBooking extends AbstractAuditableEntity {
         return schedule(leadId, clientId, null, studentId, trainingSessionId);
     }
 
-    public void confirm() {
+    public void cancel(String reason) {
         if (status != TrialBookingStatus.SCHEDULED) {
             throw new BadRequestException(
-                    "Only scheduled trial can be confirmed"
-            );
-        }
-
-        status = TrialBookingStatus.CONFIRMED;
-        confirmedAt = LocalDateTime.now();
-    }
-
-    public void cancel(String reason) {
-        if (status != TrialBookingStatus.SCHEDULED
-                && status != TrialBookingStatus.CONFIRMED) {
-            throw new BadRequestException(
-                    "Only scheduled or confirmed trial can be canceled"
+                    "Only scheduled trial can be canceled"
             );
         }
 
         status = TrialBookingStatus.CANCELED;
         cancellationReason = reason;
         canceledAt = LocalDateTime.now();
+    }
+
+    public void reschedule(UUID newTrainingSessionId) {
+        if (status != TrialBookingStatus.SCHEDULED) {
+            throw new BadRequestException(
+                    "Only scheduled trial can be rescheduled"
+            );
+        }
+
+        if (newTrainingSessionId == null) {
+            throw new BadRequestException(
+                    "New training session is required"
+            );
+        }
+
+        if (Objects.equals(trainingSessionId, newTrainingSessionId)) {
+            throw new BadRequestException(
+                    "Trial is already scheduled for this session"
+            );
+        }
+
+        trainingSessionId = newTrainingSessionId;
+
+        attendanceStatus = TrialAttendanceStatus.UNMARKED;
+        attendanceMarkedAt = null;
+        attendanceMarkedBy = null;
+        attendanceComment = null;
+
+        result = TrialResult.PENDING;
+        recommendedGroupId = null;
+        coachFeedback = null;
+        nextActionType = null;
+        nextActionAt = null;
     }
 
     public void markAttendance(

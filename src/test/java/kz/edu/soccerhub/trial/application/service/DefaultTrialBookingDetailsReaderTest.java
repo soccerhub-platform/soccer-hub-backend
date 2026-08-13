@@ -124,21 +124,6 @@ class DefaultTrialBookingDetailsReaderTest {
 
         TrialBookingDetailsDto details = reader.read(booking);
 
-        assertTrue(details.capabilities().canConfirm());
-        assertTrue(details.capabilities().canCancel());
-        assertTrue(details.capabilities().canReschedule());
-        assertTrue(details.capabilities().canMarkAttendance());
-        assertFalse(details.capabilities().canRecordResult());
-    }
-
-    @Test
-    void confirmedTrialCannotBeConfirmedAgain() {
-        TrialBooking booking = createBooking();
-        booking.confirm();
-
-        TrialBookingDetailsDto details = reader.read(booking);
-
-        assertFalse(details.capabilities().canConfirm());
         assertTrue(details.capabilities().canCancel());
         assertTrue(details.capabilities().canReschedule());
         assertTrue(details.capabilities().canMarkAttendance());
@@ -149,7 +134,6 @@ class DefaultTrialBookingDetailsReaderTest {
     void completedTrialCanRecordResult() {
         TrialBooking booking = createBooking();
 
-        booking.confirm();
         booking.markAttendance(
                 TrialAttendanceStatus.ATTENDED,
                 UUID.randomUUID(),
@@ -158,7 +142,6 @@ class DefaultTrialBookingDetailsReaderTest {
 
         TrialBookingDetailsDto details = reader.read(booking);
 
-        assertFalse(details.capabilities().canConfirm());
         assertFalse(details.capabilities().canCancel());
         assertFalse(details.capabilities().canReschedule());
         assertFalse(details.capabilities().canMarkAttendance());
@@ -173,7 +156,6 @@ class DefaultTrialBookingDetailsReaderTest {
 
         TrialBookingDetailsDto details = reader.read(booking);
 
-        assertFalse(details.capabilities().canConfirm());
         assertFalse(details.capabilities().canCancel());
         assertFalse(details.capabilities().canReschedule());
         assertFalse(details.capabilities().canMarkAttendance());

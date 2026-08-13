@@ -38,14 +38,6 @@ public class AdminTrialService {
         );
 
         if (booking.leadId() != null) {
-            if (booking.participantId() != null) {
-                leadPort.startParticipantTrial(
-                        booking.leadId(),
-                        booking.participantId(),
-                        adminId
-                );
-            }
-
             leadPort.processEvent(
                     booking.leadId(),
                     LeadEvent.SCHEDULE_TRIAL,
@@ -79,24 +71,46 @@ public class AdminTrialService {
     }
 
     @Transactional
-    public AdminTrialDetailsOutput confirm(UUID trialId, UUID adminId) {
-        return AdminTrialDetailsOutput.from(
-                trialPort.confirmTrial(trialId, adminId)
-        );
-    }
-
-    @Transactional
     public AdminTrialDetailsOutput cancel(
             UUID trialId,
             UUID adminId,
             String reason
     ) {
-        return AdminTrialDetailsOutput.from(
+        AdminTrialDetailsOutput output = AdminTrialDetailsOutput.from(
                 trialPort.cancelTrial(
                         CancelTrialCommand.builder()
                                 .trialId(trialId)
                                 .adminId(adminId)
                                 .reason(reason)
+                                .build()
+                )
+        );
+
+        if (output.lead() != null) {
+            leadPort.processEvent(
+                    output.lead().id(),
+                    LeadEvent.CANCEL_TRIAL,
+                    null,
+                    null,
+                    adminId
+            );
+        }
+
+        return output;
+    }
+
+    @Transactional
+    public AdminTrialDetailsOutput reschedule(
+            UUID trialId,
+            UUID adminId,
+            AdminRescheduleTrialInput input
+    ) {
+        return AdminTrialDetailsOutput.from(
+                trialPort.rescheduleTrial(
+                        RescheduleTrialBookingCommand.builder()
+                                .trialId(trialId)
+                                .trainingSessionId(input.trainingSessionId())
+                                .adminId(adminId)
                                 .build()
                 )
         );

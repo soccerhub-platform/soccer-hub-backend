@@ -94,7 +94,6 @@ public record TrialBookingDetailsDto(
 
     @Builder
     public record Capabilities(
-            boolean canConfirm,
             boolean canCancel,
             boolean canReschedule,
             boolean canMarkAttendance,

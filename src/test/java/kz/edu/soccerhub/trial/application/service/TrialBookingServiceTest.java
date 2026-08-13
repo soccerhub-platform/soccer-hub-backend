@@ -1,10 +1,6 @@
 package kz.edu.soccerhub.trial.application.service;
 
-import kz.edu.soccerhub.common.dto.trial.CreateTrialBookingCommand;
-import kz.edu.soccerhub.common.dto.trial.CancelTrialCommand;
-import kz.edu.soccerhub.common.dto.trial.MarkTrialAttendanceCommand;
-import kz.edu.soccerhub.common.dto.trial.RecordTrialResultCommand;
-import kz.edu.soccerhub.common.dto.trial.TrialSessionContext;
+import kz.edu.soccerhub.common.dto.trial.*;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.port.TrialGroupPort;
 import kz.edu.soccerhub.common.port.TrialLeadPort;
@@ -78,11 +74,7 @@ class TrialBookingServiceTest {
 
         when(sessionPort.getBookableSession(sessionId))
                 .thenReturn(sessionContext(sessionId, groupId));
-        when(repository.existsByStudentIdAndTrainingSessionIdAndStatusIn(
-                studentId,
-                sessionId,
-                List.of(TrialBookingStatus.SCHEDULED, TrialBookingStatus.CONFIRMED)
-        )).thenReturn(false);
+
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         var result = service.createTrial(command(leadId, studentId, sessionId));
@@ -101,15 +93,44 @@ class TrialBookingServiceTest {
 
         when(sessionPort.getBookableSession(sessionId))
                 .thenReturn(sessionContext(sessionId, UUID.randomUUID()));
-        when(repository.existsByStudentIdAndTrainingSessionIdAndStatusIn(
+        when(repository.existsByStudentIdAndStatusIn(
                 eq(studentId),
-                eq(sessionId),
-                any()
+                eq(List.of(TrialBookingStatus.SCHEDULED))
         )).thenReturn(true);
 
         assertThrows(
                 BadRequestException.class,
                 () -> service.createTrial(command(null, studentId, sessionId))
+        );
+
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void rejectsSecondActiveTrialForLeadParticipant() {
+        UUID leadId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        when(sessionPort.getBookableSession(sessionId))
+                .thenReturn(sessionContext(sessionId, UUID.randomUUID()));
+
+        when(repository.existsByLeadIdAndParticipantIdAndStatusIn(
+                leadId,
+                participantId,
+                List.of(TrialBookingStatus.SCHEDULED)
+        )).thenReturn(true);
+
+        CreateTrialBookingCommand command = CreateTrialBookingCommand.builder()
+                .leadId(leadId)
+                .participantId(participantId)
+                .trainingSessionId(sessionId)
+                .adminId(UUID.randomUUID())
+                .build();
+
+        assertThrows(
+                BadRequestException.class,
+                () -> service.createTrial(command)
         );
 
         verify(repository, never()).save(any());
@@ -133,20 +154,6 @@ class TrialBookingServiceTest {
         );
 
         verify(repository, never()).save(any());
-    }
-
-    @Test
-    void confirmsScheduledTrial() {
-        TrialBooking booking = createBooking();
-        UUID adminId = UUID.randomUUID();
-
-        when(repository.findById(booking.getId()))
-                .thenReturn(Optional.of(booking));
-
-        service.confirmTrial(booking.getId(), adminId);
-
-        assertEquals(TrialBookingStatus.CONFIRMED, booking.getStatus());
-        verify(detailsReader).read(booking);
     }
 
     @Test
@@ -196,7 +203,6 @@ class TrialBookingServiceTest {
         UUID adminId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
 
-        booking.confirm();
         booking.markAttendance(
                 TrialAttendanceStatus.ATTENDED,
                 adminId,
@@ -218,6 +224,41 @@ class TrialBookingServiceTest {
 
         assertEquals(TrialResult.INTERESTED, booking.getResult());
         assertEquals(groupId, booking.getRecommendedGroupId());
+    }
+
+    @Test
+    void reschedulesTrialToBookableSession() {
+        TrialBooking booking = createBooking();
+        UUID newSessionId = UUID.randomUUID();
+        UUID newGroupId = UUID.randomUUID();
+
+        when(repository.findById(booking.getId()))
+                .thenReturn(Optional.of(booking));
+
+        when(sessionPort.getBookableSession(newSessionId))
+                .thenReturn(sessionContext(newSessionId, newGroupId));
+
+        service.rescheduleTrial(
+                RescheduleTrialBookingCommand.builder()
+                        .trialId(booking.getId())
+                        .trainingSessionId(newSessionId)
+                        .adminId(UUID.randomUUID())
+                        .build()
+        );
+
+        assertEquals(newSessionId, booking.getTrainingSessionId());
+        assertEquals(
+                TrialBookingStatus.SCHEDULED,
+                booking.getStatus()
+        );
+
+        verify(groupPort).validateAvailableCapacity(
+                eq(newGroupId),
+                eq(booking.getStudentId()),
+                any()
+        );
+
+        verify(detailsReader).read(booking);
     }
 
     private CreateTrialBookingCommand command(

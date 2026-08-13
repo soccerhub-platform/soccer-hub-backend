@@ -1,6 +1,7 @@
 package kz.edu.soccerhub.admin.application.service;
 
 import kz.edu.soccerhub.admin.application.dto.trial.AdminMarkTrialAttendanceInput;
+import kz.edu.soccerhub.admin.application.dto.trial.AdminRescheduleTrialInput;
 import kz.edu.soccerhub.admin.application.dto.trial.AdminTrialDetailsOutput;
 import kz.edu.soccerhub.common.dto.trial.TrialBookingDetailsDto;
 import kz.edu.soccerhub.common.port.LeadPort;
@@ -35,7 +36,7 @@ class AdminTrialServiceTest {
     private AdminTrialService service;
 
     @Test
-    void createShouldStartJourneyForSelectedLeadParticipant() {
+    void createShouldScheduleLeadWithoutMutatingParticipantStage() {
         UUID adminId = UUID.randomUUID();
         UUID leadId = UUID.randomUUID();
         UUID participantId = UUID.randomUUID();
@@ -58,12 +59,6 @@ class AdminTrialServiceTest {
                         .build());
 
         service.create(adminId, input);
-
-        verify(leadPort).startParticipantTrial(
-                leadId,
-                participantId,
-                adminId
-        );
 
         verify(leadPort).processEvent(
                 leadId,
@@ -150,6 +145,76 @@ class AdminTrialServiceTest {
         verifyNoInteractions(leadPort);
     }
 
+    @Test
+    void cancelShouldReturnLinkedLeadToInProgress() {
+        UUID trialId = UUID.randomUUID();
+        UUID leadId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        when(trialPort.cancelTrial(any()))
+                .thenReturn(canceledDetails(leadId));
+
+        service.cancel(
+                trialId,
+                adminId,
+                "Ребёнок не сможет прийти"
+        );
+
+        verify(trialPort).cancelTrial(any());
+
+        verify(leadPort).processEvent(
+                leadId,
+                LeadEvent.CANCEL_TRIAL,
+                null,
+                null,
+                adminId
+        );
+    }
+
+    @Test
+    void cancelShouldNotProcessLeadWhenTrialHasNoLead() {
+        UUID trialId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        when(trialPort.cancelTrial(any()))
+                .thenReturn(canceledDetails(null));
+
+        service.cancel(
+                trialId,
+                adminId,
+                "Ребёнок не сможет прийти"
+        );
+
+        verify(trialPort).cancelTrial(any());
+        verifyNoInteractions(leadPort);
+    }
+
+    @Test
+    void rescheduleShouldDelegateToTrialModule() {
+        UUID trialId = UUID.randomUUID();
+        UUID trainingSessionId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        when(trialPort.rescheduleTrial(any()))
+                .thenReturn(scheduledDetails());
+
+        service.reschedule(
+                trialId,
+                adminId,
+                new AdminRescheduleTrialInput(trainingSessionId)
+        );
+
+        verify(trialPort).rescheduleTrial(argThat(command ->
+                trialId.equals(command.trialId())
+                        && trainingSessionId.equals(
+                        command.trainingSessionId()
+                )
+                        && adminId.equals(command.adminId())
+        ));
+
+        verifyNoInteractions(leadPort);
+    }
+
     private TrialBookingDetailsDto details(
             UUID leadId,
             TrialAttendanceStatus attendanceStatus
@@ -163,6 +228,30 @@ class AdminTrialServiceTest {
                                               .id(leadId)
                                               .fullName("Test Lead")
                                               .build())
+                .build();
+    }
+
+    private TrialBookingDetailsDto canceledDetails(UUID leadId) {
+        return TrialBookingDetailsDto.builder()
+                .id(UUID.randomUUID())
+                .status(TrialBookingStatus.CANCELED)
+                .attendanceStatus(TrialAttendanceStatus.UNMARKED)
+                .result(TrialResult.PENDING)
+                .lead(leadId == null
+                        ? null
+                        : TrialBookingDetailsDto.Lead.builder()
+                        .id(leadId)
+                        .fullName("Test Lead")
+                        .build())
+                .build();
+    }
+
+    private TrialBookingDetailsDto scheduledDetails() {
+        return TrialBookingDetailsDto.builder()
+                .id(UUID.randomUUID())
+                .status(TrialBookingStatus.SCHEDULED)
+                .attendanceStatus(TrialAttendanceStatus.UNMARKED)
+                .result(TrialResult.PENDING)
                 .build();
     }
 }

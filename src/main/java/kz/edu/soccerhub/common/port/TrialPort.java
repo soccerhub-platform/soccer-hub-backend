@@ -27,9 +27,9 @@ public interface TrialPort {
 
     TrialBookingDetailsDto getTrialDetails(UUID trialId);
 
-    TrialBookingDetailsDto confirmTrial(UUID trialId, UUID adminId);
-
     TrialBookingDetailsDto cancelTrial(CancelTrialCommand command);
+
+    TrialBookingDetailsDto rescheduleTrial(RescheduleTrialBookingCommand command);
 
     TrialBookingDetailsDto markAttendance(MarkTrialAttendanceCommand command);
 

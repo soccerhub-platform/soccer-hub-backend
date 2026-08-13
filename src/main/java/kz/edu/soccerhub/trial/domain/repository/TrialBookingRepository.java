@@ -13,9 +13,14 @@ import java.util.UUID;
 @Repository
 public interface TrialBookingRepository extends JpaRepository<TrialBooking, UUID>, JpaSpecificationExecutor<TrialBooking> {
 
-    boolean existsByStudentIdAndTrainingSessionIdAndStatusIn(
+    boolean existsByStudentIdAndStatusIn(
             UUID studentId,
-            UUID trainingSessionId,
+            Collection<TrialBookingStatus> statuses
+    );
+
+    boolean existsByLeadIdAndParticipantIdAndStatusIn(
+            UUID leadId,
+            UUID participantId,
             Collection<TrialBookingStatus> statuses
     );
 

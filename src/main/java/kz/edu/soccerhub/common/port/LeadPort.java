@@ -27,12 +27,6 @@ public interface LeadPort {
 
     void scheduleTrial(UUID leadId, @Valid ScheduleTrialInput input, UUID currentAdminId);
 
-    void startParticipantTrial(
-            UUID leadId,
-            UUID participantId,
-            UUID currentAdminId
-    );
-
     void assignLead(UUID leadId, UUID assignedAdminId, UUID currentAdminId);
 
     LeadStatus processEvent(

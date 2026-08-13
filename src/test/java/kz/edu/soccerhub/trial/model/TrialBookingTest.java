@@ -3,6 +3,7 @@ package kz.edu.soccerhub.trial.model;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.trial.domain.entity.TrialBooking;
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
 import kz.edu.soccerhub.trial.domain.enums.TrialNextActionType;
 import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 import org.junit.jupiter.api.Test;
@@ -122,6 +123,65 @@ public class TrialBookingTest {
                         null,
                         null
                 )
+        );
+    }
+
+    @Test
+    void shouldRescheduleScheduledTrial() {
+        UUID oldSessionId = UUID.randomUUID();
+        UUID newSessionId = UUID.randomUUID();
+
+        TrialBooking booking = TrialBooking.schedule(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                oldSessionId
+        );
+
+        booking.reschedule(newSessionId);
+
+        assertEquals(newSessionId, booking.getTrainingSessionId());
+        assertEquals(
+                TrialBookingStatus.SCHEDULED,
+                booking.getStatus()
+        );
+    }
+
+    @Test
+    void shouldRejectRescheduleToSameSession() {
+        UUID sessionId = UUID.randomUUID();
+
+        TrialBooking booking = TrialBooking.schedule(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                sessionId
+        );
+
+        assertThrows(
+                BadRequestException.class,
+                () -> booking.reschedule(sessionId)
+        );
+    }
+
+    @Test
+    void shouldRejectRescheduleForCompletedTrial() {
+        TrialBooking booking = TrialBooking.schedule(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID()
+        );
+
+        booking.markAttendance(
+                TrialAttendanceStatus.ATTENDED,
+                UUID.randomUUID(),
+                null
+        );
+
+        assertThrows(
+                BadRequestException.class,
+                () -> booking.reschedule(UUID.randomUUID())
         );
     }
 

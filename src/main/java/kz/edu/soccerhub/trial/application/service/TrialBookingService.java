@@ -25,6 +25,10 @@ import org.springframework.data.domain.Pageable;
 @RequiredArgsConstructor
 public class TrialBookingService implements TrialPort {
 
+    private static final List<TrialBookingStatus> ACTIVE_STATUSES = List.of(
+            TrialBookingStatus.SCHEDULED
+    );
+
     private final TrialBookingRepository repository;
     private final TrialGroupPort groupPort;
     private final TrialSessionPort sessionPort;
@@ -63,21 +67,7 @@ public class TrialBookingService implements TrialPort {
             );
         }
 
-        boolean alreadyBooked = command.studentId() != null &&
-                repository.existsByStudentIdAndTrainingSessionIdAndStatusIn(
-                        command.studentId(),
-                        session.sessionId(),
-                        List.of(
-                                TrialBookingStatus.SCHEDULED,
-                                TrialBookingStatus.CONFIRMED
-                        )
-                );
-
-        if (alreadyBooked) {
-            throw new BadRequestException(
-                    "Student already has an active trial for this session"
-            );
-        }
+        ensureNoActiveTrial(command);
 
         TrialBooking booking = TrialBooking.schedule(
                 command.leadId(),
@@ -131,21 +121,37 @@ public class TrialBookingService implements TrialPort {
 
     @Override
     @Transactional
-    public TrialBookingDetailsDto confirmTrial(UUID trialId, UUID adminId) {
-        requireAdminId(adminId);
-
-        TrialBooking booking = getBooking(trialId);
-        booking.confirm();
-        return detailsReader.read(booking);
-    }
-
-    @Override
-    @Transactional
     public TrialBookingDetailsDto cancelTrial(CancelTrialCommand command) {
         validateCancelCommand(command);
 
         TrialBooking booking = getBooking(command.trialId());
         booking.cancel(command.reason());
+        return detailsReader.read(booking);
+    }
+
+    @Override
+    @Transactional
+    public TrialBookingDetailsDto rescheduleTrial(
+            RescheduleTrialBookingCommand command
+    ) {
+        validateRescheduleCommand(command);
+
+        TrialBooking booking = getBooking(command.trialId());
+
+        TrialSessionContext session = sessionPort.getBookableSession(
+                command.trainingSessionId()
+        );
+
+        if (booking.getStudentId() != null) {
+            groupPort.validateAvailableCapacity(
+                    session.groupId(),
+                    booking.getStudentId(),
+                    session.startsAt().toLocalDate()
+            );
+        }
+
+        booking.reschedule(session.sessionId());
+
         return detailsReader.read(booking);
     }
 
@@ -263,6 +269,22 @@ public class TrialBookingService implements TrialPort {
         }
     }
 
+    private void validateRescheduleCommand(
+            RescheduleTrialBookingCommand command
+    ) {
+        if (command == null || command.trialId() == null) {
+            throw new BadRequestException("Trial id is required");
+        }
+
+        if (command.trainingSessionId() == null) {
+            throw new BadRequestException(
+                    "New training session id is required"
+            );
+        }
+
+        requireAdminId(command.adminId());
+    }
+
     private void validateCommand(CreateTrialBookingCommand command) {
         if (command == null) {
             throw new BadRequestException(
@@ -285,6 +307,30 @@ public class TrialBookingService implements TrialPort {
         if (command.adminId() == null) {
             throw new BadRequestException(
                     "Admin id is required"
+            );
+        }
+    }
+
+    private void ensureNoActiveTrial(CreateTrialBookingCommand command) {
+        boolean participantAlreadyBooked =
+                command.leadId() != null
+                        && command.participantId() != null
+                        && repository.existsByLeadIdAndParticipantIdAndStatusIn(
+                                command.leadId(),
+                                command.participantId(),
+                                ACTIVE_STATUSES
+                        );
+
+        boolean studentAlreadyBooked =
+                command.studentId() != null
+                        && repository.existsByStudentIdAndStatusIn(
+                                command.studentId(),
+                                ACTIVE_STATUSES
+                        );
+
+        if (participantAlreadyBooked || studentAlreadyBooked) {
+            throw new BadRequestException(
+                    "Child already has an active trial booking"
             );
         }
     }

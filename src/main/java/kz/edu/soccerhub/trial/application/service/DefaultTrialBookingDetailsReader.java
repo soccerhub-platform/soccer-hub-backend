@@ -105,9 +105,6 @@ public class DefaultTrialBookingDetailsReader
         boolean scheduled =
                 status == TrialBookingStatus.SCHEDULED;
 
-        boolean confirmed =
-                status == TrialBookingStatus.CONFIRMED;
-
         boolean completed =
                 status == TrialBookingStatus.COMPLETED;
 
@@ -115,9 +112,8 @@ public class DefaultTrialBookingDetailsReader
                 status == TrialBookingStatus.CANCELED;
 
         return TrialBookingDetailsDto.Capabilities.builder()
-                .canConfirm(scheduled)
-                .canCancel(scheduled || confirmed)
-                .canReschedule(scheduled || confirmed)
+                .canCancel(scheduled)
+                .canReschedule(scheduled)
                 .canMarkAttendance(!canceled && !completed)
                 .canRecordResult(
                         completed

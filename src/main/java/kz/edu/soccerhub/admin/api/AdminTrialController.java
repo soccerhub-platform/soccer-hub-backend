@@ -64,14 +64,6 @@ public class AdminTrialController {
         return adminTrialService.getDetails(trialId);
     }
 
-    @PostMapping("/{trialId}/confirm")
-    public AdminTrialDetailsOutput confirm(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable UUID trialId
-    ) {
-        return adminTrialService.confirm(trialId, adminId(jwt));
-    }
-
     @PostMapping("/{trialId}/cancel")
     public AdminTrialDetailsOutput cancel(
             @AuthenticationPrincipal Jwt jwt,
@@ -82,6 +74,19 @@ public class AdminTrialController {
                 trialId,
                 adminId(jwt),
                 input.reason()
+        );
+    }
+
+    @PostMapping("/{trialId}/reschedule")
+    public AdminTrialDetailsOutput reschedule(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID trialId,
+            @Valid @RequestBody AdminRescheduleTrialInput input
+    ) {
+        return adminTrialService.reschedule(
+                trialId,
+                adminId(jwt),
+                input
         );
     }
 

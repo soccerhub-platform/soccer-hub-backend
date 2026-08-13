@@ -166,7 +166,6 @@ public record AdminTrialDetailsOutput(
         }
 
         return Capabilities.builder()
-                .canConfirm(value.canConfirm())
                 .canCancel(value.canCancel())
                 .canReschedule(value.canReschedule())
                 .canMarkAttendance(value.canMarkAttendance())
@@ -241,7 +240,6 @@ public record AdminTrialDetailsOutput(
 
     @Builder
     public record Capabilities(
-            boolean canConfirm,
             boolean canCancel,
             boolean canReschedule,
             boolean canMarkAttendance,
