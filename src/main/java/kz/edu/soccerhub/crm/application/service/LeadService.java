@@ -299,7 +299,7 @@ public class LeadService implements LeadPort {
         }
 
         Map<UUID, kz.edu.soccerhub.crm.domain.model.enums.LeadType> result = new LinkedHashMap<>();
-        for (Lead lead : leadRepository.findByParticipantIdInOrderByUpdatedAtDesc(participantIds)) {
+        for (Lead lead : leadRepository.findByLeadParticipantIdInOrderByUpdatedAtDesc(participantIds)) {
             if (lead.getParticipantId() != null && !result.containsKey(lead.getParticipantId())) {
                 result.put(lead.getParticipantId(), lead.getLeadType());
             }
@@ -456,7 +456,12 @@ public class LeadService implements LeadPort {
             String normalizedParticipantName,
             LeadParticipantInput participant
     ) {
-        boolean exists = leadRepository.existsActiveLead(
+        boolean exists = participant.birthDate() == null
+                ? leadRepository.existsActiveLeadWithoutBirthDate(
+                normalizedPhone,
+                normalizedParticipantName
+        )
+                : leadRepository.existsActiveLeadWithBirthDate(
                 normalizedPhone,
                 normalizedParticipantName,
                 participant.birthDate()

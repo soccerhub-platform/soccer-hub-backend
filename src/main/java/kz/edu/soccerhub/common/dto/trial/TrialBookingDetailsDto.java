@@ -2,6 +2,7 @@ package kz.edu.soccerhub.common.dto.trial;
 
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialCoachRecommendation;
 import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 import lombok.Builder;
 
@@ -24,6 +25,7 @@ public record TrialBookingDetailsDto(
         Location location,
         Attendance attendance,
         Outcome outcome,
+        CoachRecommendation coachRecommendation,
         NextAction nextAction,
         Capabilities capabilities
 ) {
@@ -84,6 +86,15 @@ public record TrialBookingDetailsDto(
             String coachFeedback,
             UUID recommendedGroupId,
             String recommendedGroupName
+    ) {}
+
+    @Builder
+    public record CoachRecommendation(
+            TrialCoachRecommendation recommendation,
+            UUID recommendedGroupId,
+            String comment,
+            LocalDateTime recordedAt,
+            UUID recordedBy
     ) {}
 
     @Builder

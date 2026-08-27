@@ -26,6 +26,7 @@ import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import kz.edu.soccerhub.organization.domain.repository.LocationRepository;
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialCoachRecommendation;
 import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -445,6 +446,8 @@ class AdminSessionServiceTest {
         UUID trialBookingId = UUID.randomUUID();
         UUID trialLeadId = UUID.randomUUID();
         UUID trialParticipantId = UUID.randomUUID();
+        UUID trialRecommendedGroupId = UUID.randomUUID();
+        LocalDateTime trialRecommendationAt = LocalDateTime.now().minusMinutes(5);
 
         when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
         when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
@@ -522,6 +525,18 @@ class AdminSessionServiceTest {
                                         TrialAttendanceStatus.UNMARKED
                                 )
                                 .result(TrialResult.PENDING)
+                                .coachRecommendation(
+                                        TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP
+                                )
+                                .coachRecommendedGroupId(
+                                        trialRecommendedGroupId
+                                )
+                                .coachRecommendationComment(
+                                        "Лучше группа помладше"
+                                )
+                                .coachRecommendationAt(
+                                        trialRecommendationAt
+                                )
                                 .build()
                 ));
 
@@ -562,6 +577,13 @@ class AdminSessionServiceTest {
                 TrialAttendanceStatus.UNMARKED,
                 trial.attendanceStatus()
         );
+        assertEquals(
+                TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP,
+                trial.coachRecommendation()
+        );
+        assertEquals(trialRecommendedGroupId, trial.coachRecommendedGroupId());
+        assertEquals("Лучше группа помладше", trial.coachRecommendationComment());
+        assertEquals(trialRecommendationAt, trial.coachRecommendationAt());
     }
 
     @Test

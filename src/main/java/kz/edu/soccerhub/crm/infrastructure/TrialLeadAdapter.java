@@ -9,6 +9,8 @@ import kz.edu.soccerhub.crm.domain.repository.LeadRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -60,6 +62,7 @@ public class TrialLeadAdapter implements TrialLeadPort {
                         .id(participant.getId())
                         .fullName(participant.getFullName())
                         .birthDate(participant.getBirthDate())
+                        .age(calculateAge(participant.getBirthDate()))
                         .build())
                 .orElseThrow(() -> new NotFoundException("Lead participant not found", participantId));
     }
@@ -107,7 +110,7 @@ public class TrialLeadAdapter implements TrialLeadPort {
 
         Map<UUID, TrialBookingDetailsDto.Student> result = new HashMap<>();
 
-        repository.findByParticipantIdInOrderByUpdatedAtDesc(participantIds)
+        repository.findByLeadParticipantIdInOrderByUpdatedAtDesc(participantIds)
                 .forEach(lead -> lead.getParticipants().stream()
                         .filter(participant -> participantIds.contains(participant.getId()))
                         .forEach(participant -> result.putIfAbsent(
@@ -116,9 +119,16 @@ public class TrialLeadAdapter implements TrialLeadPort {
                                         .id(participant.getId())
                                         .fullName(participant.getFullName())
                                         .birthDate(participant.getBirthDate())
+                                        .age(calculateAge(participant.getBirthDate()))
                                         .build()
                         )));
 
         return result;
+    }
+
+    private Integer calculateAge(LocalDate birthDate) {
+        return birthDate == null
+                ? null
+                : Period.between(birthDate, LocalDate.now()).getYears();
     }
 }

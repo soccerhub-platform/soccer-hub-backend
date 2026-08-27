@@ -7,15 +7,19 @@ import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.application.state.LeadEvent;
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AdminTrialService {
 
     private final TrialPort trialPort;
@@ -134,21 +138,57 @@ public class AdminTrialService {
                 )
         );
 
-        if (output.lead() != null) {
-            LeadEvent event = input.status() == TrialAttendanceStatus.ATTENDED
-                    ? LeadEvent.COMPLETE_TRIAL
-                    : LeadEvent.NO_SHOW;
-
-            leadPort.processEvent(
-                    output.lead().id(),
-                    event,
-                    null,
-                    null,
-                    adminId
-            );
-        }
+        syncLeadAfterTrialAttendance(output, input.status(), adminId);
 
         return output;
+    }
+
+    private void syncLeadAfterTrialAttendance(
+            AdminTrialDetailsOutput output,
+            TrialAttendanceStatus attendanceStatus,
+            UUID actorId
+    ) {
+        if (output.lead() == null) {
+            return;
+        }
+
+        LeadEvent event = attendanceStatus == TrialAttendanceStatus.ATTENDED
+                ? LeadEvent.COMPLETE_TRIAL
+                : LeadEvent.NO_SHOW;
+
+        Runnable sync = () -> {
+            try {
+                leadPort.processEvent(
+                        output.lead().id(),
+                        event,
+                        null,
+                        null,
+                        actorId
+                );
+            } catch (kz.edu.soccerhub.common.exception.BadRequestException exception) {
+                log.warn(
+                        "Lead sync skipped after trial attendance: leadId={}, trialId={}, event={}, reason={}",
+                        output.lead().id(),
+                        output.id(),
+                        event,
+                        exception.getMessage()
+                );
+            }
+        };
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            sync.run();
+                        }
+                    }
+            );
+            return;
+        }
+
+        sync.run();
     }
 
     @Transactional

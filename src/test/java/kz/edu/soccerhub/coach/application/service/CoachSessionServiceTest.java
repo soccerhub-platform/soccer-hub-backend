@@ -19,6 +19,7 @@ import kz.edu.soccerhub.coach.application.dto.session.CoachSessionTrialStudentIt
 import kz.edu.soccerhub.coach.application.dto.session.CoachTrialAttendanceInput;
 import kz.edu.soccerhub.common.dto.trial.TrialBookingDetailsDto;
 import kz.edu.soccerhub.common.dto.trial.TrialBookingDto;
+import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.crm.application.state.LeadEvent;
 import kz.edu.soccerhub.common.exception.ForbiddenException;
@@ -290,6 +291,91 @@ class CoachSessionServiceTest {
                 null,
                 null
         );
+    }
+
+    @Test
+    void keepsTrialAttendanceWhenLinkedLeadCannotTransition() {
+        UUID coachId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID trialId = UUID.randomUUID();
+        UUID leadId = UUID.randomUUID();
+        UUID participantId = UUID.randomUUID();
+        LocalDate sessionDate = LocalDate.now();
+
+        TrainingSession session = TrainingSession.builder()
+                .id(sessionId)
+                .groupId(groupId)
+                .coachId(coachId)
+                .sessionDate(sessionDate)
+                .scheduledStartAt(LocalDateTime.now().minusMinutes(30))
+                .scheduledEndAt(LocalDateTime.now().plusMinutes(30))
+                .status(TrainingSessionStatus.IN_PROGRESS)
+                .build();
+
+        when(coachProfileRepository.existsById(coachId))
+                .thenReturn(true);
+        when(trainingSessionRepository.findByIdAndCoachId(sessionId, coachId))
+                .thenReturn(Optional.of(session));
+        when(trialPort.getTrial(trialId))
+                .thenReturn(
+                        TrialBookingDto.builder()
+                                .id(trialId)
+                                .leadId(leadId)
+                                .participantId(participantId)
+                                .trainingSessionId(sessionId)
+                                .status(TrialBookingStatus.SCHEDULED)
+                                .attendanceStatus(TrialAttendanceStatus.UNMARKED)
+                                .result(TrialResult.PENDING)
+                                .build()
+                );
+        when(trialPort.markAttendance(any()))
+                .thenReturn(
+                        TrialBookingDetailsDto.builder()
+                                .id(trialId)
+                                .status(TrialBookingStatus.COMPLETED)
+                                .attendanceStatus(TrialAttendanceStatus.NO_SHOW)
+                                .result(TrialResult.PENDING)
+                                .student(
+                                        TrialBookingDetailsDto.Student.builder()
+                                                .id(participantId)
+                                                .fullName("Trial Student")
+                                                .age(9)
+                                                .build()
+                                )
+                                .lead(
+                                        TrialBookingDetailsDto.Lead.builder()
+                                                .id(leadId)
+                                                .fullName("Parent")
+                                                .build()
+                                )
+                                .attendance(
+                                        TrialBookingDetailsDto.Attendance.builder()
+                                                .status(TrialAttendanceStatus.NO_SHOW)
+                                                .comment("Не пришел")
+                                                .build()
+                                )
+                                .build()
+                );
+        doThrow(new BadRequestException("Transition not allowed: LOST -> NO_SHOW"))
+                .when(leadPort)
+                .processEvent(leadId, LeadEvent.NO_SHOW, null, null, null);
+
+        CoachSessionTrialStudentItem result =
+                service.markTrialAttendance(
+                        coachId,
+                        sessionId,
+                        trialId,
+                        new CoachTrialAttendanceInput(
+                                TrialAttendanceStatus.NO_SHOW,
+                                "Не пришел"
+                        )
+                );
+
+        assertEquals(trialId, result.trialBookingId());
+        assertEquals("Trial Student", result.name());
+        assertEquals("NO_SHOW", result.attendance());
+        assertEquals("Не пришел", result.attendanceComment());
     }
 
     @Test

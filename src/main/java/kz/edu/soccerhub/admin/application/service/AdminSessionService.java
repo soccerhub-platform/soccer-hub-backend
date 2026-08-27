@@ -734,7 +734,11 @@ public class AdminSessionService {
                 participant.attendanceStatus(),
                 participant.attendanceComment(),
                 participant.result(),
-                participant.coachFeedback()
+                participant.coachFeedback(),
+                participant.coachRecommendation(),
+                participant.coachRecommendedGroupId(),
+                participant.coachRecommendationComment(),
+                participant.coachRecommendationAt()
         );
     }
 

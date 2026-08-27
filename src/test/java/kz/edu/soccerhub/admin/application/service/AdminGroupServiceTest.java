@@ -292,6 +292,8 @@ class AdminGroupServiceTest {
         UUID groupId = UUID.randomUUID();
         UUID branchId = UUID.randomUUID();
         UUID coachId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+        LocalDateTime materializedNextAt = LocalDateTime.now().plusHours(2);
 
         when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
         when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
@@ -335,6 +337,26 @@ class AdminGroupServiceTest {
                         .endDate(LocalDate.now().plusMonths(1))
                         .build()
         ));
+        when(coachPort.getSessions(
+                Set.of(coachId),
+                Set.of(groupId),
+                LocalDate.now(),
+                LocalDate.now().plusDays(60)
+        )).thenReturn(List.of(
+                new CoachSessionAdminView(
+                        sessionId,
+                        coachId,
+                        groupId,
+                        UUID.randomUUID(),
+                        "REGULAR",
+                        materializedNextAt.toLocalDate(),
+                        materializedNextAt,
+                        materializedNextAt.plusHours(1),
+                        "PLANNED",
+                        false,
+                        LocalDateTime.now()
+                )
+        ));
         when(clientPort.getGroupMembers(groupId)).thenReturn(List.of(
                 new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "A", LocalDate.of(2015, 1, 1), "ACTIVE", "ACTIVE", LocalDate.now().minusDays(10), null),
                 new GroupMemberDto(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "B", LocalDate.of(2014, 1, 1), "ACTIVE", "ACTIVE", LocalDate.now().minusDays(8), null)
@@ -351,6 +373,8 @@ class AdminGroupServiceTest {
         assertEquals(GroupStatus.ACTIVE, result.status());
         assertEquals(GroupHealth.OK, result.health());
         assertNotNull(result.nextSession());
+        assertEquals(sessionId, result.nextSession().id());
+        assertEquals(materializedNextAt, result.nextSession().startsAt().toLocalDateTime());
         assertTrue(result.capabilities().canEdit());
         assertTrue(result.capabilities().canPause());
         assertFalse(result.capabilities().canResume());

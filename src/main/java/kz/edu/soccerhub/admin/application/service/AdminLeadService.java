@@ -84,6 +84,7 @@ public class AdminLeadService {
             String lostComment
     ) {
         verifyAdminAccessToLead(adminId, leadId);
+        rejectDirectTrialLifecycleEvent(event);
         LeadStatus status = leadPort.processEvent(leadId, event, lostReasonCode, lostComment, adminId);
         return new LeadEventOutput(leadId, status, leadPort.getLeadOutput(leadId, adminId));
     }
@@ -129,5 +130,16 @@ public class AdminLeadService {
     private void verifyAdminExists(UUID adminId) {
         adminService.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
+    }
+
+    private void rejectDirectTrialLifecycleEvent(LeadEvent event) {
+        if (event == LeadEvent.CANCEL_TRIAL
+                || event == LeadEvent.NO_SHOW
+                || event == LeadEvent.COMPLETE_TRIAL) {
+            throw new BadRequestException(
+                    "Use trial endpoints to change trial lifecycle",
+                    event
+            );
+        }
     }
 }

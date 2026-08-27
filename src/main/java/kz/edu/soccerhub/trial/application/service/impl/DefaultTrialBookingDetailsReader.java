@@ -80,8 +80,25 @@ public class DefaultTrialBookingDetailsReader
                                 )
                                 .build()
                 )
+                .coachRecommendation(buildCoachRecommendation(booking))
                 .nextAction(buildNextAction(booking))
                 .capabilities(buildCapabilities(booking))
+                .build();
+    }
+
+    private TrialBookingDetailsDto.CoachRecommendation buildCoachRecommendation(
+            TrialBooking booking
+    ) {
+        if (booking.getCoachRecommendation() == null) {
+            return null;
+        }
+
+        return TrialBookingDetailsDto.CoachRecommendation.builder()
+                .recommendation(booking.getCoachRecommendation())
+                .recommendedGroupId(booking.getCoachRecommendedGroupId())
+                .comment(booking.getCoachRecommendationComment())
+                .recordedAt(booking.getCoachRecommendationAt())
+                .recordedBy(booking.getCoachRecommendationBy())
                 .build();
     }
 

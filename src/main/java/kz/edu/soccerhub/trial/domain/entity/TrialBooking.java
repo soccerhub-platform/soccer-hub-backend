@@ -184,11 +184,7 @@ public class TrialBooking extends AbstractAuditableEntity {
             );
         }
 
-        if (status == TrialBookingStatus.COMPLETED) {
-            throw new BadRequestException(
-                    "Completed trial already has attendance"
-            );
-        }
+        TrialAttendanceStatus previousAttendanceStatus = this.attendanceStatus;
 
         this.attendanceStatus = attendanceStatus;
         this.attendanceMarkedAt = LocalDateTime.now();
@@ -198,8 +194,29 @@ public class TrialBooking extends AbstractAuditableEntity {
         if (attendanceStatus == TrialAttendanceStatus.ATTENDED
                 || attendanceStatus == TrialAttendanceStatus.NO_SHOW) {
             this.status = TrialBookingStatus.COMPLETED;
-            this.completedAt = LocalDateTime.now();
+
+            if (completedAt == null) {
+                this.completedAt = LocalDateTime.now();
+            }
         }
+
+        if (previousAttendanceStatus == TrialAttendanceStatus.ATTENDED
+                && attendanceStatus == TrialAttendanceStatus.NO_SHOW) {
+            clearTrialOutcome();
+        }
+    }
+
+    private void clearTrialOutcome() {
+        result = TrialResult.PENDING;
+        recommendedGroupId = null;
+        coachFeedback = null;
+        nextActionType = null;
+        nextActionAt = null;
+        coachRecommendation = null;
+        coachRecommendedGroupId = null;
+        coachRecommendationComment = null;
+        coachRecommendationAt = null;
+        coachRecommendationBy = null;
     }
 
     public void recordResult(

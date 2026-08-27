@@ -77,8 +77,13 @@ public record AdminGroupDetailsOutput(
     ) {}
 
     public record NextSession(
+            UUID id,
             OffsetDateTime startsAt
-    ) {}
+    ) {
+        public NextSession(OffsetDateTime startsAt) {
+            this(null, startsAt);
+        }
+    }
 
     public record Capabilities(
             boolean canEdit,

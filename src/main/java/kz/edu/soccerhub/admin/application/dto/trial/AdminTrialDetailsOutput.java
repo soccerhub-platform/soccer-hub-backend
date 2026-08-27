@@ -3,6 +3,7 @@ package kz.edu.soccerhub.admin.application.dto.trial;
 import kz.edu.soccerhub.common.dto.trial.TrialBookingDetailsDto;
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialCoachRecommendation;
 import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 import lombok.Builder;
 
@@ -25,6 +26,7 @@ public record AdminTrialDetailsOutput(
         Location location,
         Attendance attendance,
         Outcome outcome,
+        CoachRecommendation coachRecommendation,
         NextAction nextAction,
         Capabilities capabilities
 ) {
@@ -45,6 +47,7 @@ public record AdminTrialDetailsOutput(
                 .location(mapLocation(details.location()))
                 .attendance(mapAttendance(details.attendance()))
                 .outcome(mapOutcome(details.outcome()))
+                .coachRecommendation(mapCoachRecommendation(details.coachRecommendation()))
                 .nextAction(mapNextAction(details.nextAction()))
                 .capabilities(mapCapabilities(details.capabilities()))
                 .build();
@@ -149,6 +152,20 @@ public record AdminTrialDetailsOutput(
                 .build();
     }
 
+    private static CoachRecommendation mapCoachRecommendation(TrialBookingDetailsDto.CoachRecommendation value) {
+        if (value == null) {
+            return null;
+        }
+
+        return CoachRecommendation.builder()
+                .recommendation(value.recommendation())
+                .recommendedGroupId(value.recommendedGroupId())
+                .comment(value.comment())
+                .recordedAt(value.recordedAt())
+                .recordedBy(value.recordedBy())
+                .build();
+    }
+
     private static NextAction mapNextAction(TrialBookingDetailsDto.NextAction value) {
         if (value == null) {
             return null;
@@ -230,6 +247,15 @@ public record AdminTrialDetailsOutput(
             String coachFeedback,
             UUID recommendedGroupId,
             String recommendedGroupName
+    ) {}
+
+    @Builder
+    public record CoachRecommendation(
+            TrialCoachRecommendation recommendation,
+            UUID recommendedGroupId,
+            String comment,
+            LocalDateTime recordedAt,
+            UUID recordedBy
     ) {}
 
     @Builder

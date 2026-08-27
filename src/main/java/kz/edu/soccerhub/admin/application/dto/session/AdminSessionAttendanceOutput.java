@@ -4,6 +4,7 @@ import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus
 import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialCoachRecommendation;
 import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 
 import java.time.LocalDate;
@@ -65,7 +66,11 @@ public record AdminSessionAttendanceOutput(
             TrialAttendanceStatus attendanceStatus,
             String attendanceComment,
             TrialResult result,
-            String coachFeedback
+            String coachFeedback,
+            TrialCoachRecommendation coachRecommendation,
+            UUID coachRecommendedGroupId,
+            String coachRecommendationComment,
+            LocalDateTime coachRecommendationAt
     ) {
     }
 

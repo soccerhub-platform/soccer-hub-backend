@@ -131,7 +131,7 @@ class LeadServiceCreationTest {
     void rejectsExistingActiveLeadForSameParticipant() {
         LocalDate birthDate = LocalDate.of(2017, 5, 10);
 
-        when(leadRepository.existsActiveLead(
+        when(leadRepository.existsActiveLeadWithBirthDate(
                 "+77001234567",
                 "алихан сарсенов",
                 birthDate
@@ -139,6 +139,26 @@ class LeadServiceCreationTest {
 
         LeadCreateCommand command = command(List.of(
                 participant("Алихан Сарсенов", birthDate)
+        ));
+
+        assertThrows(
+                BadRequestException.class,
+                () -> leadService.createLeads(command)
+        );
+
+        verify(leadRepository, never()).save(any());
+        verify(leadActivityService, never()).logLeadCreated(any());
+    }
+
+    @Test
+    void rejectsExistingActiveLeadForSameParticipantWithoutBirthDate() {
+        when(leadRepository.existsActiveLeadWithoutBirthDate(
+                "+77001234567",
+                "алихан сарсенов"
+        )).thenReturn(true);
+
+        LeadCreateCommand command = command(List.of(
+                participant("Алихан Сарсенов", null)
         ));
 
         assertThrows(

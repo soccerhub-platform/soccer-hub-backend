@@ -12,6 +12,7 @@ import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
 import kz.edu.soccerhub.trial.application.service.impl.DefaultTrialBookingDetailsReader;
 import kz.edu.soccerhub.trial.domain.entity.TrialBooking;
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialCoachRecommendation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,7 +23,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
@@ -160,6 +163,45 @@ class DefaultTrialBookingDetailsReaderTest {
         assertFalse(details.capabilities().canReschedule());
         assertFalse(details.capabilities().canMarkAttendance());
         assertFalse(details.capabilities().canRecordResult());
+    }
+
+    @Test
+    void includesCoachRecommendation() {
+        TrialBooking booking = createBooking();
+        UUID recommendedGroupId = UUID.randomUUID();
+        UUID coachId = UUID.randomUUID();
+
+        booking.markAttendance(
+                TrialAttendanceStatus.ATTENDED,
+                UUID.randomUUID(),
+                "Good trial"
+        );
+        booking.recordCoachRecommendation(
+                TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP,
+                recommendedGroupId,
+                "Лучше группа младше",
+                coachId
+        );
+
+        TrialBookingDetailsDto details = reader.read(booking);
+
+        assertNotNull(details.coachRecommendation());
+        assertEquals(
+                TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP,
+                details.coachRecommendation().recommendation()
+        );
+        assertEquals(
+                recommendedGroupId,
+                details.coachRecommendation().recommendedGroupId()
+        );
+        assertEquals(
+                "Лучше группа младше",
+                details.coachRecommendation().comment()
+        );
+        assertEquals(
+                coachId,
+                details.coachRecommendation().recordedBy()
+        );
     }
 
     private TrialBooking createBooking() {

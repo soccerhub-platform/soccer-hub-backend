@@ -173,7 +173,12 @@ public class AdminGroupService {
                 ),
                 view.health(),
                 view.issues(),
-                view.nextSessionAt() == null ? null : new AdminGroupDetailsOutput.NextSession(view.nextSessionAt()),
+                view.nextSession() == null
+                        ? null
+                        : new AdminGroupDetailsOutput.NextSession(
+                                view.nextSession().id(),
+                                view.nextSession().startsAt()
+                        ),
                 buildCapabilities(group.status())
         );
     }
@@ -1057,7 +1062,8 @@ public class AdminGroupService {
         List<GroupCoachDto> coaches = new ArrayList<>(groupCoachPort.getActiveCoaches(group.groupId()));
         List<GroupScheduleDto> schedules = groupSchedulePort.getActiveSchedulesByGroup(group.groupId());
         int studentsCount = countStudents(group.groupId());
-        OffsetDateTime nextSessionAt = toOffsetDateTime(calculateNextSession(schedules));
+        GroupNextSession nextSession = resolveNextSession(group.groupId(), coaches, schedules);
+        OffsetDateTime nextSessionAt = nextSession == null ? null : nextSession.startsAt();
         List<AdminGroupHealthOutput.IssueItem> issues = buildIssues(group, coaches, schedules, studentsCount, nextSessionAt);
         GroupHealth health = resolveHealth(group.status(), issues);
 
@@ -1067,10 +1073,48 @@ public class AdminGroupService {
                 coaches.size(),
                 schedules.size(),
                 !schedules.isEmpty(),
-                nextSessionAt,
+                nextSession,
                 health,
                 issues
         );
+    }
+
+    private GroupNextSession resolveNextSession(
+            UUID groupId,
+            List<GroupCoachDto> coaches,
+            List<GroupScheduleDto> schedules
+    ) {
+        LocalDateTime now = LocalDateTime.now();
+        Set<UUID> coachIds = coaches.stream()
+                .map(GroupCoachDto::coachId)
+                .collect(Collectors.toSet());
+
+        if (!coachIds.isEmpty()) {
+            CoachSessionAdminView nextMaterializedSession = coachPort.getSessions(
+                            coachIds,
+                            Set.of(groupId),
+                            now.toLocalDate(),
+                            now.toLocalDate().plusDays(60)
+                    )
+                    .stream()
+                    .filter(session -> !"CANCELLED".equals(session.status()))
+                    .filter(session -> session.scheduledStartAt() != null)
+                    .filter(session -> !session.scheduledStartAt().isBefore(now))
+                    .min(Comparator.comparing(CoachSessionAdminView::scheduledStartAt))
+                    .orElse(null);
+
+            if (nextMaterializedSession != null) {
+                return new GroupNextSession(
+                        nextMaterializedSession.sessionId(),
+                        toOffsetDateTime(nextMaterializedSession.scheduledStartAt())
+                );
+            }
+        }
+
+        OffsetDateTime scheduleNextSessionAt = toOffsetDateTime(calculateNextSession(schedules));
+        return scheduleNextSessionAt == null
+                ? null
+                : new GroupNextSession(null, scheduleNextSessionAt);
     }
 
     private int countByStatus(List<GroupView> views, GroupStatus status) {
@@ -1343,10 +1387,14 @@ public class AdminGroupService {
             int coachesCount,
             int sessionsPerWeek,
             boolean scheduleActive,
-            OffsetDateTime nextSessionAt,
+            GroupNextSession nextSession,
             GroupHealth health,
             List<AdminGroupHealthOutput.IssueItem> issues
     ) {
+        private OffsetDateTime nextSessionAt() {
+            return nextSession == null ? null : nextSession.startsAt();
+        }
+
         private boolean overCapacity() {
             int capacity = Optional.ofNullable(group.capacity()).orElse(0);
             return capacity > 0 && studentsCount > capacity;
@@ -1373,10 +1421,15 @@ public class AdminGroupService {
                     studentsCount,
                     coachesCount,
                     scheduleActive,
-                    nextSessionAt,
+                    nextSessionAt(),
                     health
             );
         }
     }
+
+    private record GroupNextSession(
+            UUID id,
+            OffsetDateTime startsAt
+    ) {}
 
 }

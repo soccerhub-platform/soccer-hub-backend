@@ -20,11 +20,14 @@ import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import kz.edu.soccerhub.organization.domain.model.Group;
 import kz.edu.soccerhub.organization.domain.repository.GroupRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -36,6 +39,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CoachSessionService {
 
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
@@ -342,21 +346,7 @@ public class CoachSessionService {
                                 .build()
                 );
 
-        if (updated.lead() != null) {
-            LeadEvent event =
-                    input.status()
-                            == TrialAttendanceStatus.ATTENDED
-                            ? LeadEvent.COMPLETE_TRIAL
-                            : LeadEvent.NO_SHOW;
-
-            leadPort.processEvent(
-                    updated.lead().id(),
-                    event,
-                    null,
-                    null,
-                    null
-            );
-        }
+        syncLeadAfterTrialAttendance(updated, input.status(), null);
 
         return toTrialStudentItem(updated);
     }
@@ -591,6 +581,55 @@ public class CoachSessionService {
         } catch (Exception ex) {
             throw new BadRequestException("Invalid timezone", timezone);
         }
+    }
+
+    private void syncLeadAfterTrialAttendance(
+            TrialBookingDetailsDto updated,
+            TrialAttendanceStatus attendanceStatus,
+            UUID actorId
+    ) {
+        if (updated.lead() == null) {
+            return;
+        }
+
+        LeadEvent event =
+                attendanceStatus == TrialAttendanceStatus.ATTENDED
+                        ? LeadEvent.COMPLETE_TRIAL
+                        : LeadEvent.NO_SHOW;
+
+        Runnable sync = () -> {
+            try {
+                leadPort.processEvent(
+                        updated.lead().id(),
+                        event,
+                        null,
+                        null,
+                        actorId
+                );
+            } catch (BadRequestException exception) {
+                log.warn(
+                        "Lead sync skipped after trial attendance: leadId={}, trialId={}, event={}, reason={}",
+                        updated.lead().id(),
+                        updated.id(),
+                        event,
+                        exception.getMessage()
+                );
+            }
+        };
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            sync.run();
+                        }
+                    }
+            );
+            return;
+        }
+
+        sync.run();
     }
 
     private String toResponseStatus(TrainingSession session, ZoneId zoneId) {
