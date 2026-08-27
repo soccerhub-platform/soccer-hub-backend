@@ -15,12 +15,8 @@ import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
 import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
-import kz.edu.soccerhub.common.port.CoachPort;
-import kz.edu.soccerhub.common.port.GroupActivityPort;
-import kz.edu.soccerhub.common.port.GroupCoachPort;
-import kz.edu.soccerhub.common.port.GroupPort;
-import kz.edu.soccerhub.common.port.MediaAccessPort;
-import kz.edu.soccerhub.common.port.MediaAvatarPort;
+import kz.edu.soccerhub.common.dto.trial.TrialSessionParticipantDto;
+import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
 import kz.edu.soccerhub.media.domain.enums.MediaKind;
 import kz.edu.soccerhub.media.domain.model.MediaAsset;
@@ -28,6 +24,9 @@ import kz.edu.soccerhub.organization.domain.model.Location;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
 import kz.edu.soccerhub.organization.domain.repository.LocationRepository;
+import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -82,6 +81,8 @@ class AdminSessionServiceTest {
     private MediaAccessPort mediaAccessPort;
     @Mock
     private AdminGroupService adminGroupService;
+    @Mock
+    private TrialPort trialPort;
 
     private AdminSessionService service;
 
@@ -101,7 +102,8 @@ class AdminSessionServiceTest {
                 groupActivityPort,
                 mediaAvatarPort,
                 mediaAccessPort,
-                adminGroupService
+                adminGroupService,
+                trialPort
         );
     }
 
@@ -440,6 +442,9 @@ class AdminSessionServiceTest {
         UUID playerLate = UUID.randomUUID();
         UUID playerUnmarked = UUID.randomUUID();
         LocalDate sessionDate = LocalDate.now();
+        UUID trialBookingId = UUID.randomUUID();
+        UUID trialLeadId = UUID.randomUUID();
+        UUID trialParticipantId = UUID.randomUUID();
 
         when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
         when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
@@ -501,6 +506,24 @@ class AdminSessionServiceTest {
                         .comment("10 минут")
                         .build()
         ));
+        when(trialPort.getSessionParticipants(sessionId))
+                .thenReturn(List.of(
+                        TrialSessionParticipantDto.builder()
+                                .trialBookingId(trialBookingId)
+                                .leadId(trialLeadId)
+                                .participantId(trialParticipantId)
+                                .fullName("Trial Student")
+                                .birthDate(LocalDate.of(2017, 5, 10))
+                                .age(9)
+                                .bookingStatus(
+                                        TrialBookingStatus.SCHEDULED
+                                )
+                                .attendanceStatus(
+                                        TrialAttendanceStatus.UNMARKED
+                                )
+                                .result(TrialResult.PENDING)
+                                .build()
+                ));
 
         AdminSessionAttendanceOutput output = service.getSessionAttendance(adminId, sessionId);
 
@@ -526,6 +549,19 @@ class AdminSessionServiceTest {
                 .findFirst()
                 .orElseThrow()
                 .status());
+        assertEquals(1, output.trialParticipants().size());
+
+        AdminSessionAttendanceOutput.TrialParticipantItem trial =
+                output.trialParticipants().getFirst();
+
+        assertEquals(trialBookingId, trial.trialBookingId());
+        assertEquals(trialLeadId, trial.leadId());
+        assertEquals(trialParticipantId, trial.participantId());
+        assertEquals("Trial Student", trial.fullName());
+        assertEquals(
+                TrialAttendanceStatus.UNMARKED,
+                trial.attendanceStatus()
+        );
     }
 
     @Test

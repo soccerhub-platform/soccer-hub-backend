@@ -9,6 +9,7 @@ import kz.edu.soccerhub.common.port.TrialStudentPort;
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
 import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialCoachRecommendation;
 import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 import kz.edu.soccerhub.trial.domain.entity.TrialBooking;
 import kz.edu.soccerhub.trial.domain.repository.TrialBookingRepository;
@@ -49,6 +50,8 @@ class TrialBookingServiceTest {
     private TrialBookingDetailsReader detailsReader;
     @Mock
     private TrialBookingListReader listReader;
+    @Mock
+    private TrialSessionParticipantReader sessionParticipantReader;
 
     private TrialBookingService service;
 
@@ -61,7 +64,8 @@ class TrialBookingServiceTest {
                 studentPort,
                 leadPort,
                 detailsReader,
-                listReader
+                listReader,
+                sessionParticipantReader
         );
     }
 
@@ -259,6 +263,119 @@ class TrialBookingServiceTest {
         );
 
         verify(detailsReader).read(booking);
+    }
+
+    @Test
+    void returnsActiveAndCompletedTrialParticipantsForSession() {
+        UUID sessionId = UUID.randomUUID();
+
+        TrialBooking scheduled = createBooking();
+
+        TrialSessionParticipantDto participant =
+                TrialSessionParticipantDto.builder()
+                        .trialBookingId(scheduled.getId())
+                        .fullName("Alex Doe")
+                        .bookingStatus(TrialBookingStatus.SCHEDULED)
+                        .attendanceStatus(
+                                TrialAttendanceStatus.UNMARKED
+                        )
+                        .build();
+
+        when(repository
+                .findAllByTrainingSessionIdAndStatusInOrderByCreatedAtAsc(
+                        sessionId,
+                        List.of(
+                                TrialBookingStatus.SCHEDULED,
+                                TrialBookingStatus.COMPLETED
+                        )
+                ))
+                .thenReturn(List.of(scheduled));
+
+        when(sessionParticipantReader.read(List.of(scheduled)))
+                .thenReturn(List.of(participant));
+
+        List<TrialSessionParticipantDto> result =
+                service.getSessionParticipants(sessionId);
+
+        assertEquals(List.of(participant), result);
+
+        verify(sessionParticipantReader)
+                .read(List.of(scheduled));
+    }
+
+    @Test
+    void recordsCoachRecommendationForAttendedTrial() {
+        TrialBooking booking = createBooking();
+        UUID coachId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        booking.markAttendance(
+                TrialAttendanceStatus.ATTENDED,
+                coachId,
+                "Посетил"
+        );
+
+        TrialSessionParticipantDto output =
+                TrialSessionParticipantDto.builder()
+                        .trialBookingId(booking.getId())
+                        .fullName("Trial Student")
+                        .attendanceStatus(
+                                TrialAttendanceStatus.ATTENDED
+                        )
+                        .coachRecommendation(
+                                TrialCoachRecommendation
+                                        .RECOMMEND_ANOTHER_GROUP
+                        )
+                        .coachRecommendedGroupId(groupId)
+                        .coachRecommendationComment(
+                                "Лучше подойдёт старшая группа"
+                        )
+                        .build();
+
+        when(repository.findById(booking.getId()))
+                .thenReturn(Optional.of(booking));
+
+        when(groupPort.getDetails(groupId))
+                .thenReturn(
+                        TrialBookingDetailsDto.Group.builder()
+                                .id(groupId)
+                                .name("Older group")
+                                .build()
+                );
+
+        when(sessionParticipantReader.read(List.of(booking)))
+                .thenReturn(List.of(output));
+
+        TrialSessionParticipantDto result =
+                service.recordCoachRecommendation(
+                        RecordTrialCoachRecommendationCommand.builder()
+                                .trialId(booking.getId())
+                                .coachId(coachId)
+                                .recommendation(
+                                        TrialCoachRecommendation
+                                                .RECOMMEND_ANOTHER_GROUP
+                                )
+                                .recommendedGroupId(groupId)
+                                .comment(
+                                        "Лучше подойдёт старшая группа"
+                                )
+                                .build()
+                );
+
+        assertEquals(output, result);
+
+        assertEquals(
+                TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP,
+                booking.getCoachRecommendation()
+        );
+        assertEquals(
+                groupId,
+                booking.getCoachRecommendedGroupId()
+        );
+        assertEquals(
+                coachId,
+                booking.getCoachRecommendationBy()
+        );
     }
 
     private CreateTrialBookingCommand command(

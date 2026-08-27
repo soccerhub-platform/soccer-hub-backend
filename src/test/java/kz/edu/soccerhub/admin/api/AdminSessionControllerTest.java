@@ -167,6 +167,7 @@ class AdminSessionControllerTest {
                         null,
                         null
                 )),
+                List.of(),
                 new AdminSessionAttendanceOutput.Capabilities(true)
         );
 
@@ -303,6 +304,7 @@ class AdminSessionControllerTest {
                         "Болел",
                         null
                 )),
+                List.of(),
                 new AdminSessionAttendanceOutput.Capabilities(true)
         );
         when(adminSessionService.updateSessionAttendance(eq(adminId), eq(sessionId), eq(input))).thenReturn(output);

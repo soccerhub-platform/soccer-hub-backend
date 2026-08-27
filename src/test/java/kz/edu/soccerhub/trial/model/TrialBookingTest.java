@@ -2,17 +2,13 @@ package kz.edu.soccerhub.trial.model;
 
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.trial.domain.entity.TrialBooking;
-import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
-import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
-import kz.edu.soccerhub.trial.domain.enums.TrialNextActionType;
-import kz.edu.soccerhub.trial.domain.enums.TrialResult;
+import kz.edu.soccerhub.trial.domain.enums.*;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TrialBookingTest {
 
@@ -183,6 +179,50 @@ public class TrialBookingTest {
                 BadRequestException.class,
                 () -> booking.reschedule(UUID.randomUUID())
         );
+    }
+
+    @Test
+    void shouldRecordCoachRecommendationAfterAttendedTrial() {
+        TrialBooking booking = TrialBooking.schedule(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID()
+        );
+
+        UUID coachId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+
+        booking.markAttendance(
+                TrialAttendanceStatus.ATTENDED,
+                coachId,
+                "Посетил"
+        );
+
+        booking.recordCoachRecommendation(
+                TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP,
+                groupId,
+                "Лучше подойдёт старшая группа",
+                coachId
+        );
+
+        assertEquals(
+                TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP,
+                booking.getCoachRecommendation()
+        );
+        assertEquals(
+                groupId,
+                booking.getCoachRecommendedGroupId()
+        );
+        assertEquals(
+                "Лучше подойдёт старшая группа",
+                booking.getCoachRecommendationComment()
+        );
+        assertEquals(
+                coachId,
+                booking.getCoachRecommendationBy()
+        );
+        assertNotNull(booking.getCoachRecommendationAt());
     }
 
 }

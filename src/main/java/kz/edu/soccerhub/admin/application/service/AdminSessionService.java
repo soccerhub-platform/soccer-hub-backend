@@ -21,15 +21,10 @@ import kz.edu.soccerhub.common.dto.group.GroupCoachDto;
 import kz.edu.soccerhub.common.dto.group.GroupDto;
 import kz.edu.soccerhub.common.dto.group.GroupScheduleDto;
 import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+import kz.edu.soccerhub.common.dto.trial.TrialSessionParticipantDto;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
-import kz.edu.soccerhub.common.port.CoachPort;
-import kz.edu.soccerhub.common.port.GroupActivityPort;
-import kz.edu.soccerhub.common.port.GroupCoachPort;
-import kz.edu.soccerhub.common.port.GroupPort;
-import kz.edu.soccerhub.common.port.GroupSchedulePort;
-import kz.edu.soccerhub.common.port.MediaAccessPort;
-import kz.edu.soccerhub.common.port.MediaAvatarPort;
+import kz.edu.soccerhub.common.port.*;
 import kz.edu.soccerhub.media.domain.enums.MediaOwnerType;
 import kz.edu.soccerhub.media.domain.model.MediaAsset;
 import kz.edu.soccerhub.organization.domain.model.Location;
@@ -78,6 +73,7 @@ public class AdminSessionService {
     private final MediaAvatarPort mediaAvatarPort;
     private final MediaAccessPort mediaAccessPort;
     private final AdminGroupService adminGroupService;
+    private final TrialPort trialPort;
 
     @Transactional(readOnly = true)
     public AdminGroupScheduleOverviewOutput getGroupScheduleOverview(
@@ -354,17 +350,34 @@ public class AdminSessionService {
                 })
                 .toList();
 
+        List<AdminSessionAttendanceOutput.TrialParticipantItem>
+                trialParticipants =
+                trialPort.getSessionParticipants(sessionId)
+                        .stream()
+                        .map(this::toTrialParticipantItem)
+                        .toList();
+
         return new AdminSessionAttendanceOutput(
                 session.getId(),
-                new AdminSessionAttendanceOutput.GroupRef(group.groupId(), group.name(), getGroupAvatar(group.groupId())),
+                new AdminSessionAttendanceOutput.GroupRef(
+                        group.groupId(),
+                        group.name(),
+                        getGroupAvatar(group.groupId())
+                ),
                 session.getSessionDate(),
                 session.getScheduledStartAt(),
                 session.getScheduledEndAt(),
                 session.getStatus().name(),
                 resolveEffectiveStatus(session),
-                toDetailedAttendanceSummary(attendanceByPlayerId.values(), participants.size()),
+                toDetailedAttendanceSummary(
+                        attendanceByPlayerId.values(),
+                        participants.size()
+                ),
                 participants,
-                new AdminSessionAttendanceOutput.Capabilities(canEditAttendance(session))
+                trialParticipants,
+                new AdminSessionAttendanceOutput.Capabilities(
+                        canEditAttendance(session)
+                )
         );
     }
 
@@ -705,6 +718,23 @@ public class AdminSessionService {
                 late,
                 unmarked,
                 presentLike
+        );
+    }
+
+    private AdminSessionAttendanceOutput.TrialParticipantItem toTrialParticipantItem(TrialSessionParticipantDto participant) {
+        return new AdminSessionAttendanceOutput.TrialParticipantItem(
+                participant.trialBookingId(),
+                participant.leadId(),
+                participant.participantId(),
+                participant.studentId(),
+                participant.fullName(),
+                participant.birthDate(),
+                participant.age(),
+                participant.bookingStatus(),
+                participant.attendanceStatus(),
+                participant.attendanceComment(),
+                participant.result(),
+                participant.coachFeedback()
         );
     }
 

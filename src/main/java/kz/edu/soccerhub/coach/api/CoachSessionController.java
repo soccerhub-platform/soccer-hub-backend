@@ -70,6 +70,36 @@ public class CoachSessionController {
         return coachSessionService.updateAttendance(getCurrentUserId(jwt), sessionId, input);
     }
 
+    @PatchMapping("/sessions/{sessionId}/trials/{trialId}/attendance")
+    public CoachSessionTrialStudentItem markTrialAttendance(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID sessionId,
+            @PathVariable UUID trialId,
+            @Valid @RequestBody CoachTrialAttendanceInput input
+    ) {
+        return coachSessionService.markTrialAttendance(
+                getCurrentUserId(jwt),
+                sessionId,
+                trialId,
+                input
+        );
+    }
+
+    @PutMapping("/sessions/{sessionId}/trials/{trialId}/recommendation")
+    public CoachSessionTrialStudentItem recordTrialRecommendation(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID sessionId,
+            @PathVariable UUID trialId,
+            @Valid @RequestBody CoachTrialRecommendationInput input
+    ) {
+        return coachSessionService.recordTrialRecommendation(
+                getCurrentUserId(jwt),
+                sessionId,
+                trialId,
+                input
+        );
+    }
+
     @PostMapping("/sessions/{sessionId}/attendance/mark-all-present")
     public CoachAttendanceUpdateResponse markAllPresent(
             @AuthenticationPrincipal Jwt jwt,

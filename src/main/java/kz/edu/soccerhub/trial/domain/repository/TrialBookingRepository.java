@@ -27,4 +27,9 @@ public interface TrialBookingRepository extends JpaRepository<TrialBooking, UUID
     List<TrialBooking> findAllByStatusOrderByCreatedAtDesc(TrialBookingStatus status);
 
     List<TrialBooking> findAllByLeadIdAndParticipantIdAndStudentIdIsNull(UUID leadId, UUID participantId);
+
+    List<TrialBooking> findAllByTrainingSessionIdAndStatusInOrderByCreatedAtAsc(
+            UUID trainingSessionId,
+            Collection<TrialBookingStatus> statuses
+    );
 }

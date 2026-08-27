@@ -36,6 +36,7 @@ public class TrialBookingService implements TrialPort {
     private final TrialLeadPort leadPort;
     private final TrialBookingDetailsReader detailsReader;
     private final TrialBookingListReader listReader;
+    private final TrialSessionParticipantReader sessionParticipantReader;
 
     @Override
     @Transactional
@@ -239,6 +240,55 @@ public class TrialBookingService implements TrialPort {
         return listReader.read(bookings);
     }
 
+    @Override
+    @Transactional(Transactional.TxType.SUPPORTS)
+    public List<TrialSessionParticipantDto> getSessionParticipants(
+            UUID trainingSessionId
+    ) {
+        if (trainingSessionId == null) {
+            throw new BadRequestException(
+                    "Training session id is required"
+            );
+        }
+
+        List<TrialBooking> bookings =
+                repository
+                        .findAllByTrainingSessionIdAndStatusInOrderByCreatedAtAsc(
+                                trainingSessionId,
+                                List.of(
+                                        TrialBookingStatus.SCHEDULED,
+                                        TrialBookingStatus.COMPLETED
+                                )
+                        );
+
+        return sessionParticipantReader.read(bookings);
+    }
+
+    @Override
+    @Transactional
+    public TrialSessionParticipantDto recordCoachRecommendation(
+            RecordTrialCoachRecommendationCommand command
+    ) {
+        validateCoachRecommendationCommand(command);
+
+        TrialBooking booking = getBooking(command.trialId());
+
+        if (command.recommendedGroupId() != null) {
+            groupPort.getDetails(command.recommendedGroupId());
+        }
+
+        booking.recordCoachRecommendation(
+                command.recommendation(),
+                command.recommendedGroupId(),
+                command.comment(),
+                command.coachId()
+        );
+
+        return sessionParticipantReader
+                .read(List.of(booking))
+                .getFirst();
+    }
+
     private TrialBooking getBooking(UUID trialId) {
         if (trialId == null) {
             throw new BadRequestException("Trial id is required");
@@ -283,6 +333,26 @@ public class TrialBookingService implements TrialPort {
         }
 
         requireAdminId(command.adminId());
+    }
+
+    private void validateCoachRecommendationCommand(RecordTrialCoachRecommendationCommand command) {
+        if (command == null || command.trialId() == null) {
+            throw new BadRequestException(
+                    "Trial id is required"
+            );
+        }
+
+        if (command.coachId() == null) {
+            throw new BadRequestException(
+                    "Coach id is required"
+            );
+        }
+
+        if (command.recommendation() == null) {
+            throw new BadRequestException(
+                    "Coach recommendation is required"
+            );
+        }
     }
 
     private void validateCommand(CreateTrialBookingCommand command) {

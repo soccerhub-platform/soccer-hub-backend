@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.trial.application.service;
+package kz.edu.soccerhub.trial.application.service.impl;
 
 import kz.edu.soccerhub.common.dto.trial.TrialBookingDetailsDto;
 import kz.edu.soccerhub.common.dto.trial.TrialSessionContext;
@@ -8,6 +8,7 @@ import kz.edu.soccerhub.common.port.TrialLeadPort;
 import kz.edu.soccerhub.common.port.TrialGroupPort;
 import kz.edu.soccerhub.common.port.TrialCoachPort;
 import kz.edu.soccerhub.common.port.TrialLocationPort;
+import kz.edu.soccerhub.trial.application.service.TrialBookingDetailsReader;
 import kz.edu.soccerhub.trial.domain.entity.TrialBooking;
 import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;

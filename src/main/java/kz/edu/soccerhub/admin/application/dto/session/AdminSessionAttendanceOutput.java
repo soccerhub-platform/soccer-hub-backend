@@ -2,6 +2,9 @@ package kz.edu.soccerhub.admin.application.dto.session;
 
 import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionAttendanceStatus;
 import kz.edu.soccerhub.common.dto.media.MediaAssetResponse;
+import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
+import kz.edu.soccerhub.trial.domain.enums.TrialResult;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -18,6 +21,7 @@ public record AdminSessionAttendanceOutput(
         String effectiveStatus,
         Summary summary,
         List<ParticipantItem> participants,
+        List<TrialParticipantItem> trialParticipants,
         Capabilities capabilities
 ) {
     public record GroupRef(
@@ -48,6 +52,22 @@ public record AdminSessionAttendanceOutput(
             String comment,
             MediaAssetResponse avatar
     ) {}
+
+    public record TrialParticipantItem(
+            UUID trialBookingId,
+            UUID leadId,
+            UUID participantId,
+            UUID studentId,
+            String fullName,
+            LocalDate birthDate,
+            Integer age,
+            TrialBookingStatus bookingStatus,
+            TrialAttendanceStatus attendanceStatus,
+            String attendanceComment,
+            TrialResult result,
+            String coachFeedback
+    ) {
+    }
 
     public record Capabilities(
             boolean canEdit

@@ -9,9 +9,14 @@ import kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus;
 import kz.edu.soccerhub.coach.domain.repository.CoachProfileRepository;
 import kz.edu.soccerhub.coach.domain.repository.TrainingSessionAttendanceRepository;
 import kz.edu.soccerhub.coach.domain.repository.TrainingSessionRepository;
+import kz.edu.soccerhub.common.dto.trial.*;
 import kz.edu.soccerhub.common.exception.BadRequestException;
 import kz.edu.soccerhub.common.exception.ForbiddenException;
 import kz.edu.soccerhub.common.exception.NotFoundException;
+import kz.edu.soccerhub.common.port.TrialPort;
+import kz.edu.soccerhub.common.port.LeadPort;
+import kz.edu.soccerhub.crm.application.state.LeadEvent;
+import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
 import kz.edu.soccerhub.organization.domain.model.Group;
 import kz.edu.soccerhub.organization.domain.repository.GroupRepository;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +47,8 @@ public class CoachSessionService {
     private final TrainingSessionAttendanceRepository trainingSessionAttendanceRepository;
     private final GroupRepository groupRepository;
     private final CoachRosterReader coachRosterReader;
+    private final TrialPort trialPort;
+    private final LeadPort leadPort;
 
     @Transactional
     public CoachTodaySessionsResponse getTodaySessions(UUID currentUserId, LocalDate date, String timezone) {
@@ -106,6 +113,12 @@ public class CoachSessionService {
                 })
                 .toList();
 
+        List<CoachSessionTrialStudentItem> trialStudents =
+                trialPort.getSessionParticipants(sessionId)
+                        .stream()
+                        .map(this::toTrialStudentItem)
+                        .toList();
+
         return new CoachSessionDetailsResponse(
                 session.getId(),
                 groupName,
@@ -119,6 +132,7 @@ public class CoachSessionService {
                 submittedAt(session),
                 calculateAttendanceSummary(session.getId(), playerIds),
                 students,
+                trialStudents,
                 new CoachSessionReportView(
                         session.getTopic(),
                         session.getCoachComment(),
@@ -274,6 +288,120 @@ public class CoachSessionService {
 
         trainingSessionAttendanceRepository.saveAll(toSave);
         return new CoachAttendanceUpdateResponse(true, calculateAttendanceSummary(sessionId, activePlayerIds));
+    }
+
+    @Transactional
+    public CoachSessionTrialStudentItem markTrialAttendance(
+            UUID currentUserId,
+            UUID sessionId,
+            UUID trialId,
+            CoachTrialAttendanceInput input
+    ) {
+        ensureCoachProfile(currentUserId);
+
+        TrainingSession session =
+                getCoachSession(sessionId, currentUserId);
+
+        ZoneId zoneId = validateZone(DEFAULT_TIMEZONE);
+
+        if (!isInProgressOrOverdue(session, zoneId)) {
+            throw new BadRequestException(
+                    "Trial attendance can be updated only for IN_PROGRESS or OVERDUE sessions",
+                    sessionId
+            );
+        }
+
+        if (input == null || input.status() == null) {
+            throw new BadRequestException(
+                    "Trial attendance status is required"
+            );
+        }
+
+        if (input.status() != TrialAttendanceStatus.ATTENDED
+                && input.status() != TrialAttendanceStatus.NO_SHOW) {
+            throw new BadRequestException(
+                    "Trial attendance must be ATTENDED or NO_SHOW"
+            );
+        }
+
+        TrialBookingDto booking = trialPort.getTrial(trialId);
+
+        if (!sessionId.equals(booking.trainingSessionId())) {
+            throw new ForbiddenException(
+                    "Trial does not belong to coach session"
+            );
+        }
+
+        TrialBookingDetailsDto updated =
+                trialPort.markAttendance(
+                        MarkTrialAttendanceCommand.builder()
+                                .trialId(trialId)
+                                .adminId(currentUserId)
+                                .status(input.status())
+                                .comment(input.comment())
+                                .build()
+                );
+
+        if (updated.lead() != null) {
+            LeadEvent event =
+                    input.status()
+                            == TrialAttendanceStatus.ATTENDED
+                            ? LeadEvent.COMPLETE_TRIAL
+                            : LeadEvent.NO_SHOW;
+
+            leadPort.processEvent(
+                    updated.lead().id(),
+                    event,
+                    null,
+                    null,
+                    null
+            );
+        }
+
+        return toTrialStudentItem(updated);
+    }
+
+    @Transactional
+    public CoachSessionTrialStudentItem recordTrialRecommendation(
+            UUID currentUserId,
+            UUID sessionId,
+            UUID trialId,
+            CoachTrialRecommendationInput input
+    ) {
+        ensureCoachProfile(currentUserId);
+
+        getCoachSession(sessionId, currentUserId);
+
+        if (input == null || input.recommendation() == null) {
+            throw new BadRequestException(
+                    "Coach recommendation is required"
+            );
+        }
+
+        TrialBookingDto booking = trialPort.getTrial(trialId);
+
+        if (!sessionId.equals(booking.trainingSessionId())) {
+            throw new ForbiddenException(
+                    "Trial does not belong to coach session"
+            );
+        }
+
+        TrialSessionParticipantDto updated =
+                trialPort.recordCoachRecommendation(
+                        RecordTrialCoachRecommendationCommand.builder()
+                                .trialId(trialId)
+                                .coachId(currentUserId)
+                                .recommendation(
+                                        input.recommendation()
+                                )
+                                .recommendedGroupId(
+                                        input.recommendedGroupId()
+                                )
+                                .comment(input.comment())
+                                .build()
+                );
+
+        return toTrialStudentItem(updated);
     }
 
     @Transactional
@@ -470,6 +598,53 @@ public class CoachSessionService {
             return "OVERDUE";
         }
         return session.getStatus().name();
+    }
+
+    private CoachSessionTrialStudentItem toTrialStudentItem(
+            TrialSessionParticipantDto participant
+    ) {
+        return new CoachSessionTrialStudentItem(
+                participant.trialBookingId(),
+                participant.studentId(),
+                participant.fullName(),
+                participant.age(),
+                participant.attendanceStatus().name(),
+                participant.attendanceComment(),
+                participant.result().name(),
+                participant.coachFeedback(),
+                participant.coachRecommendation() == null
+                        ? null
+                        : participant.coachRecommendation().name(),
+                participant.coachRecommendedGroupId(),
+                participant.coachRecommendationComment(),
+                participant.coachRecommendationAt()
+        );
+    }
+
+    private CoachSessionTrialStudentItem toTrialStudentItem(
+            TrialBookingDetailsDto trial
+    ) {
+        TrialBookingDetailsDto.Student student =
+                trial.student();
+
+        return new CoachSessionTrialStudentItem(
+                trial.id(),
+                student == null ? null : student.id(),
+                student == null ? null : student.fullName(),
+                student == null ? null : student.age(),
+                trial.attendanceStatus().name(),
+                trial.attendance() == null
+                        ? null
+                        : trial.attendance().comment(),
+                trial.result().name(),
+                trial.outcome() == null
+                        ? null
+                        : trial.outcome().coachFeedback(),
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     private SessionReportStatus resolveReportStatus(TrainingSession session, ZoneId zoneId) {

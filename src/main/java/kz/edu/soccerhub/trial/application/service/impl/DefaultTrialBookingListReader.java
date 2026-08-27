@@ -1,4 +1,4 @@
-package kz.edu.soccerhub.trial.application.service;
+package kz.edu.soccerhub.trial.application.service.impl;
 
 import kz.edu.soccerhub.common.dto.trial.TrialBookingDetailsDto;
 import kz.edu.soccerhub.common.dto.trial.TrialBookingListItemDto;
@@ -9,6 +9,7 @@ import kz.edu.soccerhub.common.port.TrialLeadPort;
 import kz.edu.soccerhub.common.port.TrialLocationPort;
 import kz.edu.soccerhub.common.port.TrialSessionPort;
 import kz.edu.soccerhub.common.port.TrialStudentDetailsPort;
+import kz.edu.soccerhub.trial.application.service.TrialBookingListReader;
 import kz.edu.soccerhub.trial.domain.entity.TrialBooking;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

@@ -3,10 +3,7 @@ package kz.edu.soccerhub.trial.domain.entity;
 import jakarta.persistence.*;
 import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import kz.edu.soccerhub.common.exception.BadRequestException;
-import kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus;
-import kz.edu.soccerhub.trial.domain.enums.TrialBookingStatus;
-import kz.edu.soccerhub.trial.domain.enums.TrialNextActionType;
-import kz.edu.soccerhub.trial.domain.enums.TrialResult;
+import kz.edu.soccerhub.trial.domain.enums.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -54,6 +51,25 @@ public class TrialBooking extends AbstractAuditableEntity {
 
     @Column(name = "coach_feedback", columnDefinition = "TEXT")
     private String coachFeedback;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "coach_recommendation")
+    private TrialCoachRecommendation coachRecommendation;
+
+    @Column(name = "coach_recommended_group_id")
+    private UUID coachRecommendedGroupId;
+
+    @Column(
+            name = "coach_recommendation_comment",
+            columnDefinition = "TEXT"
+    )
+    private String coachRecommendationComment;
+
+    @Column(name = "coach_recommendation_at")
+    private LocalDateTime coachRecommendationAt;
+
+    @Column(name = "coach_recommendation_by")
+    private UUID coachRecommendationBy;
 
     @Column(name = "cancellation_reason")
     private String cancellationReason;
@@ -223,6 +239,63 @@ public class TrialBooking extends AbstractAuditableEntity {
         this.nextActionAt = result == TrialResult.FOLLOW_UP
                 ? nextActionAt
                 : null;
+    }
+
+    public void recordCoachRecommendation(
+            TrialCoachRecommendation recommendation,
+            UUID recommendedGroupId,
+            String comment,
+            UUID coachId
+    ) {
+        if (status != TrialBookingStatus.COMPLETED
+                || attendanceStatus
+                != TrialAttendanceStatus.ATTENDED) {
+            throw new BadRequestException(
+                    "Coach recommendation can be recorded only after attended trial"
+            );
+        }
+
+        if (recommendation == null) {
+            throw new BadRequestException(
+                    "Coach recommendation is required"
+            );
+        }
+
+        if (coachId == null) {
+            throw new BadRequestException(
+                    "Coach id is required"
+            );
+        }
+
+        if (recommendation
+                == TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP
+                && recommendedGroupId == null) {
+            throw new BadRequestException(
+                    "Recommended group is required"
+            );
+        }
+
+        this.coachRecommendation = recommendation;
+
+        this.coachRecommendedGroupId =
+                recommendation
+                        == TrialCoachRecommendation.RECOMMEND_ENROLLMENT
+                        || recommendation
+                        == TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP
+                        ? recommendedGroupId
+                        : null;
+
+        String normalizedComment =
+                comment == null ? null : comment.trim();
+
+        this.coachRecommendationComment =
+                normalizedComment == null
+                        || normalizedComment.isEmpty()
+                        ? null
+                        : normalizedComment;
+
+        this.coachRecommendationBy = coachId;
+        this.coachRecommendationAt = LocalDateTime.now();
     }
 
     public void linkStudent(UUID clientId, UUID studentId) {

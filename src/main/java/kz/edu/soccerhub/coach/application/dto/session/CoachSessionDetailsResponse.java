@@ -18,6 +18,7 @@ public record CoachSessionDetailsResponse(
         LocalDateTime submittedAt,
         String attendanceSummary,
         List<CoachSessionStudentItem> students,
+        List<CoachSessionTrialStudentItem> trialStudents,
         CoachSessionReportView report
 ) {
 }

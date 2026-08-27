@@ -4,6 +4,7 @@ import kz.edu.soccerhub.common.dto.trial.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface TrialPort {
@@ -40,5 +41,13 @@ public interface TrialPort {
     Page<TrialBookingListItemDto> findList(
             TrialBookingSearchCommand command,
             Pageable pageable
+    );
+
+    List<TrialSessionParticipantDto> getSessionParticipants(
+            UUID trainingSessionId
+    );
+
+    TrialSessionParticipantDto recordCoachRecommendation(
+            RecordTrialCoachRecommendationCommand command
     );
 }
