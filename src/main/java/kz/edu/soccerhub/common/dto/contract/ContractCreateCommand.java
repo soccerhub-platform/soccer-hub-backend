@@ -13,6 +13,7 @@ public record ContractCreateCommand(
         LocalDate endDate,
         BigDecimal amount,
         String currency,
-        String notes
+        String notes,
+        UUID sourceLeadId
 ) {
 }

@@ -15,6 +15,7 @@ public record ContractPaymentContextOutput(
         UUID branchId,
         BigDecimal contractAmount,
         String currency,
-        ContractStatus contractStatus
+        ContractStatus contractStatus,
+        UUID sourceLeadId
 ) {
 }

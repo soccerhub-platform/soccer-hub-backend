@@ -191,7 +191,8 @@ class ContractServiceStatusRulesTest {
                 LocalDate.now().plusMonths(1),
                 BigDecimal.valueOf(30000),
                 "KZT",
-                "New agreement"
+                "New agreement",
+                null
         );
     }
 

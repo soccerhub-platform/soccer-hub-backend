@@ -45,6 +45,8 @@ import kz.edu.soccerhub.common.port.ContractPort;
 import kz.edu.soccerhub.common.port.GroupCoachPort;
 import kz.edu.soccerhub.common.port.GroupPort;
 import kz.edu.soccerhub.common.port.LeadPort;
+import kz.edu.soccerhub.crm.application.state.LeadEvent;
+import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.crm.domain.model.enums.LeadType;
 import kz.edu.soccerhub.organization.domain.model.enums.CoachRole;
 import kz.edu.soccerhub.organization.domain.model.enums.GroupStatus;
@@ -164,7 +166,8 @@ public class ContractService implements ContractPort {
                 client.getBranchId(),
                 defaultAmount(contract.getAmount()),
                 contract.getCurrency(),
-                contract.getStatus()
+                contract.getStatus(),
+                contract.getSourceLeadId()
         );
     }
 
@@ -296,6 +299,7 @@ public class ContractService implements ContractPort {
                 .id(UUID.randomUUID())
                 .playerId(player.getId())
                 .clientId(client.getId())
+                .sourceLeadId(command.sourceLeadId())
                 .contractNumber(resolveContractNumber(command.contractNumber()))
                 .leadType(leadType)
                 .status(ContractStatus.DRAFT)
@@ -353,6 +357,7 @@ public class ContractService implements ContractPort {
         Client client = requireClient(contract, player);
         appendHistory(contract.getId(), ContractHistoryType.UPDATED, actorUserId, null, "Contract activated");
         recordContractActivity(contract, player, client, actorUserId, ClientActivityType.CONTRACT_UPDATED);
+        syncSourceLead(contract.getSourceLeadId(), LeadStatus.CONTRACT_PENDING, LeadEvent.CONTRACT_ACTIVATED, actorUserId);
         return toDetails(contract, player, client, null, null, loadHistory(contract.getId()));
     }
 
@@ -453,6 +458,18 @@ public class ContractService implements ContractPort {
         if (command.amount() != null && command.amount().compareTo(BigDecimal.ZERO) < 0) {
             errors.add(error("MIN", "amount", "Сумма не может быть отрицательной"));
         }
+    }
+
+    private void syncSourceLead(UUID sourceLeadId, LeadStatus requiredStatus, LeadEvent event, UUID actorUserId) {
+        if (sourceLeadId == null) {
+            return;
+        }
+
+        if (leadPort.getLeadOutput(sourceLeadId, actorUserId).status() != requiredStatus) {
+            return;
+        }
+
+        leadPort.processEvent(sourceLeadId, event, null, null, actorUserId);
     }
 
     private void validateContractParties(

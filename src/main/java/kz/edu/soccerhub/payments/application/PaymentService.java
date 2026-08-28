@@ -16,7 +16,10 @@ import kz.edu.soccerhub.common.exception.NotFoundException;
 import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.common.port.ClientActivityPort;
 import kz.edu.soccerhub.common.port.ContractPort;
+import kz.edu.soccerhub.common.port.LeadPort;
 import kz.edu.soccerhub.common.port.PaymentPort;
+import kz.edu.soccerhub.crm.application.state.LeadEvent;
+import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.payments.domain.enums.PaymentStatus;
 import kz.edu.soccerhub.payments.domain.model.Payment;
 import kz.edu.soccerhub.payments.domain.repository.PaymentRepository;
@@ -45,6 +48,7 @@ public class PaymentService implements PaymentPort {
     private final AdminPort adminPort;
     private final ClientActivityPort clientActivityPort;
     private final ContractPaymentCalculator contractPaymentCalculator;
+    private final LeadPort leadPort;
 
     @Override
     @Transactional
@@ -71,6 +75,7 @@ public class PaymentService implements PaymentPort {
 
         ContractPaymentSummaryOutput summary = getContractPaymentSummary(contract.contractId());
         recordPaymentActivity(payment, contract, actorUserId, ClientActivityType.PAYMENT_CREATED);
+        syncFirstPaymentToLead(contract.sourceLeadId(), actorUserId);
 
         return new PaymentCreateOutput(
                 payment.getId(),
@@ -249,6 +254,18 @@ public class PaymentService implements PaymentPort {
             payload.put("reason", payment.getCancelReason());
         }
         clientActivityPort.recordClientActivity(contract.clientId(), actorUserId, activityType, payload);
+    }
+
+    private void syncFirstPaymentToLead(UUID sourceLeadId, UUID actorUserId) {
+        if (sourceLeadId == null) {
+            return;
+        }
+
+        if (leadPort.getLeadOutput(sourceLeadId, actorUserId).status() != LeadStatus.PAYMENT_PENDING) {
+            return;
+        }
+
+        leadPort.processEvent(sourceLeadId, LeadEvent.FIRST_PAYMENT_RECEIVED, null, null, actorUserId);
     }
 
     private void validateCreateCommand(PaymentCreateCommand command, ContractPaymentContextOutput contract) {

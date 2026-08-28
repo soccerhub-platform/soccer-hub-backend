@@ -13,6 +13,9 @@ import kz.edu.soccerhub.common.dto.payment.PaymentOutput;
 import kz.edu.soccerhub.common.port.AdminPort;
 import kz.edu.soccerhub.common.port.ClientActivityPort;
 import kz.edu.soccerhub.common.port.ContractPort;
+import kz.edu.soccerhub.common.port.LeadPort;
+import kz.edu.soccerhub.crm.application.state.LeadEvent;
+import kz.edu.soccerhub.crm.domain.model.enums.LeadStatus;
 import kz.edu.soccerhub.payments.domain.enums.PaymentMethod;
 import kz.edu.soccerhub.payments.domain.enums.PaymentStatus;
 import kz.edu.soccerhub.payments.domain.model.Payment;
@@ -47,6 +50,8 @@ class PaymentServiceTest {
     private AdminPort adminPort;
     @Mock
     private ClientActivityPort clientActivityPort;
+    @Mock
+    private LeadPort leadPort;
 
     private PaymentService paymentService;
 
@@ -57,18 +62,21 @@ class PaymentServiceTest {
                 contractPort,
                 adminPort,
                 clientActivityPort,
-                new ContractPaymentCalculator()
+                new ContractPaymentCalculator(),
+                leadPort
         );
     }
 
     @Test
-    void createPaymentShouldSyncLeadWhenContractBecomesFullyPaid() {
+    void createPaymentShouldSyncLeadWhenFirstPaymentReceived() {
         UUID contractId = UUID.randomUUID();
+        UUID sourceLeadId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
-        ContractPaymentContextOutput context = context(contractId, BigDecimal.valueOf(80000));
-        PaymentCreateCommand command = command(contractId, BigDecimal.valueOf(80000));
+        ContractPaymentContextOutput context = context(contractId, BigDecimal.valueOf(80000), sourceLeadId);
+        PaymentCreateCommand command = command(contractId, BigDecimal.valueOf(50000));
 
         when(contractPort.getPaymentContext(contractId)).thenReturn(context);
+        when(leadPort.getLeadOutput(sourceLeadId, actorId)).thenReturn(leadOutput(sourceLeadId, LeadStatus.PAYMENT_PENDING));
         when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(paymentRepository.findByContractIdOrderByPaidAtDescCreatedAtDesc(contractId))
                 .thenReturn(List.of(savedPayment(contractId, context, command.amount())));
@@ -76,7 +84,8 @@ class PaymentServiceTest {
         PaymentCreateOutput output = paymentService.createPayment(command, actorId);
 
         assertEquals(PaymentStatus.PAID, output.paymentStatus());
-        assertEquals(BigDecimal.ZERO, output.outstandingAmount());
+        assertEquals(BigDecimal.valueOf(30000), output.outstandingAmount());
+        verify(leadPort).processEvent(sourceLeadId, LeadEvent.FIRST_PAYMENT_RECEIVED, null, null, actorId);
         verify(clientActivityPort).recordClientActivity(
                 org.mockito.ArgumentMatchers.eq(context.clientId()),
                 org.mockito.ArgumentMatchers.eq(actorId),
@@ -100,6 +109,7 @@ class PaymentServiceTest {
         PaymentCreateOutput output = paymentService.createPayment(command, actorId);
 
         assertEquals(BigDecimal.valueOf(30000), output.outstandingAmount());
+        verify(leadPort, never()).processEvent(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -165,7 +175,54 @@ class PaymentServiceTest {
                 UUID.randomUUID(),
                 amount,
                 "KZT",
-                ContractStatus.ACTIVE
+                ContractStatus.ACTIVE,
+                null
+        );
+    }
+
+    private ContractPaymentContextOutput context(UUID contractId, BigDecimal amount, UUID sourceLeadId) {
+        return new ContractPaymentContextOutput(
+                contractId,
+                "CNT-2026-00001",
+                UUID.randomUUID(),
+                "Jane Doe",
+                UUID.randomUUID(),
+                "Alex Doe",
+                UUID.randomUUID(),
+                amount,
+                "KZT",
+                ContractStatus.ACTIVE,
+                sourceLeadId
+        );
+    }
+
+    private kz.edu.soccerhub.common.dto.lead.LeadOutput leadOutput(UUID leadId, LeadStatus status) {
+        return new kz.edu.soccerhub.common.dto.lead.LeadOutput(
+                leadId,
+                null,
+                null,
+                null,
+                status,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null
         );
     }
 
