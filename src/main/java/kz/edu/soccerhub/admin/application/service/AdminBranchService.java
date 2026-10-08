@@ -54,7 +54,15 @@ public class AdminBranchService implements AdminBranchAccessPort {
         adminBranchRepository.findAllByAdminId(adminId).stream()
                 .filter(adminBranch -> adminBranch.getBranchId().equals(branchId))
                 .findFirst()
-                .ifPresent(adminBranchRepository::delete);
+                .ifPresent(assignment -> {
+                    // Keep the managed parent collection consistent with orphan removal.
+                    // Otherwise CascadeType.ALL can persist the removed child again at flush.
+                    if (assignment.getAdmin() != null && assignment.getAdmin().getAdminBranches() != null) {
+                        assignment.getAdmin().getAdminBranches()
+                                .removeIf(branch -> branch.getBranchId().equals(branchId));
+                    }
+                    adminBranchRepository.delete(assignment);
+                });
     }
 
     @Transactional(readOnly = true)

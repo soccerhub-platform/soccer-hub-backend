@@ -9,6 +9,7 @@ public record DispatcherClubsOutput(
         UUID clubId,
         String name,
         String slug,
+        String email,
         String phoneNumber,
         String address
 ) { }

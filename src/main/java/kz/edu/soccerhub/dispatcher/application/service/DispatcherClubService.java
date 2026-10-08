@@ -88,6 +88,7 @@ public class DispatcherClubService {
                                 .clubId(club.id())
                                 .name(club.name())
                                 .slug(club.slug())
+                                .email(club.email())
                                 .phoneNumber(club.phoneNumber())
                                 .address(club.address())
                         .build())

@@ -173,7 +173,8 @@ public class DispatcherAdminService {
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
-        boolean isBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchesId());
+        boolean isBranchBelongsToDispatcher = isAdminCreatedByDispatcher(admin, dispatcherId)
+                || dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchesId());
         if (!isBranchBelongsToDispatcher) {
             throw new BadRequestException("Dispatcher does not have access to admin", adminId);
         }
@@ -222,7 +223,8 @@ public class DispatcherAdminService {
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
-        boolean isBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchesId());
+        boolean isBranchBelongsToDispatcher = isAdminCreatedByDispatcher(admin, dispatcherId)
+                || dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchesId());
         if (!isBranchBelongsToDispatcher) {
             throw new BadRequestException("Dispatcher does not have access to admin", adminId);
         }
