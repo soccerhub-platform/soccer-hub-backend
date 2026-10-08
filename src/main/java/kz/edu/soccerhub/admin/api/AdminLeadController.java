@@ -93,7 +93,7 @@ public class AdminLeadController {
     }
 
     @PostMapping("/{leadId}/convert")
-    @PreAuthorize("hasAnyAuthority('ADMIN','SUPER_ADMIN','DISPATCHER')")
+    @PreAuthorize("hasAnyAuthority('ADMIN','SUPER_ADMIN','DISPATCHER') and @leadReadAccess.canRead(#jwt, #leadId)")
     public ResponseEntity<ConvertLeadResponse> convertLead(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID leadId,

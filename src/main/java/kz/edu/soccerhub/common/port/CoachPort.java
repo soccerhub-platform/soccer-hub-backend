@@ -43,6 +43,8 @@ public interface CoachPort {
     CoachAvailabilityResponse updateAvailability(UUID coachId, CoachAvailabilityUpdateRequest request);
     Set<UUID> getBranchIds(UUID coachId);
     List<CoachSessionAdminView> getSessions(Set<UUID> coachIds, Set<UUID> groupIds, LocalDate dateFrom, LocalDate dateTo);
+    List<CoachSessionAdminView> getSessionsByGroups(Set<UUID> groupIds, LocalDate dateFrom, LocalDate dateTo);
+    List<CoachSessionAdminView> getOverdueReportsByGroups(Set<UUID> groupIds, LocalDate beforeDate);
     List<CoachSessionAdminView> getOverdueReportSessions(Set<UUID> coachIds, Set<UUID> groupIds, LocalDate beforeDate);
     List<CoachSessionAdminView> getReportedSessions(Set<UUID> coachIds, Set<UUID> groupIds);
     List<CoachSessionAdminView> getUpcomingSessions(UUID coachId, LocalDate fromDate);

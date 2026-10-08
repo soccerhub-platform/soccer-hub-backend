@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+@lombok.Builder(toBuilder = true)
 public record LeadOutput(
         UUID id,
         LeadType leadType,
@@ -35,6 +36,8 @@ public record LeadOutput(
         List<LeadParticipantOutput> participants,
         LeadTrialOutput trial,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        LeadWorkOutput work,
+        List<kz.edu.soccerhub.common.dto.trial.TrialBookingListItemDto> currentTrials
 ) {
 }

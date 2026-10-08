@@ -29,6 +29,7 @@ public class LeadController {
 
     private final LeadService leadService;
     private final LeadMapper leadMapper;
+    private final kz.edu.soccerhub.crm.application.service.LeadReadAccess leadReadAccess;
 
     @GetMapping
     public ResponseEntity<Page<LeadOutput>> getLeads(
@@ -43,6 +44,7 @@ public class LeadController {
             @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
         UUID currentAdminId = UUID.fromString(jwt.getSubject());
+        leadReadAccess.requireBranch(jwt, branchId);
         Page<kz.edu.soccerhub.crm.domain.model.Lead> page = leadService.getLeads(
                 statuses,
                 assignedAdminId,
@@ -68,6 +70,7 @@ public class LeadController {
             @PathVariable UUID leadId
     ) {
         UUID currentAdminId = UUID.fromString(jwt.getSubject());
+        leadReadAccess.canRead(jwt, leadId);
         return ResponseEntity.ok(leadMapper.toOutput(leadService.getLeadById(leadId), currentAdminId));
     }
 
@@ -77,6 +80,7 @@ public class LeadController {
             @RequestParam UUID branchId
     ) {
         UUID currentAdminId = UUID.fromString(jwt.getSubject());
+        leadReadAccess.requireBranch(jwt, branchId);
         return ResponseEntity.ok(leadService.getKanban(branchId, currentAdminId));
     }
 

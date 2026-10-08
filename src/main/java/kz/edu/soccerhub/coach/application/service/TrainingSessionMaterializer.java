@@ -37,7 +37,7 @@ public class TrainingSessionMaterializer implements TrainingSessionPlanningPort 
     @Override
     @Transactional
     public void materializeSchedules(Collection<UUID> scheduleIds) {
-        materializeSchedules(scheduleIds, LocalDate.now(), horizonEnd());
+        materializeSchedules(scheduleIds, today(), horizonEnd());
     }
 
     @Override
@@ -120,7 +120,12 @@ public class TrainingSessionMaterializer implements TrainingSessionPlanningPort 
         }
         groupScheduleRepository.findAllById(ids).stream()
                 .filter(schedule -> schedule.getStatus() == ScheduleStatus.ACTIVE)
-                .forEach(schedule -> materializeSchedule(schedule, fromDate, toDate));
+                .forEach(schedule -> {
+                    // An explicitly requested one-day period represents one concrete session,
+                    // even beyond the rolling horizon used for recurring schedules.
+                    boolean singleDate = schedule.getStartDate().equals(schedule.getEndDate());
+                    materializeSchedule(schedule, fromDate, singleDate ? max(toDate, schedule.getEndDate()) : toDate);
+                });
     }
 
     private void materializeSchedule(GroupSchedule schedule, LocalDate fromDate, LocalDate toDate) {

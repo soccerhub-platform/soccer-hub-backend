@@ -8,6 +8,7 @@ public record AdminDashboardSummaryResponse(
         AdminDashboardRisksDto risks,
         AdminDashboardLeadFunnelDto funnel,
         AdminDashboardTodayScheduleDto todaySchedule,
-        AdminDashboardWeeklyTrendDto weeklyDynamics
+        AdminDashboardWeeklyTrendDto weeklyDynamics,
+        java.util.List<kz.edu.soccerhub.common.dto.trial.TrialBookingListItemDto> todayTrials
 ) {
 }

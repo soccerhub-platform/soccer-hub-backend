@@ -73,17 +73,19 @@ public class AuthService implements AuthPort {
         if (roles.isEmpty()) {
             throw new UnauthorizedException("User has no roles assigned");
         }
-        if (!roles.contains(input.role())) {
+        if (input.role() != null && !roles.contains(input.role())) {
             throw new UnauthorizedException("User does not have the required role: " + input.role());
         }
 
-        Tokens tokens = tokenService.issueTokens(user, Set.of(input.role()), userAgent);
+        Set<Role> tokenRoles = input.role() == null ? roles : Set.of(input.role());
+        Tokens tokens = tokenService.issueTokens(user, tokenRoles, userAgent);
         boolean passwordChangeRequired = user.isForcePasswordChange();
         return new TokenOutput(
                 tokens.accessToken(),
                 tokens.refreshToken(),
                 jwtProperties.getAccessTtl().toSeconds(),
-                passwordChangeRequired
+                passwordChangeRequired,
+                tokenRoles
         );
     }
 
@@ -100,7 +102,8 @@ public class AuthService implements AuthPort {
                 newAccessToken,
                 newRotatedRefreshTokenToken.newRefreshToken(),
                 jwtProperties.getAccessTtl().toSeconds(),
-                false
+                false,
+                roles
         );
     }
 

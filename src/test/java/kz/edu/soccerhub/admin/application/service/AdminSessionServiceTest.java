@@ -54,6 +54,32 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AdminSessionServiceTest {
 
+    @Test
+    void shouldUseAlmatyTimeForOverdueStatusOnUtcServer() {
+        java.util.TimeZone previous = java.util.TimeZone.getDefault();
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"));
+            UUID adminId = UUID.randomUUID(), groupId = UUID.randomUUID(), branchId = UUID.randomUUID();
+            UUID sessionId = UUID.randomUUID(), coachId = UUID.randomUUID();
+            LocalDateTime end = LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty")).minusHours(1);
+            TrainingSession session = TrainingSession.builder().id(sessionId).groupId(groupId).coachId(coachId)
+                    .sessionDate(end.toLocalDate()).scheduledStartAt(end.minusHours(1)).scheduledEndAt(end)
+                    .status(TrainingSessionStatus.PLANNED).reportDone(false).build();
+            when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+            when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+            when(trainingSessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+            when(groupPort.getGroupById(groupId)).thenReturn(GroupDto.builder().groupId(groupId).branchId(branchId).name("QA").status(GroupStatus.ACTIVE).build());
+            AdminSessionDetailsOutput result = service.getSessionDetails(adminId, sessionId);
+            assertEquals("OVERDUE", result.effectiveStatus());
+            assertFalse(result.capabilities().canReschedule());
+            assertFalse(result.capabilities().canCancel());
+            session.setScheduledEndAt(end.plusHours(3));
+            assertEquals("PLANNED", service.getSessionDetails(adminId, sessionId).effectiveStatus());
+        } finally {
+            java.util.TimeZone.setDefault(previous);
+        }
+    }
+
     @Mock
     private AdminService adminService;
     @Mock

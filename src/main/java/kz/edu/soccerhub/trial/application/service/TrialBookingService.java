@@ -25,6 +25,22 @@ import org.springframework.data.domain.Pageable;
 @RequiredArgsConstructor
 public class TrialBookingService implements TrialPort {
 
+    @Override
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<TrialBookingListItemDto> findBySessionIds(java.util.Collection<UUID> sessionIds) {
+        if (sessionIds.isEmpty()) return List.of();
+        return listReader.read(new org.springframework.data.domain.PageImpl<>(
+                repository.findAllByTrainingSessionIdInOrderByCreatedAtAsc(sessionIds))).getContent();
+    }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<TrialBookingListItemDto> findByLeadIds(java.util.Collection<UUID> leadIds) {
+        if (leadIds.isEmpty()) return List.of();
+        return listReader.read(new org.springframework.data.domain.PageImpl<>(
+                repository.findAllByLeadIdInOrderByCreatedAtDesc(leadIds))).getContent();
+    }
+
     private static final List<TrialBookingStatus> ACTIVE_STATUSES = List.of(
             TrialBookingStatus.SCHEDULED
     );

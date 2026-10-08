@@ -45,5 +45,6 @@
     <include file="/db/changelog/2026-08-17-trial-coach-recommendation.sql"/>
     <include file="/db/changelog/2026-08-27-lead-activity-event-normalization.sql"/>
     <include file="/db/changelog/2026-08-28-contract-source-lead.sql"/>
+    <include file="/db/changelog/2026-09-09-lead-workflow.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>

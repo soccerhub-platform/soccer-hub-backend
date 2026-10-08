@@ -80,4 +80,6 @@ public interface AnalyticsPort {
             LocalDate date,
             String timezone
     );
+
+    long countOverdueLeadTasks(UUID branchId);
 }

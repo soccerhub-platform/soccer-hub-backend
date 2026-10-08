@@ -47,7 +47,8 @@ public class AdminDashboardSummaryService {
             LeadStatus.DECISION_PENDING,
             LeadStatus.CONTRACT_PENDING,
             LeadStatus.PAYMENT_PENDING,
-            LeadStatus.CONVERTED
+            LeadStatus.CONVERTED,
+            LeadStatus.LOST
     );
 
     private final AdminService adminService;
@@ -61,6 +62,7 @@ public class AdminDashboardSummaryService {
     private final ContractPort contractPort;
     private final PaymentPort paymentPort;
     private final AnalyticsPort analyticsPort;
+    private final TrialPort trialPort;
 
     @Transactional(readOnly = true)
     public AdminDashboardSummaryResponse getSummary(
@@ -80,17 +82,14 @@ public class AdminDashboardSummaryService {
         List<GroupDto> activeGroups = branchGroups.stream()
                 .filter(group -> group.status() == GroupStatus.ACTIVE)
                 .toList();
-        List<GroupDto> pausedGroups = branchGroups.stream()
-                .filter(group -> group.status() == GroupStatus.PAUSED)
-                .toList();
 
-        Set<UUID> activeGroupIds = activeGroups.stream().map(GroupDto::groupId).collect(Collectors.toSet());
-        Map<UUID, List<GroupCoachDto>> activeCoachesByGroupId = activeGroupIds.stream()
+        Set<UUID> sessionGroupIds = branchGroups.stream().map(GroupDto::groupId).collect(Collectors.toSet());
+        Map<UUID, List<GroupCoachDto>> activeCoachesByGroupId = sessionGroupIds.stream()
                 .collect(Collectors.toMap(
                         groupId -> groupId,
                         groupId -> List.copyOf(groupCoachPort.getActiveCoaches(groupId))
                 ));
-        Map<UUID, Boolean> hasScheduleByGroupId = activeGroupIds.stream()
+        Map<UUID, Boolean> hasScheduleByGroupId = sessionGroupIds.stream()
                 .collect(Collectors.toMap(
                         groupId -> groupId,
                         groupId -> !groupSchedulePort.getActiveSchedulesByGroup(groupId, resolvedDate).isEmpty()
@@ -108,20 +107,18 @@ public class AdminDashboardSummaryService {
         Map<UUID, String> groupNamesById = branchGroups.stream().collect(Collectors.toMap(GroupDto::groupId, GroupDto::name));
         int expiringContractsSoon = countExpiringContractsSoon(branchId, resolvedDate);
 
-        List<CoachSessionAdminView> todaySessions = coachIds.isEmpty() || activeGroupIds.isEmpty()
+        List<CoachSessionAdminView> todaySessions = sessionGroupIds.isEmpty()
                 ? List.of()
-                : coachPort.getSessions(coachIds, activeGroupIds, resolvedDate, resolvedDate);
-        List<CoachSessionAdminView> weekSessions = coachIds.isEmpty() || activeGroupIds.isEmpty()
+                : coachPort.getSessionsByGroups(sessionGroupIds, resolvedDate, resolvedDate);
+        List<CoachSessionAdminView> weekSessions = sessionGroupIds.isEmpty()
                 ? List.of()
-                : coachPort.getSessions(
-                        coachIds,
-                        activeGroupIds,
+                : coachPort.getSessionsByGroups(sessionGroupIds,
                         resolvedDate.with(DayOfWeek.MONDAY),
                         resolvedDate.with(DayOfWeek.SUNDAY)
                 );
-        List<CoachSessionAdminView> overdueReports = coachIds.isEmpty() || activeGroupIds.isEmpty()
+        List<CoachSessionAdminView> overdueReports = sessionGroupIds.isEmpty()
                 ? List.of()
-                : coachPort.getOverdueReportSessions(coachIds, activeGroupIds, resolvedDate);
+                : coachPort.getOverdueReportsByGroups(sessionGroupIds, resolvedDate);
 
         DashboardLeadAnalyticsOutput leadAnalytics = analyticsPort.getDashboardLeadAnalytics(branchId, resolvedDate, zoneId.getId());
         List<PaymentOutput> paymentsToday = paymentPort.listPayments(
@@ -156,10 +153,6 @@ public class AdminDashboardSummaryService {
                 .distinct()
                 .count();
         long overloadedCoaches = weeklySessionsByCoach.values().stream().filter(count -> count > OVERLOADED_COACH_WEEKLY_LIMIT).count();
-        long groupHealthIssues = activeGroups.stream()
-                .filter(group -> activeCoachesByGroupId.getOrDefault(group.groupId(), List.of()).isEmpty()
-                                 || !hasScheduleByGroupId.getOrDefault(group.groupId(), false))
-                .count();
 
         List<AdminDashboardAttentionItemDto> attention = buildAttention(
                 overdueReports.size(),
@@ -167,6 +160,7 @@ public class AdminDashboardSummaryService {
                 groupsWithoutCoach,
                 groupsWithoutSchedule,
                 leadAnalytics.slaBreachedLeads(),
+                analyticsPort.countOverdueLeadTasks(branchId),
                 expiringContractsSoon
         );
 
@@ -190,7 +184,7 @@ public class AdminDashboardSummaryService {
                         activeToday,
                         cancelledToday,
                         coachIds,
-                        activeGroupIds,
+                        sessionGroupIds,
                         paymentsToday
                 ),
                 buildBranchSummary(
@@ -221,8 +215,9 @@ public class AdminDashboardSummaryService {
                         resolvedDate,
                         zoneId,
                         coachIds,
-                        activeGroupIds
-                )
+                        sessionGroupIds
+                ),
+                trialPort.findBySessionIds(todaySessions.stream().map(CoachSessionAdminView::sessionId).toList())
         );
     }
 
@@ -239,16 +234,17 @@ public class AdminDashboardSummaryService {
         BranchDto branch = branchPort.findById(branchId)
                 .orElseThrow(() -> new NotFoundException("Branch not found", branchId));
         ZoneId zoneId = resolveZone(timezone, branch.timezone());
-        List<GroupDto> activeGroups = groupPort.getGroupsByBranch(branchId).stream()
+        List<GroupDto> branchGroups = List.copyOf(groupPort.getGroupsByBranch(branchId));
+        List<GroupDto> activeGroups = branchGroups.stream()
                 .filter(group -> group.status() == GroupStatus.ACTIVE)
                 .toList();
-        Set<UUID> activeGroupIds = activeGroups.stream()
+        Set<UUID> sessionGroupIds = branchGroups.stream()
                 .map(GroupDto::groupId)
                 .collect(Collectors.toSet());
-        Map<UUID, String> groupNamesById = activeGroups.stream()
+        Map<UUID, String> groupNamesById = branchGroups.stream()
                 .collect(Collectors.toMap(GroupDto::groupId, GroupDto::name));
 
-        Map<UUID, List<GroupCoachDto>> activeCoachesByGroupId = activeGroupIds.stream()
+        Map<UUID, List<GroupCoachDto>> activeCoachesByGroupId = sessionGroupIds.stream()
                 .collect(Collectors.toMap(
                         groupId -> groupId,
                         groupId -> List.copyOf(groupCoachPort.getActiveCoaches(groupId))
@@ -262,9 +258,9 @@ public class AdminDashboardSummaryService {
                 : coachPort.getCoaches(coachIds).stream()
                         .collect(Collectors.toMap(CoachDto::id, this::fullName));
 
-        List<CoachSessionAdminView> todaySessions = coachIds.isEmpty() || activeGroupIds.isEmpty()
+        List<CoachSessionAdminView> todaySessions = sessionGroupIds.isEmpty()
                 ? List.of()
-                : coachPort.getSessions(coachIds, activeGroupIds, date, date);
+                : coachPort.getSessionsByGroups(sessionGroupIds, date, date);
 
         return buildTodaySchedule(todaySessions, zoneId, groupNamesById, coachNamesById);
     }
@@ -282,18 +278,19 @@ public class AdminDashboardSummaryService {
         BranchDto branch = branchPort.findById(branchId)
                 .orElseThrow(() -> new NotFoundException("Branch not found", branchId));
         ZoneId zoneId = resolveZone(timezone, branch.timezone());
-        List<GroupDto> activeGroups = groupPort.getGroupsByBranch(branchId).stream()
+        List<GroupDto> branchGroups = List.copyOf(groupPort.getGroupsByBranch(branchId));
+        List<GroupDto> activeGroups = branchGroups.stream()
                 .filter(group -> group.status() == GroupStatus.ACTIVE)
                 .toList();
-        Set<UUID> activeGroupIds = activeGroups.stream()
+        Set<UUID> sessionGroupIds = branchGroups.stream()
                 .map(GroupDto::groupId)
                 .collect(Collectors.toSet());
-        Map<UUID, List<GroupCoachDto>> activeCoachesByGroupId = activeGroupIds.stream()
+        Map<UUID, List<GroupCoachDto>> activeCoachesByGroupId = sessionGroupIds.stream()
                 .collect(Collectors.toMap(
                         groupId -> groupId,
                         groupId -> List.copyOf(groupCoachPort.getActiveCoaches(groupId))
                 ));
-        Map<UUID, Boolean> hasScheduleByGroupId = activeGroupIds.stream()
+        Map<UUID, Boolean> hasScheduleByGroupId = sessionGroupIds.stream()
                 .collect(Collectors.toMap(
                         groupId -> groupId,
                         groupId -> !groupSchedulePort.getActiveSchedulesByGroup(groupId, date).isEmpty()
@@ -302,9 +299,9 @@ public class AdminDashboardSummaryService {
                 .flatMap(Collection::stream)
                 .map(GroupCoachDto::coachId)
                 .collect(Collectors.toSet());
-        List<CoachSessionAdminView> todaySessions = coachIds.isEmpty() || activeGroupIds.isEmpty()
+        List<CoachSessionAdminView> todaySessions = sessionGroupIds.isEmpty()
                 ? List.of()
-                : coachPort.getSessions(coachIds, activeGroupIds, date, date);
+                : coachPort.getSessionsByGroups(sessionGroupIds, date, date);
         DashboardLeadAnalyticsOutput leadAnalytics = analyticsPort.getDashboardLeadAnalytics(branchId, date, zoneId.getId());
 
         int groupsWithoutCoach = (int) activeGroups.stream()
@@ -344,18 +341,19 @@ public class AdminDashboardSummaryService {
         BranchDto branch = branchPort.findById(branchId)
                 .orElseThrow(() -> new NotFoundException("Branch not found", branchId));
         ZoneId zoneId = resolveZone(timezone, branch.timezone());
-        List<GroupDto> activeGroups = groupPort.getGroupsByBranch(branchId).stream()
+        List<GroupDto> branchGroups = List.copyOf(groupPort.getGroupsByBranch(branchId));
+        List<GroupDto> activeGroups = branchGroups.stream()
                 .filter(group -> group.status() == GroupStatus.ACTIVE)
                 .toList();
-        Set<UUID> activeGroupIds = activeGroups.stream()
+        Set<UUID> sessionGroupIds = branchGroups.stream()
                 .map(GroupDto::groupId)
                 .collect(Collectors.toSet());
-        Map<UUID, List<GroupCoachDto>> activeCoachesByGroupId = activeGroupIds.stream()
+        Map<UUID, List<GroupCoachDto>> activeCoachesByGroupId = sessionGroupIds.stream()
                 .collect(Collectors.toMap(
                         groupId -> groupId,
                         groupId -> List.copyOf(groupCoachPort.getActiveCoaches(groupId))
                 ));
-        Map<UUID, Boolean> hasScheduleByGroupId = activeGroupIds.stream()
+        Map<UUID, Boolean> hasScheduleByGroupId = sessionGroupIds.stream()
                 .collect(Collectors.toMap(
                         groupId -> groupId,
                         groupId -> !groupSchedulePort.getActiveSchedulesByGroup(groupId, date).isEmpty()
@@ -364,20 +362,18 @@ public class AdminDashboardSummaryService {
                 .flatMap(Collection::stream)
                 .map(GroupCoachDto::coachId)
                 .collect(Collectors.toSet());
-        List<CoachSessionAdminView> todaySessions = coachIds.isEmpty() || activeGroupIds.isEmpty()
+        List<CoachSessionAdminView> todaySessions = sessionGroupIds.isEmpty()
                 ? List.of()
-                : coachPort.getSessions(coachIds, activeGroupIds, date, date);
-        List<CoachSessionAdminView> weekSessions = coachIds.isEmpty() || activeGroupIds.isEmpty()
+                : coachPort.getSessionsByGroups(sessionGroupIds, date, date);
+        List<CoachSessionAdminView> weekSessions = sessionGroupIds.isEmpty()
                 ? List.of()
-                : coachPort.getSessions(
-                        coachIds,
-                        activeGroupIds,
+                : coachPort.getSessionsByGroups(sessionGroupIds,
                         date.with(DayOfWeek.MONDAY),
                         date.with(DayOfWeek.SUNDAY)
                 );
-        List<CoachSessionAdminView> overdueReports = coachIds.isEmpty() || activeGroupIds.isEmpty()
+        List<CoachSessionAdminView> overdueReports = sessionGroupIds.isEmpty()
                 ? List.of()
-                : coachPort.getOverdueReportSessions(coachIds, activeGroupIds, date);
+                : coachPort.getOverdueReportsByGroups(sessionGroupIds, date);
 
         Map<UUID, Long> weeklySessionsByCoach = weekSessions.stream()
                 .filter(session -> !"CANCELLED".equals(session.status()))
@@ -417,18 +413,19 @@ public class AdminDashboardSummaryService {
         LocalDate dateFrom = from == null ? resolvedDate.minusDays(6) : from;
         LocalDate dateTo = to == null ? resolvedDate : to;
 
-        List<GroupDto> activeGroups = groupPort.getGroupsByBranch(branchId).stream()
+        List<GroupDto> branchGroups = List.copyOf(groupPort.getGroupsByBranch(branchId));
+        List<GroupDto> activeGroups = branchGroups.stream()
                 .filter(group -> group.status() == GroupStatus.ACTIVE)
                 .toList();
-        Set<UUID> activeGroupIds = activeGroups.stream()
+        Set<UUID> sessionGroupIds = branchGroups.stream()
                 .map(GroupDto::groupId)
                 .collect(Collectors.toSet());
-        Set<UUID> coachIds = activeGroupIds.stream()
+        Set<UUID> coachIds = sessionGroupIds.stream()
                 .flatMap(groupId -> groupCoachPort.getActiveCoaches(groupId).stream())
                 .map(GroupCoachDto::coachId)
                 .collect(Collectors.toSet());
 
-        return buildWeeklyDynamics(branchId, dateFrom, dateTo, zoneId, coachIds, activeGroupIds);
+        return buildWeeklyDynamics(branchId, dateFrom, dateTo, zoneId, coachIds, sessionGroupIds);
     }
 
     @Transactional(readOnly = true)
@@ -469,17 +466,26 @@ public class AdminDashboardSummaryService {
             int groupsWithoutCoach,
             int groupsWithoutSchedule,
             long slaBreachedLeads,
+            long overdueLeadTasks,
             int expiringContractsSoon
     ) {
         List<AdminDashboardAttentionItemDto> items = new ArrayList<>();
+        if (overdueLeadTasks > 0) {
+            items.add(new AdminDashboardAttentionItemDto(
+                    "overdue-lead-tasks", "danger", "Лиды",
+                    "Просроченные действия по лидам: " + overdueLeadTasks,
+                    "Срок запланированного контакта или следующего шага прошёл. Завершённые лиды исключены.",
+                    new AdminDashboardActionDto("Открыть просроченные действия", "/admin/leads?task=OVERDUE&view=list")
+            ));
+        }
         if (slaBreachedLeads > 0) {
             items.add(new AdminDashboardAttentionItemDto(
                     "waiting-leads",
                     "danger",
                     "Лиды",
                     slaBreachedLeads + " лида ждут ответа",
-                    "Проверьте лиды с нарушением SLA первого контакта.",
-                    new AdminDashboardActionDto("Перейти к лидам", "/admin/leads?filter=waiting-response")
+                    "Новые лиды без контакта более 2 часов. Откройте новые заявки.",
+                    new AdminDashboardActionDto("Перейти к лидам", "/admin/leads?status=NEW&view=list")
             ));
         }
         if (overdueReports > 0) {
@@ -489,7 +495,7 @@ public class AdminDashboardSummaryService {
                     "Отчеты",
                     overdueReports + " отчетов просрочено",
                     "Напомните тренерам закрыть отчеты по занятиям.",
-                    new AdminDashboardActionDto("Проверить тренеров", "/admin/coaches")
+                    new AdminDashboardActionDto("Открыть отчёты тренеров", "/admin/coaches")
             ));
         }
         if (overloadedCoaches > 0) {
@@ -519,7 +525,7 @@ public class AdminDashboardSummaryService {
                     "Договоры",
                     expiringContractsSoon + " договоров скоро истекают",
                     "Проверьте продление активных договоров на ближайшие дни.",
-                    new AdminDashboardActionDto("Открыть договоры", "/admin/contracts?filter=ending-soon")
+                    new AdminDashboardActionDto("Открыть договоры", "/admin/contracts?status=ACTIVE")
                 ));
         }
         if (items.isEmpty()) {
@@ -559,7 +565,7 @@ public class AdminDashboardSummaryService {
             long activeToday,
             long cancelledToday,
             Set<UUID> coachIds,
-            Set<UUID> activeGroupIds,
+            Set<UUID> sessionGroupIds,
             List<PaymentOutput> paymentsToday
     ) {
         LocalDate previousDate = date.minusDays(1);
@@ -567,9 +573,9 @@ public class AdminDashboardSummaryService {
         long newLeadsToday = analyticsPort.countCreatedLeads(branchId, date, zoneId.getId());
         long newLeadsYesterday = analyticsPort.countCreatedLeads(branchId, previousDate, zoneId.getId());
 
-        long trainingsYesterday = coachIds.isEmpty() || activeGroupIds.isEmpty()
+        long trainingsYesterday = sessionGroupIds.isEmpty()
                 ? 0
-                : coachPort.getSessions(coachIds, activeGroupIds, previousDate, previousDate).stream()
+                : coachPort.getSessionsByGroups(sessionGroupIds, previousDate, previousDate).stream()
                         .filter(session -> !"CANCELLED".equals(session.status()))
                         .count();
 
@@ -620,7 +626,7 @@ public class AdminDashboardSummaryService {
                         Long.toString(activeToday),
                         buildDelta(activeToday, trainingsYesterday, "count"),
                         "vs вчера (" + trainingsYesterday + ")" + (cancelledToday > 0 ? ", отменено " + cancelledToday : ""),
-                        "/admin/dashboard/today-schedule",
+                        "/admin/schedule?date=" + date + "&day=" + date,
                         null,
                         null
                 ),
@@ -659,9 +665,16 @@ public class AdminDashboardSummaryService {
             Map<UUID, String> groupNamesById,
             Map<UUID, String> coachNamesById
     ) {
+        // Include substitute/former coaches actually recorded on the sessions.
+        Map<UUID, String> sessionCoachNames = new HashMap<>(coachNamesById);
+        Set<UUID> missingCoachIds = todaySessions.stream().map(CoachSessionAdminView::coachId)
+                .filter(Objects::nonNull).filter(id -> !sessionCoachNames.containsKey(id)).collect(Collectors.toSet());
+        if (!missingCoachIds.isEmpty()) {
+            coachPort.getCoaches(missingCoachIds).forEach(coach -> sessionCoachNames.put(coach.id(), fullName(coach)));
+        }
         List<AdminDashboardSessionDto> scheduleItems = todaySessions.stream()
                 .sorted(Comparator.comparing(CoachSessionAdminView::scheduledStartAt))
-                .map(session -> toSessionDto(session, zoneId, groupNamesById, coachNamesById))
+                .map(session -> toSessionDto(session, zoneId, groupNamesById, sessionCoachNames))
                 .toList();
 
         int cancelled = (int) todaySessions.stream()
@@ -670,8 +683,8 @@ public class AdminDashboardSummaryService {
         int active = todaySessions.size() - cancelled;
         OffsetDateTime now = OffsetDateTime.now(zoneId);
         AdminDashboardSessionDto nextSession = scheduleItems.stream()
-                .filter(item -> !"CANCELLED".equals(item.status()))
-                .filter(item -> !item.endAt().isBefore(now))
+                .filter(item -> "PLANNED".equals(item.status()) || "IN_PROGRESS".equals(item.status()))
+                .filter(item -> item.endAt().isAfter(now))
                 .min(Comparator.comparing(AdminDashboardSessionDto::startAt))
                 .orElse(null);
 
@@ -707,7 +720,7 @@ public class AdminDashboardSummaryService {
         Long trainingsVisited = null;
         Integer attendancePercent = null;
         if (trainingsTotal == 0) {
-            unavailableReasons.put("attendancePercent", "No active sessions for selected date");
+            unavailableReasons.put("attendancePercent", "На эту дату нет занятий");
         } else {
             Set<UUID> sessionIds = activeSessions.stream()
                     .map(CoachSessionAdminView::sessionId)
@@ -718,10 +731,12 @@ public class AdminDashboardSummaryService {
                 trainingsVisited = attendanceSummaries.stream()
                         .filter(item -> item.presentLikeMarked() > 0)
                         .count();
-                attendancePercent = percentage(trainingsVisited, trainingsTotal);
+                long totalMarked = attendanceSummaries.stream().mapToLong(SessionAttendanceSummaryDto::totalMarked).sum();
+                long presentMarked = attendanceSummaries.stream().mapToLong(SessionAttendanceSummaryDto::presentLikeMarked).sum();
+                attendancePercent = percentage(presentMarked, totalMarked);
             } else {
-                unavailableReasons.put("trainingsVisited", "Attendance has not been recorded for selected date");
-                unavailableReasons.put("attendancePercent", "Attendance has not been recorded for selected date");
+                unavailableReasons.put("trainingsVisited", "Посещаемость ещё не отмечена");
+                unavailableReasons.put("attendancePercent", "Посещаемость ещё не отмечена");
             }
         }
 
@@ -742,7 +757,8 @@ public class AdminDashboardSummaryService {
     }
 
     private AdminDashboardLeadFunnelDto buildFunnel(Map<LeadStatus, Long> totals) {
-        long newLeads = totals.getOrDefault(LeadStatus.NEW, 0L);
+        // Totals are mutually exclusive current statuses in one created-at cohort, not stage-entry events.
+        long cohortSize = totals.values().stream().mapToLong(Long::longValue).sum();
         List<AdminDashboardLeadFunnelRowDto> rows = FUNNEL_STATUSES.stream()
                 .map(status -> {
                     long count = totals.getOrDefault(status, 0L);
@@ -750,14 +766,14 @@ public class AdminDashboardSummaryService {
                             status,
                             funnelLabel(status),
                             count,
-                            percentage(count, newLeads)
+                            percentage(count, cohortSize)
                     );
                 })
                 .toList();
 
         return new AdminDashboardLeadFunnelDto(
                 rows,
-                percentage(totals.getOrDefault(LeadStatus.CONVERTED, 0L), newLeads)
+                percentage(totals.getOrDefault(LeadStatus.CONVERTED, 0L), cohortSize)
         );
     }
 
@@ -797,7 +813,7 @@ public class AdminDashboardSummaryService {
             case CONTRACT_PENDING -> "Ожидают договор";
             case PAYMENT_PENDING -> "Ожидают оплату";
             case CONVERTED -> "Клиент";
-            default -> status.name();
+            case LOST -> "Закрыт с отказом";
         };
     }
 
@@ -902,7 +918,7 @@ public class AdminDashboardSummaryService {
                     expiringContractsSoon,
                     "count",
                     "warning",
-                    "/admin/contracts?filter=ending-soon"
+                    "/admin/contracts?status=ACTIVE"
             ));
         }
         if (!overdueReports.isEmpty()) {
@@ -977,7 +993,7 @@ public class AdminDashboardSummaryService {
                     cancelledToday,
                     "count",
                     "warning",
-                    "/admin/dashboard/today-schedule?branchId=" + branchId
+                    "/admin/schedule?status=CANCELLED"
             ));
         }
 
@@ -1018,9 +1034,9 @@ public class AdminDashboardSummaryService {
         return new AdminDashboardSessionDto(
                 session.sessionId(),
                 session.groupId(),
-                groupNamesById.getOrDefault(session.groupId(), "Unknown group"),
+                groupNamesById.getOrDefault(session.groupId(), "Группа недоступна"),
                 session.coachId(),
-                coachNamesById.getOrDefault(session.coachId(), "Unknown coach"),
+                coachNamesById.getOrDefault(session.coachId(), "Тренер не назначен"),
                 session.scheduledStartAt().atZone(zoneId).toOffsetDateTime(),
                 session.scheduledEndAt().atZone(zoneId).toOffsetDateTime(),
                 resolveSessionStatus(session, zoneId),
@@ -1048,7 +1064,7 @@ public class AdminDashboardSummaryService {
             LocalDate to,
             ZoneId zoneId,
             Set<UUID> coachIds,
-            Set<UUID> activeGroupIds
+            Set<UUID> sessionGroupIds
     ) {
         List<LocalDate> dates = from.datesUntil(to.plusDays(1)).toList();
         Map<LocalDate, BigDecimal> leadCountsByDate = dates.stream()
@@ -1059,9 +1075,9 @@ public class AdminDashboardSummaryService {
                         LinkedHashMap::new
                 ));
 
-        List<CoachSessionAdminView> sessions = coachIds.isEmpty() || activeGroupIds.isEmpty()
+        List<CoachSessionAdminView> sessions = sessionGroupIds.isEmpty()
                 ? List.of()
-                : coachPort.getSessions(coachIds, activeGroupIds, from, to);
+                : coachPort.getSessionsByGroups(sessionGroupIds, from, to);
         Map<LocalDate, BigDecimal> trainingsByDate = sessions.stream()
                 .filter(session -> !"CANCELLED".equals(session.status()))
                 .collect(Collectors.groupingBy(

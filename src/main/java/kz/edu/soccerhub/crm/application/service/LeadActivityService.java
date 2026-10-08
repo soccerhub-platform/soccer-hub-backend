@@ -24,6 +24,11 @@ public class LeadActivityService {
     private final LeadActivityRepository leadActivityRepository;
     private final AdminPort adminPort;
 
+    public void logWork(Lead lead, UUID actorId, String description) {
+        save(lead.getId(), LeadActivityType.WORK_UPDATED, null, null, null,
+                lead.getAssignedAdminId(), actorId, description);
+    }
+
     @Transactional(readOnly = true)
     public List<LeadActivityOutput> getLeadActivities(UUID leadId) {
         return leadActivityRepository.findByLeadIdOrderByCreatedAtDesc(leadId).stream()

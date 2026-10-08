@@ -15,6 +15,10 @@ import java.util.UUID;
 @Repository
 public interface LeadRepository extends JpaRepository<Lead, UUID>, JpaSpecificationExecutor<Lead> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from Lead l where l.id = :id")
+    Optional<Lead> findLockedById(UUID id);
+
     @Query("""
         select (count(l) > 0)
         from Lead l

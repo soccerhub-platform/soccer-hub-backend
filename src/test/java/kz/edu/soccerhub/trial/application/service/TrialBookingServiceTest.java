@@ -91,6 +91,19 @@ class TrialBookingServiceTest {
     }
 
     @Test
+    void dashboardTrialsUseOnlySuppliedSessionsAndKeepAllBookingStates() {
+        UUID sessionId = UUID.randomUUID();
+        assertEquals(List.of(), service.findBySessionIds(List.of()));
+        org.mockito.Mockito.verifyNoInteractions(repository, listReader);
+        var booking = TrialBooking.builder().id(UUID.randomUUID()).trainingSessionId(sessionId).build();
+        when(repository.findAllByTrainingSessionIdInOrderByCreatedAtAsc(List.of(sessionId))).thenReturn(List.of(booking));
+        var row = TrialBookingListItemDto.builder().id(booking.getId()).status(TrialBookingStatus.CANCELED).build();
+        when(listReader.read(any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(row)));
+        assertEquals(List.of(row), service.findBySessionIds(List.of(sessionId)));
+        verify(repository).findAllByTrainingSessionIdInOrderByCreatedAtAsc(List.of(sessionId));
+    }
+
+    @Test
     void rejectsDuplicateActiveTrial() {
         UUID studentId = UUID.randomUUID();
         UUID sessionId = UUID.randomUUID();

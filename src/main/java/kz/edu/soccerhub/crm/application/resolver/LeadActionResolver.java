@@ -61,7 +61,7 @@ public class LeadActionResolver {
             case DECISION_PENDING -> List.of(
                     primary(
                             LeadActionType.CONVERT_TO_CLIENT,
-                            "Оформить ребёнка",
+                            "Оформить участника",
                             null,
                             hasParticipants(lead),
                             branchAllowed

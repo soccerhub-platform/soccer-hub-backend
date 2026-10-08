@@ -36,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Collection;
@@ -53,6 +54,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminSessionService {
 
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Almaty");
     private static final long MAX_RANGE_DAYS = 31;
     private static final String ACTIVITY_SESSION_CANCELLED = "SESSION_CANCELLED";
     private static final String ACTIVITY_SESSION_RESCHEDULED = "SESSION_RESCHEDULED";
@@ -535,7 +537,7 @@ public class AdminSessionService {
                 .stream()
                 .collect(Collectors.toMap(TrainingSessionAttendance::getPlayerId, Function.identity()));
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
         List<TrainingSessionAttendance> toSave = input.entries().stream()
                 .map(entry -> {
                     TrainingSessionAttendance item = existing.get(entry.playerId());
@@ -759,7 +761,7 @@ public class AdminSessionService {
         if (session.getStatus() != TrainingSessionStatus.PLANNED && session.getStatus() != TrainingSessionStatus.IN_PROGRESS) {
             return false;
         }
-        return session.getScheduledEndAt() != null && session.getScheduledEndAt().isBefore(LocalDateTime.now());
+        return session.getScheduledEndAt() != null && session.getScheduledEndAt().isBefore(LocalDateTime.now(BUSINESS_ZONE));
     }
 
     private Map<UUID, CoachDto> getCoachMap(Set<UUID> coachIds) {

@@ -1369,7 +1369,8 @@ public class AdminGroupService {
     }
 
     private OffsetDateTime toOffsetDateTime(LocalDateTime value) {
-        return value == null ? null : value.atOffset(ZoneOffset.UTC);
+        // Schedule times are club-local, not UTC. Attaching UTC shifts the UI by five hours.
+        return value == null ? null : value.atZone(ZoneId.of("Asia/Almaty")).toOffsetDateTime();
     }
 
     private boolean overlaps(LocalDate startOne, LocalDate endOne, LocalDate startTwo, LocalDate endTwo) {
