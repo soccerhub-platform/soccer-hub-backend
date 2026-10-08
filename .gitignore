@@ -33,3 +33,4 @@ build/
 .vscode/
 
 /data/
+/.m2/repository/

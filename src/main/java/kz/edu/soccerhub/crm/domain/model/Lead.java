@@ -80,6 +80,28 @@ public class Lead extends AbstractAuditableEntity {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    @Builder.Default
+    @Column(name = "work_priority", nullable = false)
+    private String workPriority = "NORMAL";
+    @Column(name = "next_action")
+    private String nextAction;
+    @Column(name = "next_action_at")
+    private java.time.Instant nextActionAt;
+    @Column(name = "last_contact_at")
+    private java.time.Instant lastContactAt;
+    @Column(name = "stage_changed_at")
+    private java.time.Instant stageChangedAt;
+    @Column(name = "work_version", nullable = false)
+    private long workVersion;
+
+    public void updateWork(String priority, String action, java.time.Instant dueAt, boolean contact) {
+        this.workPriority = priority;
+        this.nextAction = action;
+        this.nextActionAt = dueAt;
+        if (contact) this.lastContactAt = java.time.Instant.now();
+        this.workVersion++;
+    }
+
     @OneToOne(mappedBy = "lead", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     private LeadTrial trial;
 
@@ -111,6 +133,7 @@ public class Lead extends AbstractAuditableEntity {
     }
 
     public void updateStatus(LeadStatus newStatus) {
+        if (this.status != newStatus) this.stageChangedAt = java.time.Instant.now();
         this.status = newStatus;
     }
 

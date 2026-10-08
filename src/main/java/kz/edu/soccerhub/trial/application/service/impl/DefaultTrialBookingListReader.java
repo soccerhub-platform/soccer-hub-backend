@@ -122,6 +122,7 @@ public class DefaultTrialBookingListReader
             return TrialBookingListItemDto.builder()
                     .id(booking.getId())
                     .leadId(booking.getLeadId())
+                    .participantId(booking.getParticipantId())
                     .clientId(booking.getClientId())
                     .studentId(booking.getStudentId())
                     .trainingSessionId(booking.getTrainingSessionId())

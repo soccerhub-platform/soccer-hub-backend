@@ -243,6 +243,24 @@ public class CoachService implements CoachPort {
 
     @Override
     @Transactional(readOnly = true)
+    public List<CoachSessionAdminView> getSessionsByGroups(Set<UUID> groupIds, LocalDate from, LocalDate to) {
+        if (groupIds.isEmpty()) return List.of();
+        return toSessionAdminViews(trainingSessionRepository
+                .findByGroupIdInAndSessionDateBetweenOrderBySessionDateDescScheduledStartAtDesc(groupIds, from, to));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CoachSessionAdminView> getOverdueReportsByGroups(Set<UUID> groupIds, LocalDate beforeDate) {
+        if (groupIds.isEmpty()) return List.of();
+        return toSessionAdminViews(trainingSessionRepository
+                .findByGroupIdInAndSessionDateBeforeAndReportDoneFalse(groupIds, beforeDate).stream()
+                .filter(session -> session.getStatus() != TrainingSessionStatus.CANCELLED)
+                .toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<CoachSessionAdminView> getOverdueReportSessions(
             Set<UUID> coachIds,
             Set<UUID> groupIds,

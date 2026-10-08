@@ -375,6 +375,8 @@ class AdminGroupServiceTest {
         assertNotNull(result.nextSession());
         assertEquals(sessionId, result.nextSession().id());
         assertEquals(materializedNextAt, result.nextSession().startsAt().toLocalDateTime());
+        assertEquals(java.time.ZoneOffset.ofHours(5), result.nextSession().startsAt().getOffset());
+        assertEquals(materializedNextAt.atZone(java.time.ZoneId.of("Asia/Almaty")).toInstant(), result.nextSession().startsAt().toInstant());
         assertTrue(result.capabilities().canEdit());
         assertTrue(result.capabilities().canPause());
         assertFalse(result.capabilities().canResume());

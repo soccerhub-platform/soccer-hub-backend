@@ -197,33 +197,8 @@ class PaymentServiceTest {
     }
 
     private kz.edu.soccerhub.common.dto.lead.LeadOutput leadOutput(UUID leadId, LeadStatus status) {
-        return new kz.edu.soccerhub.common.dto.lead.LeadOutput(
-                leadId,
-                null,
-                null,
-                null,
-                status,
-                List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                null,
-                null,
-                null
-        );
+        return kz.edu.soccerhub.common.dto.lead.LeadOutput.builder()
+                .id(leadId).status(status).actions(List.of()).participants(List.of()).currentTrials(List.of()).build();
     }
 
     private PaymentCreateCommand command(UUID contractId, BigDecimal amount) {

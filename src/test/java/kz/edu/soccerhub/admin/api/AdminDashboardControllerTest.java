@@ -128,7 +128,8 @@ class AdminDashboardControllerTest {
                 risks,
                 funnel,
                 todaySchedule,
-                weeklyDynamics
+                weeklyDynamics,
+                List.of()
         );
 
         when(summaryService.getSummary(eq(adminId), eq(branchId), eq(date), eq(timezone), eq(true))).thenReturn(summary);
@@ -183,7 +184,8 @@ class AdminDashboardControllerTest {
                 new AdminDashboardRisksDto(List.of()),
                 new AdminDashboardLeadFunnelDto(List.of(), 0),
                 new AdminDashboardTodayScheduleDto(new AdminDashboardTodayScheduleSummaryDto(0, 0, 0), null, List.of()),
-                new AdminDashboardWeeklyTrendDto(new AdminDashboardWeeklyTrendPeriodDto(date.minusDays(6), date), List.of(), true, "empty")
+                new AdminDashboardWeeklyTrendDto(new AdminDashboardWeeklyTrendPeriodDto(date.minusDays(6), date), List.of(), true, "empty"),
+                List.of()
         );
 
         when(summaryService.getSummary(eq(adminId), eq(branchId), eq(date), eq(null), eq(false))).thenReturn(summary);

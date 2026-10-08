@@ -4,6 +4,6 @@ public enum LeadActivityType {
     LEAD_CREATED,
     ASSIGNED_ADMIN_CHANGED,
     STATUS_CHANGED,
-    LEAD_CONVERTED
+    LEAD_CONVERTED,
+    WORK_UPDATED
 }
-

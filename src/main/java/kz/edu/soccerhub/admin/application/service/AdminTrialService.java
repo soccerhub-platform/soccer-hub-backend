@@ -14,8 +14,6 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -156,39 +154,23 @@ public class AdminTrialService {
                 ? LeadEvent.COMPLETE_TRIAL
                 : LeadEvent.NO_SHOW;
 
-        Runnable sync = () -> {
-            try {
-                leadPort.processEvent(
-                        output.lead().id(),
-                        event,
-                        null,
-                        null,
-                        actorId
-                );
-            } catch (kz.edu.soccerhub.common.exception.BadRequestException exception) {
-                log.warn(
-                        "Lead sync skipped after trial attendance: leadId={}, trialId={}, event={}, reason={}",
-                        output.lead().id(),
-                        output.id(),
-                        event,
-                        exception.getMessage()
-                );
-            }
-        };
-
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(
-                    new TransactionSynchronization() {
-                        @Override
-                        public void afterCommit() {
-                            sync.run();
-                        }
-                    }
+        try {
+            leadPort.processEvent(
+                    output.lead().id(),
+                    event,
+                    null,
+                    null,
+                    actorId
             );
-            return;
+        } catch (kz.edu.soccerhub.common.exception.BadRequestException exception) {
+            log.warn(
+                    "Lead sync skipped after trial attendance: leadId={}, trialId={}, event={}, reason={}",
+                    output.lead().id(),
+                    output.id(),
+                    event,
+                    exception.getMessage()
+            );
         }
-
-        sync.run();
     }
 
     @Transactional

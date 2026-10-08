@@ -9,6 +9,10 @@ import java.util.UUID;
 
 public interface TrialPort {
 
+    List<TrialBookingListItemDto> findBySessionIds(java.util.Collection<UUID> sessionIds);
+
+    List<TrialBookingListItemDto> findByLeadIds(java.util.Collection<UUID> leadIds);
+
     /**
      * Creates a new trial booking based on the provided command.
      * @param command the command containing the details for creating the trial booking

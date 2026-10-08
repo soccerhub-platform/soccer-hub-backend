@@ -107,4 +107,32 @@ class CoachServiceAttendanceTimelineTest {
                 .status(status)
                 .build();
     }
+
+    @Test
+    void branchSessionsDoNotRequireCurrentCoachAssignmentAndKeepCancellations() {
+        UUID groupId = UUID.randomUUID();
+        LocalDate date = LocalDate.of(2026, 9, 14);
+        var planned = session(groupId, date, TrainingSessionStatus.PLANNED, 10);
+        var cancelled = session(groupId, date, TrainingSessionStatus.CANCELLED, 12);
+        when(trainingSessionRepository.findByGroupIdInAndSessionDateBetweenOrderBySessionDateDescScheduledStartAtDesc(Set.of(groupId), date, date))
+                .thenReturn(List.of(planned, cancelled));
+        var result = service.getSessionsByGroups(Set.of(groupId), date, date);
+        assertEquals(2, result.size());
+        assertEquals(planned.getCoachId(), result.getFirst().coachId());
+        assertEquals("CANCELLED", result.get(1).status());
+    }
+
+    @Test
+    void overdueReportsExcludeCancellationsAndEmptyBranchCannotReadOtherBranches() {
+        UUID groupId = UUID.randomUUID();
+        LocalDate date = LocalDate.of(2026, 9, 14);
+        var planned = session(groupId, date.minusDays(1), TrainingSessionStatus.PLANNED, 10);
+        var cancelled = session(groupId, date.minusDays(1), TrainingSessionStatus.CANCELLED, 12);
+        assertEquals(List.of(), service.getSessionsByGroups(Set.of(), date, date));
+        assertEquals(List.of(), service.getOverdueReportsByGroups(Set.of(), date));
+        org.mockito.Mockito.verifyNoInteractions(trainingSessionRepository);
+        when(trainingSessionRepository.findByGroupIdInAndSessionDateBeforeAndReportDoneFalse(Set.of(groupId), date))
+                .thenReturn(List.of(planned, cancelled));
+        assertEquals(List.of(planned.getId()), service.getOverdueReportsByGroups(Set.of(groupId), date).stream().map(s -> s.sessionId()).toList());
+    }
 }

@@ -20,6 +20,8 @@ import java.util.UUID;
 @Repository
 public interface TrainingSessionRepository extends JpaRepository<TrainingSession, UUID> {
 
+    List<TrainingSession> findByGroupIdInAndSessionDateBeforeAndReportDoneFalse(Set<UUID> groupIds, LocalDate beforeDate);
+
     Optional<TrainingSession> findByIdAndCoachId(UUID id, UUID coachId);
 
     Optional<TrainingSession> findByScheduleIdAndSessionDate(UUID scheduleId, LocalDate sessionDate);

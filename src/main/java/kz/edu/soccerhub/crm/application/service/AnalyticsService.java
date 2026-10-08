@@ -201,7 +201,7 @@ public class AnalyticsService implements AnalyticsPort {
         return new DashboardLeadAnalyticsOutput(
                 funnelTotals.getOrDefault(LeadStatus.NEW, 0L),
                 loadAverageLeadDurationMinutes(branchId, kpiDateFrom, date, resolvedTimezone, "IN_PROGRESS"),
-                loadLeadBreachCount(branchId, kpiDateFrom, date, resolvedTimezone, "IN_PROGRESS", 120),
+                countWaitingForFirstContact(branchId),
                 funnelTotals,
                 loadDashboardWeeklyTrend(branchId, weekStart, date, resolvedTimezone)
         );
@@ -223,6 +223,31 @@ public class AnalyticsService implements AnalyticsPort {
                 .addValue("tz", resolvedTimezone);
 
         Long count = jdbcTemplate.queryForObject(sql, params, Long.class);
+        return count == null ? 0 : count;
+    }
+
+    private long countWaitingForFirstContact(UUID branchId) {
+        // An operational alert is about unanswered leads now, not historic late transitions.
+        String sql = """
+                select count(*) from leads l
+                where l.branch_id = :branchId
+                  and l.status = 'NEW'
+                  and l.last_contact_at is null
+                  and l.created_at < now() - interval '2 hours'
+                """;
+        Long count = jdbcTemplate.queryForObject(sql,
+                new MapSqlParameterSource().addValue("branchId", branchId), Long.class);
+        return count == null ? 0 : count;
+    }
+
+    @Override
+    public long countOverdueLeadTasks(UUID branchId) {
+        Long count = jdbcTemplate.queryForObject("""
+                select count(*) from leads l
+                where l.branch_id = :branchId
+                  and l.status not in ('CONVERTED', 'LOST')
+                  and l.next_action_at < now()
+                """, new MapSqlParameterSource().addValue("branchId", branchId), Long.class);
         return count == null ? 0 : count;
     }
 

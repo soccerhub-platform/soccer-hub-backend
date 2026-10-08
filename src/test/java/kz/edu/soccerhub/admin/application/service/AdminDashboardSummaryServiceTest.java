@@ -73,6 +73,9 @@ class AdminDashboardSummaryServiceTest {
     @Mock
     private AnalyticsPort analyticsPort;
 
+    @Mock
+    private kz.edu.soccerhub.common.port.TrialPort trialPort;
+
     private AdminDashboardSummaryService service;
 
     @BeforeEach
@@ -88,7 +91,8 @@ class AdminDashboardSummaryServiceTest {
                 clientPort,
                 contractPort,
                 paymentPort,
-                analyticsPort
+                analyticsPort,
+                trialPort
         );
     }
 
@@ -155,7 +159,7 @@ class AdminDashboardSummaryServiceTest {
         when(coachPort.getCoaches(Set.of(coachId))).thenReturn(List.of(
                 CoachDto.builder().id(coachId).firstName("Арсен").lastName("Рахметулы").active(true).build()
         ));
-        when(coachPort.getSessions(Set.of(coachId), Set.of(groupId), date, date)).thenReturn(List.of(
+        when(coachPort.getSessionsByGroups(Set.of(groupId), date, date)).thenReturn(List.of(
                 new CoachSessionAdminView(
                         sessionId,
                         coachId,
@@ -170,9 +174,7 @@ class AdminDashboardSummaryServiceTest {
                         LocalDateTime.of(2026, 6, 24, 10, 0)
                 )
         ));
-        when(coachPort.getSessions(
-                Set.of(coachId),
-                Set.of(groupId),
+        when(coachPort.getSessionsByGroups(Set.of(groupId),
                 LocalDate.of(2026, 6, 22),
                 LocalDate.of(2026, 6, 28)
         )).thenReturn(List.of(
@@ -190,7 +192,7 @@ class AdminDashboardSummaryServiceTest {
                         LocalDateTime.of(2026, 6, 24, 10, 0)
                 )
         ));
-        when(coachPort.getOverdueReportSessions(Set.of(coachId), Set.of(groupId), date)).thenReturn(List.of());
+        when(coachPort.getOverdueReportsByGroups(Set.of(groupId), date)).thenReturn(List.of());
         when(coachPort.getSessionAttendanceSummaries(Set.of(sessionId))).thenReturn(List.of(
                 new SessionAttendanceSummaryDto(sessionId, 10, 8)
         ));
@@ -246,8 +248,9 @@ class AdminDashboardSummaryServiceTest {
                 )
         );
         when(analyticsPort.countCreatedLeads(branchId, date, "Asia/Almaty")).thenReturn(3L);
+        when(analyticsPort.countOverdueLeadTasks(branchId)).thenReturn(2L);
         when(analyticsPort.countCreatedLeads(branchId, date.minusDays(1), "Asia/Almaty")).thenReturn(2L);
-        when(coachPort.getSessions(Set.of(coachId), Set.of(groupId), date.minusDays(1), date.minusDays(1))).thenReturn(List.of(
+        when(coachPort.getSessionsByGroups(Set.of(groupId), date.minusDays(1), date.minusDays(1))).thenReturn(List.of(
                 new CoachSessionAdminView(
                         UUID.randomUUID(),
                         coachId,
@@ -309,7 +312,7 @@ class AdminDashboardSummaryServiceTest {
         assertEquals(6L, response.branchSummary().studentsDelta());
         assertEquals(1L, response.branchSummary().trainingsVisited());
         assertEquals(1L, response.branchSummary().trainingsTotal());
-        assertEquals(100, response.branchSummary().attendancePercent());
+        assertEquals(80, response.branchSummary().attendancePercent());
         assertEquals(45, response.branchSummary().avgFirstResponseMinutes());
         assertEquals("contracts-ending-soon", response.risks().items().getFirst().code());
         assertEquals(1, response.todaySchedule().summary().total());
@@ -317,9 +320,71 @@ class AdminDashboardSummaryServiceTest {
         assertEquals("TEMPORARY", response.todaySchedule().items().getFirst().scheduleType());
         assertTrue(response.alerts().attention().stream().anyMatch(item -> "waiting-leads".equals(item.id())));
         assertTrue(response.alerts().attention().stream().anyMatch(item -> "contracts-ending-soon".equals(item.id())));
-        assertEquals(2, response.alerts().topCards().size());
+        assertEquals(3, response.alerts().topCards().size());
+        assertTrue(response.alerts().attention().stream().anyMatch(item ->
+                "overdue-lead-tasks".equals(item.id()) && item.action().target().contains("task=OVERDUE")));
         assertEquals(date.minusDays(6), response.weeklyDynamics().period().from());
         assertEquals(date, response.weeklyDynamics().period().to());
         assertEquals(3, response.weeklyDynamics().series().size());
+        assertEquals(13, response.funnel().conversionToClientPercent());
+        org.mockito.Mockito.verify(trialPort).findBySessionIds(List.of(sessionId));
+        assertEquals("/admin/schedule?date=" + date + "&day=" + date, response.kpis().items().get(2).target());
+    }
+
+    @Test
+    void todayIncludesPausedGroupsAndFormerCoachWithoutCurrentAssignments() {
+        UUID branchId = UUID.randomUUID(), groupId = UUID.randomUUID(), coachId = UUID.randomUUID();
+        LocalDate date = LocalDate.now(java.time.ZoneId.of("Asia/Almaty"));
+        when(branchPort.findById(branchId)).thenReturn(Optional.of(BranchDto.builder().id(branchId).timezone("Asia/Almaty").build()));
+        when(groupPort.getGroupsByBranch(branchId)).thenReturn(List.of(
+                GroupDto.builder().groupId(groupId).name("Paused group").status(GroupStatus.PAUSED).build()));
+        when(coachPort.getCoaches(Set.of(coachId))).thenReturn(List.of(CoachDto.builder().id(coachId).firstName("Former").lastName("Coach").build()));
+        when(coachPort.getSessionsByGroups(Set.of(groupId), date, date)).thenReturn(List.of(
+                new CoachSessionAdminView(UUID.randomUUID(), coachId, groupId, null, "REGULAR", date,
+                        date.atStartOfDay(), date.atTime(23, 59), "COMPLETED", true, date.atStartOfDay())));
+        var result = service.getTodaySchedule(UUID.randomUUID(), branchId, date, "Asia/Almaty", true);
+        assertEquals(1, result.items().size());
+        assertEquals("Paused group", result.items().getFirst().groupName());
+        assertEquals("Former Coach", result.items().getFirst().coachName());
+        org.junit.jupiter.api.Assertions.assertNull(result.nextSession(), "Completed sessions must not appear as next");
+    }
+
+    @Test
+    void deniedBranchAccessDoesNotReadOperationalData() {
+        UUID adminId = UUID.randomUUID(), branchId = UUID.randomUUID();
+        when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+        org.junit.jupiter.api.Assertions.assertThrows(kz.edu.soccerhub.common.exception.BadRequestException.class,
+                () -> service.getSummary(adminId, branchId, LocalDate.now(), "Asia/Almaty", false));
+        org.mockito.Mockito.verifyNoInteractions(coachPort, trialPort, paymentPort, analyticsPort);
+    }
+
+    @Test
+    void conversionUsesEntireCohortIncludingClosedLeads() {
+        var funnel = readFunnel(Map.of(LeadStatus.NEW, 1L, LeadStatus.CONVERTED, 2L, LeadStatus.LOST, 1L));
+        assertEquals(50, funnel.conversionToClientPercent());
+        assertEquals(25, funnel.rows().stream().filter(r -> r.status() == LeadStatus.NEW).findFirst().orElseThrow().percent());
+        assertTrue(funnel.rows().stream().allMatch(r -> r.percent() <= 100));
+    }
+
+    @Test
+    void conversionStillWorksWhenNoLeadsRemainNew() {
+        assertEquals(100, readFunnel(Map.of(LeadStatus.CONVERTED, 2L)).conversionToClientPercent());
+    }
+
+    @Test
+    void emptyCohortHasNoConversion() {
+        assertEquals(0, readFunnel(Map.of()).conversionToClientPercent());
+    }
+
+    private kz.edu.soccerhub.admin.application.dto.dashboard.AdminDashboardLeadFunnelDto readFunnel(Map<LeadStatus, Long> totals) {
+        UUID adminId = UUID.randomUUID();
+        UUID branchId = UUID.randomUUID();
+        LocalDate date = LocalDate.of(2026, 9, 10);
+        when(adminService.findById(adminId)).thenReturn(Optional.of(AdminDto.builder().id(adminId).build()));
+        when(adminBranchService.verifyAdminBelongsToBranch(adminId, branchId)).thenReturn(true);
+        when(branchPort.findById(branchId)).thenReturn(Optional.of(BranchDto.builder().id(branchId).timezone("Asia/Almaty").build()));
+        when(analyticsPort.getFunnelAnalytics(branchId, date.minusDays(27), date, null, "Asia/Almaty", null, null))
+                .thenReturn(new kz.edu.soccerhub.common.dto.analytics.AnalyticsResponseOutput(null, null, null, totals, null));
+        return service.getFunnel(adminId, branchId, null, null, date, "Asia/Almaty", false);
     }
 }

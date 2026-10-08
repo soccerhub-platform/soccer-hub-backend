@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -46,9 +48,27 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleGeneric(Exception ex) {
         log.error(ex.getMessage(), ex);
-        String message = ex.getMessage() == null || ex.getMessage().isBlank() ? "Unexpected internal error" : ex.getMessage();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                             .body(Map.of("error", "INTERNAL_ERROR", "message", message));
+                             .body(Map.of("error", "INTERNAL_ERROR", "message", "Unexpected internal error"));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<?> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("code", "FORBIDDEN", "message", "Access denied"));
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<?> handleAuthenticationException(AuthenticationException ex, HttpServletRequest request) {
+        String traceId = MDC.get("traceId");
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("code", "UNAUTHORIZED");
+        body.put("message", "Invalid email or password");
+        body.put("path", request.getRequestURI());
+        body.put("trace", traceId == null ? "N/A" : traceId);
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

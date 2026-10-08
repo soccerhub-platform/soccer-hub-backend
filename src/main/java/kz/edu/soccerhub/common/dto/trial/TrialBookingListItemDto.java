@@ -14,6 +14,7 @@ import java.util.UUID;
 public record TrialBookingListItemDto(
         UUID id,
         UUID leadId,
+        UUID participantId,
         UUID clientId,
         UUID studentId,
         UUID trainingSessionId,

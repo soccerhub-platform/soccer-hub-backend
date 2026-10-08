@@ -79,7 +79,12 @@ public class LeadMapper {
                 mapParticipants(lead),
                 mapTrial(lead.getTrial(), context),
                 lead.getCreatedAt(),
-                lead.getUpdatedAt()
+                lead.getUpdatedAt(),
+                LeadWorkOutput.builder().priority(lead.getWorkPriority())
+                        .nextAction(lead.getNextAction()).nextActionAt(lead.getNextActionAt())
+                        .lastContactAt(lead.getLastContactAt()).stageChangedAt(lead.getStageChangedAt())
+                        .version(lead.getWorkVersion()).build(),
+                List.of()
         );
     }
 
