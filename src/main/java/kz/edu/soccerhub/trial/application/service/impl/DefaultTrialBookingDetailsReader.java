@@ -34,7 +34,7 @@ public class DefaultTrialBookingDetailsReader
                         booking.getTrainingSessionId()
                 );
 
-        return TrialBookingDetailsDto.builder()
+        return TrialBookingDetailsDto.builder().version(booking.getVersion())
                 .id(booking.getId())
                 .status(booking.getStatus())
                 .attendanceStatus(booking.getAttendanceStatus())
@@ -82,7 +82,7 @@ public class DefaultTrialBookingDetailsReader
                 )
                 .coachRecommendation(buildCoachRecommendation(booking))
                 .nextAction(buildNextAction(booking))
-                .capabilities(buildCapabilities(booking))
+                .capabilities(buildCapabilities(booking,session))
                 .build();
     }
 
@@ -116,7 +116,7 @@ public class DefaultTrialBookingDetailsReader
     }
 
     private TrialBookingDetailsDto.Capabilities buildCapabilities(
-            TrialBooking booking
+            TrialBooking booking, TrialSessionContext session
     ) {
         TrialBookingStatus status = booking.getStatus();
 
@@ -132,9 +132,10 @@ public class DefaultTrialBookingDetailsReader
         return TrialBookingDetailsDto.Capabilities.builder()
                 .canCancel(scheduled)
                 .canReschedule(scheduled)
-                .canMarkAttendance(!canceled && !completed)
+                .canMarkAttendance(!canceled && !completed && !session.startsAt().isAfter(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty"))))
                 .canRecordResult(
                         completed
+                                && booking.getResult()!=kz.edu.soccerhub.trial.domain.enums.TrialResult.CONVERTED
                                 && booking.getAttendanceStatus()
                                 == TrialAttendanceStatus.ATTENDED
                 )

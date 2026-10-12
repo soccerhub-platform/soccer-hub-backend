@@ -8,6 +8,10 @@ import java.util.UUID;
 public record RescheduleTrialBookingCommand(
         UUID trialId,
         UUID trainingSessionId,
-        UUID adminId
+        UUID adminId,
+        Long version
 ) {
+    public RescheduleTrialBookingCommand(UUID trialId,
+        UUID trainingSessionId,
+        UUID adminId) { this(trialId,trainingSessionId,adminId, null); }
 }

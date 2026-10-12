@@ -36,6 +36,7 @@ public final class TrialBookingSpecifications {
                     builder.equal(root.get("trainingSessionId"), command.trainingSessionId()));
         }
 
+        if(command.sessionIds()!=null) specification=specification.and((root,query,builder)->command.sessionIds().isEmpty()?builder.disjunction():root.get("trainingSessionId").in(command.sessionIds()));
         return specification;
     }
 }

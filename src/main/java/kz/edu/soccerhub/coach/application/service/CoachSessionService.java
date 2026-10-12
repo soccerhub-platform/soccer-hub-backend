@@ -53,6 +53,7 @@ public class CoachSessionService {
     private final CoachRosterReader coachRosterReader;
     private final TrialPort trialPort;
     private final LeadPort leadPort;
+    private final CoachHistoryAnalyticsReader historyAnalytics;
 
     @Transactional
     public CoachTodaySessionsResponse getTodaySessions(UUID currentUserId, LocalDate date, String timezone) {
@@ -70,6 +71,8 @@ public class CoachSessionService {
                             coachRosterReader.getActivePlayersByGroupAndDate(session.getGroupId(), session.getSessionDate());
                     Set<UUID> playerIds = players.stream().map(CoachRosterReader.ActivePlayerView::id).collect(Collectors.toSet());
                     String summary = calculateAttendanceSummary(session.getId(), playerIds);
+                    var marked=trainingSessionAttendanceRepository.findBySessionId(session.getId()).stream().filter(a->a.getStatus()!=null).map(TrainingSessionAttendance::getPlayerId).collect(Collectors.toSet());
+                    var trials=trialPort.getSessionParticipants(session.getId());
                     return new CoachTodaySessionItem(
                             session.getId(),
                             groupNames.getOrDefault(session.getGroupId(), "Unknown group"),
@@ -82,7 +85,9 @@ public class CoachSessionService {
                             resolveReportStatus(session, zoneId).name(),
                             reportDeadline(session),
                             submittedAt(session),
-                            summary
+                            summary,
+                            (int)(playerIds.stream().filter(id->!marked.contains(id)).count()+trials.stream().filter(t->t.attendanceStatus()==TrialAttendanceStatus.UNMARKED).count()),
+                            (int)trials.stream().filter(t->t.attendanceStatus()==TrialAttendanceStatus.ATTENDED&&t.coachRecommendation()==null&&t.result()!=kz.edu.soccerhub.trial.domain.enums.TrialResult.CONVERTED).count()
                     );
                 })
                 .toList();
@@ -190,22 +195,34 @@ public class CoachSessionService {
             LocalDate dateTo,
             int page,
             int size
-    ) {
-        validateDateRange(dateFrom, dateTo);
+    ) { return getHistory(currentUserId,dateFrom,dateTo,page,size,null,"","","NEWEST"); }
+
+    @Transactional(readOnly=true)
+    public CoachHistoryResponse getHistory(UUID currentUserId,LocalDate dateFrom,LocalDate dateTo,int page,int size,UUID groupId,String status,String report,String sort) {
+        if ((dateFrom==null)!=(dateTo==null)) throw new BadRequestException("Укажите обе даты периода");
+        if(dateFrom!=null) validateDateRange(dateFrom,dateTo);
         ensureCoachProfile(currentUserId);
 
         if (page < 0 || size < 1 || size > 100) {
             throw new BadRequestException("Invalid pagination params", page, size);
         }
 
-        PageRequest pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by(Sort.Direction.DESC, "sessionDate", "scheduledStartAt")
-        );
+        if(!Set.of("","PLANNED","IN_PROGRESS","COMPLETED","CANCELLED","OVERDUE").contains(status)
+                || !Set.of("","DONE","PENDING").contains(report) || !Set.of("NEWEST","OLDEST").contains(sort)) throw new BadRequestException("Некорректный фильтр истории");
+        PageRequest pageable=PageRequest.of(page,size,Sort.by(sort.equals("OLDEST")?Sort.Direction.ASC:Sort.Direction.DESC,"sessionDate","scheduledStartAt","id"));
 
-        Page<TrainingSession> sessions =
-                trainingSessionRepository.findByCoachIdAndSessionDateBetween(currentUserId, dateFrom, dateTo, pageable);
+        org.springframework.data.jpa.domain.Specification<TrainingSession> spec=(root,query,builder)->{
+                    var conditions=new ArrayList<jakarta.persistence.criteria.Predicate>();
+                    conditions.add(builder.equal(root.get("coachId"),currentUserId));
+                    if(dateFrom!=null) conditions.add(builder.between(root.get("sessionDate"),dateFrom,dateTo));
+                    conditions.add(builder.lessThanOrEqualTo(root.get("sessionDate"),LocalDate.now(ZoneId.of(DEFAULT_TIMEZONE))));
+                    if(groupId!=null) conditions.add(builder.equal(root.get("groupId"),groupId));
+                    if(status.equals("OVERDUE")) {conditions.add(root.get("status").in(TrainingSessionStatus.PLANNED,TrainingSessionStatus.IN_PROGRESS));conditions.add(builder.lessThan(root.get("scheduledEndAt"),LocalDateTime.now(ZoneId.of(DEFAULT_TIMEZONE))));}
+                    else if(!status.isEmpty()) conditions.add(builder.equal(root.get("status"),TrainingSessionStatus.valueOf(status)));
+                    if(!report.isEmpty())conditions.add(builder.equal(root.get("reportDone"),report.equals("DONE")));
+                    return builder.and(conditions.toArray(jakarta.persistence.criteria.Predicate[]::new));
+                };
+        Page<TrainingSession> sessions=trainingSessionRepository.findAll(spec,pageable);
         Map<UUID, String> groupNames = getGroupNames(sessions.getContent());
 
         ZoneId zoneId = validateZone(DEFAULT_TIMEZONE);
@@ -233,12 +250,13 @@ public class CoachSessionService {
                 })
                 .toList();
 
+        var analytics=historyAnalytics.read(currentUserId,dateFrom,dateTo,groupId,status,report);
         return new CoachHistoryResponse(
                 content,
                 sessions.getTotalElements(),
                 sessions.getTotalPages(),
                 sessions.getNumber(),
-                sessions.getSize()
+                sessions.getSize(), Map.of("completed",trainingSessionRepository.count(spec.and((r,q,b)->b.equal(r.get("status"),TrainingSessionStatus.COMPLETED))),"reportsDone",trainingSessionRepository.count(spec.and((r,q,b)->b.isTrue(r.get("reportDone")))),"reportsPending",trainingSessionRepository.count(spec.and((r,q,b)->b.and(b.isFalse(r.get("reportDone")),b.notEqual(r.get("status"),TrainingSessionStatus.CANCELLED),b.lessThan(r.get("scheduledEndAt"),LocalDateTime.now(ZoneId.of(DEFAULT_TIMEZONE))))))), analytics.attendance(),analytics.workload()
         );
     }
 
@@ -273,7 +291,7 @@ public class CoachSessionService {
                 .stream()
                 .collect(Collectors.toMap(TrainingSessionAttendance::getPlayerId, Function.identity()));
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneId.of(DEFAULT_TIMEZONE));
         List<TrainingSessionAttendance> toSave = new ArrayList<>();
         for (CoachAttendanceStudentInput studentInput : input.students()) {
             TrainingSessionAttendance item = existing.get(studentInput.studentId());
@@ -339,16 +357,16 @@ public class CoachSessionService {
         TrialBookingDetailsDto updated =
                 trialPort.markAttendance(
                         MarkTrialAttendanceCommand.builder()
-                                .trialId(trialId)
+                                .trialId(trialId).version(input.version())
                                 .adminId(currentUserId)
                                 .status(input.status())
                                 .comment(input.comment())
                                 .build()
                 );
 
-        syncLeadAfterTrialAttendance(updated, input.status(), null);
+        syncLeadAfterTrialAttendance(updated, input.status(), currentUserId);
 
-        return toTrialStudentItem(updated);
+        return trialPort.getSessionParticipants(sessionId).stream().filter(t->t.trialBookingId().equals(trialId)).map(this::toTrialStudentItem).findFirst().orElseGet(()->toTrialStudentItem(updated));
     }
 
     @Transactional
@@ -379,7 +397,7 @@ public class CoachSessionService {
         TrialSessionParticipantDto updated =
                 trialPort.recordCoachRecommendation(
                         RecordTrialCoachRecommendationCommand.builder()
-                                .trialId(trialId)
+                                .trialId(trialId).version(input.version())
                                 .coachId(currentUserId)
                                 .recommendation(
                                         input.recommendation()
@@ -411,7 +429,7 @@ public class CoachSessionService {
                 .stream()
                 .collect(Collectors.toMap(TrainingSessionAttendance::getPlayerId, Function.identity()));
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneId.of(DEFAULT_TIMEZONE));
         List<TrainingSessionAttendance> toSave = new ArrayList<>();
         for (UUID playerId : activePlayerIds) {
             TrainingSessionAttendance item = existing.get(playerId);
@@ -463,7 +481,7 @@ public class CoachSessionService {
         }
 
         session.setStatus(TrainingSessionStatus.IN_PROGRESS);
-        session.setActualStartAt(LocalDateTime.now());
+        session.setActualStartAt(LocalDateTime.now(ZoneId.of(DEFAULT_TIMEZONE)));
         session.setStartedBy(currentUserId);
 
         return new CoachSimpleStatusResponse(true, session.getStatus().name());
@@ -498,8 +516,10 @@ public class CoachSessionService {
             throw new BadRequestException("Attendance is incomplete", sessionId);
         }
 
+        if(trialPort.getSessionParticipants(sessionId).stream().anyMatch(t->t.attendanceStatus()==TrialAttendanceStatus.UNMARKED))
+            throw new BadRequestException("Отметьте посещаемость пробных учеников",sessionId);
         session.setStatus(TrainingSessionStatus.COMPLETED);
-        session.setActualEndAt(LocalDateTime.now());
+        session.setActualEndAt(LocalDateTime.now(ZoneId.of(DEFAULT_TIMEZONE)));
         session.setCompletedBy(currentUserId);
 
         return new CoachSimpleStatusResponse(true, session.getStatus().name());
@@ -656,7 +676,7 @@ public class CoachSessionService {
                         : participant.coachRecommendation().name(),
                 participant.coachRecommendedGroupId(),
                 participant.coachRecommendationComment(),
-                participant.coachRecommendationAt()
+                participant.coachRecommendationAt(), participant.version()
         );
     }
 
@@ -682,7 +702,7 @@ public class CoachSessionService {
                 null,
                 null,
                 null,
-                null
+                null, trial.version()
         );
     }
 

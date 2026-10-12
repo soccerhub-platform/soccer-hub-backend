@@ -25,6 +25,11 @@ public class TrialGroupAdapter implements TrialGroupPort {
     private final GroupPort groupPort;
     private final GroupMembershipPort membershipPort;
 
+    @Override public UUID branchId(UUID groupId) {return groupPort.getGroupById(groupId).branchId();}
+    @Override public void validateSameBranch(UUID sourceGroup,UUID recommendedGroup) {
+        if(!groupPort.getGroupById(sourceGroup).branchId().equals(groupPort.getGroupById(recommendedGroup).branchId()))
+            throw new BadRequestException("Рекомендуемая группа должна принадлежать филиалу пробного");
+    }
     @Override
     public void validateAvailableCapacity(
             UUID groupId,
@@ -44,7 +49,7 @@ public class TrialGroupAdapter implements TrialGroupPort {
             );
         }
 
-        if (membershipPort.existsActiveByGroupIdAndPlayerIdAsOfDate(
+        if (studentId!=null && membershipPort.existsActiveByGroupIdAndPlayerIdAsOfDate(
                 groupId,
                 studentId,
                 asOfDate

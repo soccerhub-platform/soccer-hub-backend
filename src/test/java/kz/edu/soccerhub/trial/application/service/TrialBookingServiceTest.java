@@ -27,10 +27,12 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,12 +55,13 @@ class TrialBookingServiceTest {
     @Mock
     private TrialSessionParticipantReader sessionParticipantReader;
 
+    @Mock private TrialOperationJournal journal;
     private TrialBookingService service;
 
     @BeforeEach
     void setUp() {
         service = new TrialBookingService(
-                repository,
+                repository, journal,
                 groupPort,
                 sessionPort,
                 studentPort,
@@ -178,11 +181,11 @@ class TrialBookingServiceTest {
         TrialBooking booking = createBooking();
         UUID adminId = UUID.randomUUID();
 
-        when(repository.findById(booking.getId()))
+        when(repository.findLockedById(booking.getId()))
                 .thenReturn(Optional.of(booking));
 
         service.cancelTrial(
-                CancelTrialCommand.builder()
+                CancelTrialCommand.builder().version(0L)
                         .trialId(booking.getId())
                         .adminId(adminId)
                         .reason("Student unavailable")
@@ -198,11 +201,12 @@ class TrialBookingServiceTest {
         TrialBooking booking = createBooking();
         UUID adminId = UUID.randomUUID();
 
-        when(repository.findById(booking.getId()))
+        when(repository.findLockedById(booking.getId()))
                 .thenReturn(Optional.of(booking));
 
+        when(sessionPort.getSessionDetails(booking.getTrainingSessionId())).thenReturn(TrialSessionContext.builder().startsAt(LocalDateTime.now().minusDays(1)).build());
         service.markAttendance(
-                MarkTrialAttendanceCommand.builder()
+                MarkTrialAttendanceCommand.builder().version(0L)
                         .trialId(booking.getId())
                         .adminId(adminId)
                         .status(TrialAttendanceStatus.ATTENDED)
@@ -226,11 +230,12 @@ class TrialBookingServiceTest {
                 null
         );
 
-        when(repository.findById(booking.getId()))
+        when(repository.findLockedById(booking.getId()))
                 .thenReturn(Optional.of(booking));
 
+        when(sessionPort.getSessionDetails(booking.getTrainingSessionId())).thenReturn(TrialSessionContext.builder().groupId(groupId).build());
         service.recordResult(
-                RecordTrialResultCommand.builder()
+                RecordTrialResultCommand.builder().version(0L)
                         .trialId(booking.getId())
                         .adminId(adminId)
                         .result(TrialResult.INTERESTED)
@@ -249,14 +254,14 @@ class TrialBookingServiceTest {
         UUID newSessionId = UUID.randomUUID();
         UUID newGroupId = UUID.randomUUID();
 
-        when(repository.findById(booking.getId()))
+        when(repository.findLockedById(booking.getId()))
                 .thenReturn(Optional.of(booking));
 
         when(sessionPort.getBookableSession(newSessionId))
                 .thenReturn(sessionContext(newSessionId, newGroupId));
 
         service.rescheduleTrial(
-                RescheduleTrialBookingCommand.builder()
+                RescheduleTrialBookingCommand.builder().version(0L)
                         .trialId(booking.getId())
                         .trainingSessionId(newSessionId)
                         .adminId(UUID.randomUUID())
@@ -345,7 +350,7 @@ class TrialBookingServiceTest {
                         )
                         .build();
 
-        when(repository.findById(booking.getId()))
+        when(repository.findLockedById(booking.getId()))
                 .thenReturn(Optional.of(booking));
 
         when(groupPort.getDetails(groupId))
@@ -359,9 +364,10 @@ class TrialBookingServiceTest {
         when(sessionParticipantReader.read(List.of(booking)))
                 .thenReturn(List.of(output));
 
+        when(sessionPort.getSessionDetails(booking.getTrainingSessionId())).thenReturn(TrialSessionContext.builder().groupId(groupId).build());
         TrialSessionParticipantDto result =
                 service.recordCoachRecommendation(
-                        RecordTrialCoachRecommendationCommand.builder()
+                        RecordTrialCoachRecommendationCommand.builder().version(0L)
                                 .trialId(booking.getId())
                                 .coachId(coachId)
                                 .recommendation(
@@ -391,6 +397,40 @@ class TrialBookingServiceTest {
         );
     }
 
+
+    @Test void staleAttendanceVersionDoesNotWriteHistory() {
+        var booking=createBooking();when(repository.findLockedById(booking.getId())).thenReturn(Optional.of(booking));
+        assertThrows(kz.edu.soccerhub.common.exception.ConflictException.class,()->service.markAttendance(MarkTrialAttendanceCommand.builder().trialId(booking.getId()).adminId(UUID.randomUUID()).version(1L).status(TrialAttendanceStatus.ATTENDED).build()));
+        assertEquals(TrialAttendanceStatus.UNMARKED,booking.getAttendanceStatus());verify(repository,never()).saveAndFlush(any());org.mockito.Mockito.verifyNoInteractions(journal);
+    }
+    @Test void versionIsRequiredForEveryAttendanceWriter() {
+        assertThrows(BadRequestException.class,()->service.markAttendance(MarkTrialAttendanceCommand.builder().trialId(UUID.randomUUID()).adminId(UUID.randomUUID()).status(TrialAttendanceStatus.ATTENDED).build()));
+        org.mockito.Mockito.verifyNoInteractions(repository,journal);
+    }
+    @Test void futureAttendanceIsRejectedInsideTrialModule() {
+        var booking=createBooking();when(repository.findLockedById(booking.getId())).thenReturn(Optional.of(booking));
+        when(sessionPort.getSessionDetails(booking.getTrainingSessionId())).thenReturn(sessionContext(booking.getTrainingSessionId(),UUID.randomUUID()));
+        assertThrows(BadRequestException.class,()->service.markAttendance(MarkTrialAttendanceCommand.builder().trialId(booking.getId()).adminId(UUID.randomUUID()).version(0L).status(TrialAttendanceStatus.ATTENDED).build()));
+        assertEquals(TrialAttendanceStatus.UNMARKED,booking.getAttendanceStatus());org.mockito.Mockito.verifyNoInteractions(journal);
+    }
+    @Test void pastFollowUpCannotBeSaved() {
+        var booking=createBooking();booking.markAttendance(TrialAttendanceStatus.ATTENDED,UUID.randomUUID(),null);when(repository.findLockedById(booking.getId())).thenReturn(Optional.of(booking));
+        assertThrows(BadRequestException.class,()->service.recordResult(RecordTrialResultCommand.builder().trialId(booking.getId()).adminId(UUID.randomUUID()).version(0L).result(TrialResult.FOLLOW_UP).nextActionType(kz.edu.soccerhub.trial.domain.enums.TrialNextActionType.CALL).nextActionAt(LocalDateTime.now().minusDays(1)).build()));
+        org.mockito.Mockito.verifyNoInteractions(journal);
+    }
+    @Test void recommendationsRespectCapacityAndBranch() {
+        var booking=createBooking();booking.markAttendance(TrialAttendanceStatus.ATTENDED,UUID.randomUUID(),null);var target=UUID.randomUUID();var source=UUID.randomUUID();
+        when(repository.findLockedById(booking.getId())).thenReturn(Optional.of(booking));when(sessionPort.getSessionDetails(booking.getTrainingSessionId())).thenReturn(TrialSessionContext.builder().groupId(source).build());
+        doThrow(new BadRequestException("foreign branch")).when(groupPort).validateSameBranch(source,target);
+        assertThrows(BadRequestException.class,()->service.recordCoachRecommendation(RecordTrialCoachRecommendationCommand.builder().trialId(booking.getId()).coachId(UUID.randomUUID()).version(0L).recommendation(TrialCoachRecommendation.RECOMMEND_ANOTHER_GROUP).recommendedGroupId(target).build()));
+        org.mockito.Mockito.verifyNoInteractions(journal);assertEquals(null,booking.getCoachRecommendation());
+    }
+    @Test void actualConversionLinksOnlyExactParticipantAndClosesFollowUp() {
+        var booking=TrialBooking.schedule(UUID.randomUUID(),null,UUID.randomUUID(),null,UUID.randomUUID());var actor=UUID.randomUUID();booking.markAttendance(TrialAttendanceStatus.ATTENDED,actor,null);
+        when(repository.findAllByLeadIdAndParticipantIdAndStudentIdIsNull(booking.getLeadId(),booking.getParticipantId())).thenReturn(List.of(booking));when(repository.findLockedById(booking.getId())).thenReturn(Optional.of(booking));
+        var student=UUID.randomUUID();service.linkConvertedStudent(LinkTrialStudentCommand.builder().leadId(booking.getLeadId()).participantId(booking.getParticipantId()).clientId(UUID.randomUUID()).studentId(student).actorId(actor).build());
+        assertEquals(student,booking.getStudentId());assertEquals(TrialResult.CONVERTED,booking.getResult());assertEquals(null,booking.getNextActionAt());verify(journal).append(eq(booking.getId()),eq(actor),eq("CONVERSION"),any());
+    }
     private CreateTrialBookingCommand command(
             UUID leadId,
             UUID studentId,
@@ -426,4 +466,19 @@ class TrialBookingServiceTest {
                 UUID.randomUUID()
         );
     }
+    @Test void unconvertedLeadTrialsStillRequireCapacityAndMatchingBranch() {
+        var leadId=UUID.randomUUID();var participant=UUID.randomUUID();var sessionId=UUID.randomUUID();var groupId=UUID.randomUUID();var branch=UUID.randomUUID();
+        when(sessionPort.getBookableSession(sessionId)).thenReturn(new TrialSessionContext(sessionId,groupId,UUID.randomUUID(),null,java.time.LocalDateTime.now().plusDays(1),java.time.LocalDateTime.now().plusDays(1).plusHours(1),kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.PLANNED));
+        when(groupPort.branchId(groupId)).thenReturn(branch);
+        doThrow(new BadRequestException("Нет мест")).when(groupPort).validateAvailableCapacity(eq(groupId),isNull(),any());
+        var command=CreateTrialBookingCommand.builder().adminId(UUID.randomUUID()).leadId(leadId).participantId(participant).trainingSessionId(sessionId).build();
+        assertThrows(BadRequestException.class,()->service.createTrial(command));verify(leadPort).validateBranch(leadId,branch);verify(repository,never()).save(any());verifyNoInteractions(journal);
+    }
+    @Test void foreignLeadCannotBeBookedIntoAnotherBranch() {
+        var leadId=UUID.randomUUID();var sessionId=UUID.randomUUID();var groupId=UUID.randomUUID();var branch=UUID.randomUUID();
+        when(sessionPort.getBookableSession(sessionId)).thenReturn(new TrialSessionContext(sessionId,groupId,UUID.randomUUID(),null,java.time.LocalDateTime.now().plusDays(1),java.time.LocalDateTime.now().plusDays(1).plusHours(1),kz.edu.soccerhub.coach.domain.model.enums.TrainingSessionStatus.PLANNED));
+        when(groupPort.branchId(groupId)).thenReturn(branch);doThrow(new BadRequestException("Чужой филиал")).when(leadPort).validateBranch(leadId,branch);
+        assertThrows(BadRequestException.class,()->service.createTrial(CreateTrialBookingCommand.builder().adminId(UUID.randomUUID()).leadId(leadId).participantId(UUID.randomUUID()).trainingSessionId(sessionId).build()));verify(repository,never()).save(any());verifyNoInteractions(journal);
+    }
+
 }

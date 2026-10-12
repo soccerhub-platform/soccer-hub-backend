@@ -25,6 +25,7 @@ public class AdminProfileService {
     private final AdminBranchService adminBranchService;
     private final BranchPort branchPort;
     private final AuthPort authPort;
+    private final kz.edu.soccerhub.common.port.EmployeeAccessPort employeeAccess;
 
     @Transactional(readOnly = true)
     public AdminProfileOutput getProfile(UUID adminId) {
@@ -68,7 +69,7 @@ public class AdminProfileService {
                 profile.getSpecialization(),
                 Boolean.FALSE.equals(profile.getActive()) ? "INACTIVE" : "ACTIVE",
                 branches,
-                List.of("LEADS", "CLIENTS", "GROUPS", "COACHES", "ANALYTICS"),
+                employeeAccess.getAccess(profile.getId()).permissions().stream().map(Enum::name).sorted().toList(),
                 profile.getCreatedAt()
         );
     }

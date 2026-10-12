@@ -1,6 +1,8 @@
 package kz.edu.soccerhub.dispatcher.api;
 
+import jakarta.validation.Valid;
 import kz.edu.soccerhub.dispatcher.application.dto.branch.DispatcherBranchCreateInput;
+import kz.edu.soccerhub.dispatcher.application.dto.branch.DispatcherBranchUpdateInput;
 import kz.edu.soccerhub.dispatcher.application.dto.branch.DispatcherBranchesOutput;
 import kz.edu.soccerhub.dispatcher.application.service.DispatcherBranchService;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +27,7 @@ public class DispatcherBranchController {
 
     @PostMapping(value = "/create")
     public ResponseEntity<Void> createBranch(@AuthenticationPrincipal Jwt jwt,
-                                          @RequestBody DispatcherBranchCreateInput input) {
+                                          @Valid @RequestBody DispatcherBranchCreateInput input) {
         UUID dispatcherId = UUID.fromString(jwt.getSubject());
         var output = dispatcherBranchService.createBranch(dispatcherId, input);
         return ResponseEntity
@@ -35,12 +37,33 @@ public class DispatcherBranchController {
 
 
     @GetMapping
-    public ResponseEntity<?> getBranches(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<?> getBranches(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam(defaultValue = "false") boolean includeArchived) {
         UUID dispatcherId = UUID.fromString(jwt.getSubject());
-        List<DispatcherBranchesOutput> dispatcherBranches = dispatcherBranchService.getDispatcherBranches(dispatcherId);
+        List<DispatcherBranchesOutput> dispatcherBranches = dispatcherBranchService.getDispatcherBranches(dispatcherId).stream()
+                .filter(branch -> includeArchived || branch.active()).toList();
         return ResponseEntity.ok().body(
                 Map.of("branches", dispatcherBranches)
         );
+    }
+
+    @PutMapping("/{branchId}")
+    public ResponseEntity<Void> updateBranch(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID branchId,
+            @Valid @RequestBody DispatcherBranchUpdateInput input) {
+        dispatcherBranchService.updateBranch(UUID.fromString(jwt.getSubject()), branchId, input);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{branchId}/archive")
+    public ResponseEntity<Void> archiveBranch(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID branchId) {
+        dispatcherBranchService.archiveBranch(UUID.fromString(jwt.getSubject()), branchId, true);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{branchId}/restore")
+    public ResponseEntity<Void> restoreBranch(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID branchId) {
+        dispatcherBranchService.archiveBranch(UUID.fromString(jwt.getSubject()), branchId, false);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping(value = "/{branchId}")
@@ -49,5 +72,10 @@ public class DispatcherBranchController {
         UUID dispatcherId = UUID.fromString(jwt.getSubject());
         dispatcherBranchService.deleteBranch(dispatcherId, branchId);
         return ResponseEntity.noContent().build();
+    }
+    @GetMapping("/{branchId}/history")
+    public org.springframework.data.domain.Page<kz.edu.soccerhub.common.dto.branch.BranchHistoryOutput> history(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID branchId,
+            @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+        return dispatcherBranchService.history(UUID.fromString(jwt.getSubject()),branchId,page,size);
     }
 }

@@ -24,6 +24,7 @@ public record CoachDto(
         LocalDate vacationFrom,
         LocalDate vacationTo,
         String workStatusReason,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String createdBy
 ) {
 }

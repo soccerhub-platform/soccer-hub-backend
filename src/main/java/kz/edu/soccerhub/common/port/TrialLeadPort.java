@@ -7,6 +7,7 @@ import kz.edu.soccerhub.common.dto.trial.TrialBookingDetailsDto;
 import kz.edu.soccerhub.crm.application.state.LeadEvent;
 
 public interface TrialLeadPort {
+    void validateBranch(UUID leadId,UUID branchId);
     /**
      * Validates if the trial lead with the given ID is a participant in the trial session.
      *

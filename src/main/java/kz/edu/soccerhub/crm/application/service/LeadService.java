@@ -312,9 +312,10 @@ public class LeadService implements LeadPort {
     public void assignLead(UUID leadId, UUID assignedAdminId, UUID currentAdminId) {
         validateAssignedAdmin(assignedAdminId);
 
-        Lead lead = findById(leadId);
+        Lead lead = leadRepository.findLockedById(leadId).orElseThrow(() -> new NotFoundException("Lead not found", leadId));
         UUID previousAdminId = lead.getAssignedAdminId();
         lead.assignAdmin(assignedAdminId);
+        lead.updateWork(lead.getWorkPriority(), lead.getNextAction(), lead.getNextActionAt(), false);
 
         leadRepository.save(lead);
         leadActivityService.logLeadAssigned(lead, previousAdminId, currentAdminId);

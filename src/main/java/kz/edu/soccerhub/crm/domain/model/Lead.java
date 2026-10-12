@@ -128,6 +128,11 @@ public class Lead extends AbstractAuditableEntity {
     @OneToMany(mappedBy = "lead", fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LeadParticipant> participants = new ArrayList<>();
 
+    public void route(UUID branchId, UUID adminId) {
+        this.branchId = java.util.Objects.requireNonNull(branchId);
+        this.assignedAdminId = adminId;
+    }
+
     public void assignAdmin(UUID adminId) {
         this.assignedAdminId = adminId;
     }

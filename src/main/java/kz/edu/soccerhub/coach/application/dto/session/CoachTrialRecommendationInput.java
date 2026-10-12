@@ -5,9 +5,14 @@ import kz.edu.soccerhub.trial.domain.enums.TrialCoachRecommendation;
 
 import java.util.UUID;
 
+@lombok.Builder
 public record CoachTrialRecommendationInput(
         @NotNull TrialCoachRecommendation recommendation,
         UUID recommendedGroupId,
-        String comment
+        String comment,
+        @jakarta.validation.constraints.NotNull Long version
 ) {
+    public CoachTrialRecommendationInput(TrialCoachRecommendation recommendation,
+        UUID recommendedGroupId,
+        String comment) { this(recommendation,recommendedGroupId,comment, null); }
 }

@@ -38,10 +38,12 @@ public class DispatcherAdminService {
     private final BranchPort branchPort;
     private final AuthPort authPort;
     private final AdminPort adminPort;
+    private final kz.edu.soccerhub.common.port.EmployeeAccessPort employeeAccessPort;
 
     @Transactional
-    public DispatcherAdminRegisterOutput registerAdmin(DispatcherAdminRegisterInput input) {
-        String tempPassword = passwordGenerator.generate(6);
+    public DispatcherAdminRegisterOutput registerAdmin(UUID dispatcherId, DispatcherAdminRegisterInput input) {
+        dispatcherBranchService.requireActiveBranch(dispatcherId, input.assignedBranch());
+        String tempPassword = passwordGenerator.generate(12);
 
         AuthRegisterCommand authRegisterCommand = AuthRegisterCommand.builder()
                 .email(input.email())
@@ -151,6 +153,7 @@ public class DispatcherAdminService {
 
     @Transactional
     public void deleteAdmin(UUID dispatcherId, UUID adminId) {
+        requireManagerReplacement(dispatcherId, adminId);
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
@@ -159,6 +162,12 @@ public class DispatcherAdminService {
         }
 
         authPort.delete(admin.id());
+    }
+
+    private void requireManagerReplacement(UUID dispatcherId, UUID adminId) {
+        boolean managesActiveBranch = dispatcherBranchService.getDispatcherBranches(dispatcherId).stream()
+                .anyMatch(branch -> branch.active() && adminId.equals(branch.managerAdminId()));
+        if (managesActiveBranch) throw new BadRequestException("Сначала смените руководителя активных филиалов");
     }
 
     private boolean isAdminCreatedByDispatcher(@NotNull AdminDto admin, @NotNull UUID dispatcherId) {
@@ -170,11 +179,11 @@ public class DispatcherAdminService {
 
     @Transactional
     public void changeAdminStatus(UUID dispatcherId, UUID adminId, @Valid DispatcherAdminChangeStatusInput input) {
+        if (!input.active()) requireManagerReplacement(dispatcherId, adminId);
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
-        boolean isBranchBelongsToDispatcher = isAdminCreatedByDispatcher(admin, dispatcherId)
-                || dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchesId());
+        boolean isBranchBelongsToDispatcher = isAdminCreatedByDispatcher(admin, dispatcherId);
         if (!isBranchBelongsToDispatcher) {
             throw new BadRequestException("Dispatcher does not have access to admin", adminId);
         }
@@ -193,10 +202,13 @@ public class DispatcherAdminService {
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
+        requireOwnedAdmin(dispatcherId, adminId);
+        dispatcherBranchService.requireActiveBranch(dispatcherId, input.branchId());
         if (admin.branchesId() != null && admin.branchesId().contains(input.branchId())) {
             return;
         }
 
+        dispatcherBranchService.requireActiveBranch(dispatcherId, input.branchId());
         boolean isNewBranchBelongsToDispatcher = dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, input.branchId());
         if (!isNewBranchBelongsToDispatcher) {
             throw new BadRequestException("Dispatcher does not have access to branch", input.branchId());
@@ -207,6 +219,11 @@ public class DispatcherAdminService {
 
     @Transactional
     public void unassignAdminFromBranch(UUID dispatcherId, UUID adminId, @Valid DispatcherAdminUnAssignBranchInput input) {
+        requireOwnedAdmin(dispatcherId, adminId);
+        var branch = dispatcherBranchService.requireOwnedBranch(dispatcherId, input.branchId());
+        if (branch.active() && adminId.equals(branch.managerAdminId())) {
+            throw new BadRequestException("Сначала смените руководителя филиала");
+        }
         adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
@@ -223,8 +240,7 @@ public class DispatcherAdminService {
         AdminDto admin = adminPort.findById(adminId)
                 .orElseThrow(() -> new NotFoundException("Admin not found", adminId));
 
-        boolean isBranchBelongsToDispatcher = isAdminCreatedByDispatcher(admin, dispatcherId)
-                || dispatcherBranchService.verifyBranchBelongsToDispatcher(dispatcherId, admin.branchesId());
+        boolean isBranchBelongsToDispatcher = isAdminCreatedByDispatcher(admin, dispatcherId);
         if (!isBranchBelongsToDispatcher) {
             throw new BadRequestException("Dispatcher does not have access to admin", adminId);
         }
@@ -234,5 +250,19 @@ public class DispatcherAdminService {
                         .lastName(input.lastName())
                         .phone(input.phone())
                 .build());
+    }
+    private AdminDto requireOwnedAdmin(UUID dispatcherId, UUID adminId) {
+        var admin=adminPort.findById(adminId).orElseThrow(()->new NotFoundException("Admin not found",adminId));
+        if(!isAdminCreatedByDispatcher(admin,dispatcherId)) throw new BadRequestException("Нет доступа к сотруднику",adminId);
+        return admin;
+    }
+    public kz.edu.soccerhub.common.dto.auth.EmployeeAccessDto getPermissions(UUID dispatcherId,UUID adminId) {
+        requireOwnedAdmin(dispatcherId,adminId);
+        return employeeAccessPort.getAccess(adminId);
+    }
+    @Transactional
+    public void changePermissions(UUID dispatcherId,UUID adminId,DispatcherEmployeePermissionsInput input) {
+        requireOwnedAdmin(dispatcherId,adminId);
+        employeeAccessPort.changePermissions(new kz.edu.soccerhub.common.dto.auth.ChangeEmployeePermissionsCommand(adminId,dispatcherId,input.permissions()));
     }
 }

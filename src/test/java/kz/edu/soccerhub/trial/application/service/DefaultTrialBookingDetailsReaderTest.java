@@ -129,7 +129,7 @@ class DefaultTrialBookingDetailsReaderTest {
 
         assertTrue(details.capabilities().canCancel());
         assertTrue(details.capabilities().canReschedule());
-        assertTrue(details.capabilities().canMarkAttendance());
+        assertFalse(details.capabilities().canMarkAttendance());
         assertFalse(details.capabilities().canRecordResult());
     }
 

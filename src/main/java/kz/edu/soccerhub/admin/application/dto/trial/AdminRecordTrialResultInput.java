@@ -14,5 +14,12 @@ public record AdminRecordTrialResultInput(
         UUID recommendedGroupId,
         String coachFeedback,
         TrialNextActionType nextActionType,
-        LocalDateTime nextActionAt
-) {}
+        LocalDateTime nextActionAt,
+        @jakarta.validation.constraints.NotNull Long version
+) {
+    public AdminRecordTrialResultInput(TrialResult result,
+        UUID recommendedGroupId,
+        String coachFeedback,
+        TrialNextActionType nextActionType,
+        LocalDateTime nextActionAt) { this(result,recommendedGroupId,coachFeedback,nextActionType,nextActionAt, null); }
+}

@@ -15,5 +15,14 @@ public record RecordTrialResultCommand(
         String coachFeedback,
         TrialNextActionType nextActionType,
         LocalDateTime nextActionAt,
-        UUID adminId
-) {}
+        UUID adminId,
+        Long version
+) {
+    public RecordTrialResultCommand(UUID trialId,
+        TrialResult result,
+        UUID recommendedGroupId,
+        String coachFeedback,
+        TrialNextActionType nextActionType,
+        LocalDateTime nextActionAt,
+        UUID adminId) { this(trialId,result,recommendedGroupId,coachFeedback,nextActionType,nextActionAt,adminId, null); }
+}

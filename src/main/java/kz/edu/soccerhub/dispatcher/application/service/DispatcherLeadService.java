@@ -17,9 +17,11 @@ import java.util.UUID;
 public class DispatcherLeadService {
 
     private final LeadPort leadPort;
+    private final DispatcherBranchService branchService;
 
     @Transactional
-    public LeadCreateOutput createLead(DispatcherLeadCreateInput input) {
+    public LeadCreateOutput createLead(UUID dispatcherId, DispatcherLeadCreateInput input) {
+        branchService.requireActiveBranch(dispatcherId, input.branchId());
         LeadCreateCommand command = toCommand(input);
         List<UUID> leadIds = leadPort.createLeads(command);
         return new LeadCreateOutput(leadIds);

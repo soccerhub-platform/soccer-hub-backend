@@ -10,6 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -20,6 +22,20 @@ import java.util.Map;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler({MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<?> handleRequestParameter(Exception ex, HttpServletRequest request) {
+        boolean missing = ex instanceof MissingServletRequestParameterException;
+        String parameter = missing
+                ? ((MissingServletRequestParameterException) ex).getParameterName()
+                : ((MethodArgumentTypeMismatchException) ex).getName();
+        return ResponseEntity.badRequest().body(Map.of(
+                "code", "INVALID_REQUEST_PARAMETER",
+                "message", (missing ? "Укажите обязательный параметр: " : "Некорректный параметр: ") + parameter,
+                "parameter", parameter,
+                "path", request.getRequestURI()
+        ));
+    }
 
     @ExceptionHandler(SoccerHubException.class)
     public ResponseEntity<?> handleBaseException(SoccerHubException ex, HttpServletRequest request) {

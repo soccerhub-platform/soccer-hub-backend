@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+@lombok.Builder
 public record CoachTodaySessionItem(
         UUID id,
         String groupName,
@@ -16,6 +17,6 @@ public record CoachTodaySessionItem(
         String reportStatus,
         LocalDateTime reportDeadline,
         LocalDateTime submittedAt,
-        String attendanceSummary
+        String attendanceSummary, int unmarkedAttendance, int trialsWithoutRecommendation
 ) {
 }
