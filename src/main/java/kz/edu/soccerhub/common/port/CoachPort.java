@@ -33,6 +33,7 @@ public interface CoachPort {
     void assignToBranch(@NotNull UUID coachId, @NotNull UUID branchId);
     void unassignFromBranch(@NotNull UUID coachId, @NotNull UUID branchId);
     Page<CoachDto> getCoaches(Set<UUID> branchId, Pageable pageable);
+    Page<CoachDto> getCompanyCoaches(Set<UUID> branchIds, Set<String> creators, String search, Pageable pageable);
     CoachDto getCoach(UUID coachId);
     Collection<CoachDto> getCoaches(Set<UUID> coachIds);
     boolean verifyCoach(UUID coachId);

@@ -23,6 +23,10 @@ public class TrialLeadAdapter implements TrialLeadPort {
 
     private final LeadRepository repository;
 
+    @Override public void validateBranch(UUID id,UUID branch) {
+        var lead=repository.findById(id).orElseThrow(()->new NotFoundException("Lead not found",id));
+        if(!java.util.Objects.equals(lead.getBranchId(),branch))throw new BadRequestException("Лид и пробное должны принадлежать одному филиалу");
+    }
     @Override
     public void validateParticipant(UUID leadId, UUID participantId) {
         Lead lead = repository.findById(leadId)

@@ -18,7 +18,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Repository
-public interface TrainingSessionRepository extends JpaRepository<TrainingSession, UUID> {
+public interface TrainingSessionRepository extends JpaRepository<TrainingSession, UUID>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<TrainingSession> {
 
     List<TrainingSession> findByGroupIdInAndSessionDateBeforeAndReportDoneFalse(Set<UUID> groupIds, LocalDate beforeDate);
 

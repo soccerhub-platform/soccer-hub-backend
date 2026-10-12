@@ -53,12 +53,13 @@ public class CoachSessionController {
     @GetMapping("/history")
     public CoachHistoryResponse history(
             @AuthenticationPrincipal Jwt jwt,
-            @RequestParam LocalDate dateFrom,
-            @RequestParam LocalDate dateTo,
+            @RequestParam(required=false) LocalDate dateFrom,
+            @RequestParam(required=false) LocalDate dateTo,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required=false) UUID groupId,@RequestParam(defaultValue="") String status,@RequestParam(defaultValue="") String report,@RequestParam(defaultValue="NEWEST") String sort
     ) {
-        return coachSessionService.getHistory(getCurrentUserId(jwt), dateFrom, dateTo, page, size);
+        return coachSessionService.getHistory(getCurrentUserId(jwt), dateFrom, dateTo, page, size,groupId,status,report,sort);
     }
 
     @PatchMapping("/sessions/{sessionId}/attendance")

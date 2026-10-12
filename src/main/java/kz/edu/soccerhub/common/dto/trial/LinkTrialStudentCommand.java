@@ -9,6 +9,6 @@ public record LinkTrialStudentCommand(
         UUID leadId,
         UUID participantId,
         UUID clientId,
-        UUID studentId
+        UUID studentId, UUID actorId
 ) {
 }

@@ -152,6 +152,10 @@ public class CoachService implements CoachPort {
     }
 
     @Override
+    @Transactional(readOnly=true)
+    public Page<CoachDto> getCompanyCoaches(Set<UUID> branchIds,Set<String> creators,String search,Pageable pageable) {
+        return coachProfileRepository.findCompanyCoaches(branchIds,creators,"%"+search.toLowerCase(java.util.Locale.ROOT).replace("!","!!").replace("%","!%").replace("_","!_")+"%",pageable).map(this::toDto);
+    }
     @Transactional(readOnly = true)
     public Page<CoachDto> getCoaches(Set<UUID> branchIds, Pageable pageable) {
         return coachProfileRepository
@@ -659,6 +663,7 @@ public class CoachService implements CoachPort {
                 .vacationTo(coachProfile.getVacationTo())
                 .workStatusReason(coachProfile.getWorkStatusReason())
                 .createdAt(coachProfile.getCreatedAt())
+                .createdBy(coachProfile.getCreatedBy())
                 .build();
     }
 

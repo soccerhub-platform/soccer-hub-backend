@@ -23,6 +23,10 @@ public class PlayerTrialAdapter
 
     private final PlayerRepository repository;
 
+    @Override public void validateBranch(UUID id,UUID branch) {
+        var player=repository.findById(id).orElseThrow(()->new NotFoundException("Student not found",id));
+        if(player.getParent()==null || !java.util.Objects.equals(player.getParent().getBranchId(),branch))throw new kz.edu.soccerhub.common.exception.BadRequestException("Ученик и пробное должны принадлежать одному филиалу");
+    }
     @Override
     public void validateExists(UUID studentId) {
         if (!repository.existsById(studentId)) {

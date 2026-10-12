@@ -27,6 +27,7 @@ public class AdminTrialController {
 
     @GetMapping
     public Page<TrialBookingListItemDto> find(
+            @AuthenticationPrincipal Jwt jwt, @RequestParam UUID branchId,
             @RequestParam(required = false) TrialBookingStatus status,
             @RequestParam(required = false) UUID leadId,
             @RequestParam(required = false) UUID clientId,
@@ -42,7 +43,7 @@ public class AdminTrialController {
                 trainingSessionId
         );
 
-        return adminTrialService.findList(command, pageable);
+        return adminTrialService.scopedList(adminId(jwt),branchId,command,pageable);
     }
 
     @PostMapping
@@ -59,10 +60,15 @@ public class AdminTrialController {
 
     @GetMapping("/{trialId}")
     public AdminTrialDetailsOutput getDetails(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID trialId
     ) {
+        adminTrialService.requireTrialAccess(adminId(jwt),trialId);
         return adminTrialService.getDetails(trialId);
     }
+
+    @GetMapping("/{trialId}/history")
+    public java.util.List<kz.edu.soccerhub.common.dto.company.TimelineEvent> history(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID trialId) {return adminTrialService.history(adminId(jwt),trialId);}
 
     @PostMapping("/{trialId}/cancel")
     public AdminTrialDetailsOutput cancel(
@@ -73,7 +79,7 @@ public class AdminTrialController {
         return adminTrialService.cancel(
                 trialId,
                 adminId(jwt),
-                input.reason()
+                input.reason(), input.version()
         );
     }
 

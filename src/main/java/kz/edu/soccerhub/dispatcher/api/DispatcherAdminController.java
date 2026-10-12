@@ -26,8 +26,8 @@ public class DispatcherAdminController {
     @PostMapping(value = "/register",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<?> registerAdmin(@RequestBody DispatcherAdminRegisterInput input) {
-        DispatcherAdminRegisterOutput output = dispatcherAdminService.registerAdmin(input);
+    public ResponseEntity<?> registerAdmin(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody DispatcherAdminRegisterInput input) {
+        DispatcherAdminRegisterOutput output = dispatcherAdminService.registerAdmin(UUID.fromString(jwt.getSubject()), input);
         return ResponseEntity
                 .created(URI.create("/admin/" + output.userId()))
                 .body(Map.of("tempPassword", output.tempPassword()));
@@ -45,7 +45,6 @@ public class DispatcherAdminController {
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> getAdmins(@AuthenticationPrincipal Jwt jwt) {
         UUID dispatcherId = UUID.fromString(jwt.getSubject());
-        dispatcherAdminService.getAdmins(dispatcherId);
         return ResponseEntity.ok().body(
                 Map.of("admins", dispatcherAdminService.getAdmins(dispatcherId))
         );
@@ -95,4 +94,13 @@ public class DispatcherAdminController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/{adminId}/permissions")
+    public kz.edu.soccerhub.common.dto.auth.EmployeeAccessDto permissions(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID adminId) {
+        return dispatcherAdminService.getPermissions(UUID.fromString(jwt.getSubject()),adminId);
+    }
+    @PutMapping("/{adminId}/permissions")
+    public ResponseEntity<Void> permissions(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID adminId,@Valid @RequestBody DispatcherEmployeePermissionsInput input) {
+        dispatcherAdminService.changePermissions(UUID.fromString(jwt.getSubject()),adminId,input);
+        return ResponseEntity.noContent().build();
+    }
 }

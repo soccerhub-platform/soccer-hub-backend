@@ -3,6 +3,7 @@ package kz.edu.soccerhub.common.port;
 import java.util.UUID;
 
 public interface TrialStudentPort {
+    void validateBranch(UUID studentId,UUID branchId);
     /**
      * Validates if the trial student with the given ID exists.
      *

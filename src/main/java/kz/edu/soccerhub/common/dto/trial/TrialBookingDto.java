@@ -13,6 +13,7 @@ import java.util.UUID;
 @Builder
 public record TrialBookingDto(
         UUID id,
+        long version,
         UUID leadId,
         UUID clientId,
         UUID participantId,
@@ -30,6 +31,7 @@ public record TrialBookingDto(
     ) {
         return TrialBookingDto.builder()
                 .id(booking.getId())
+                .version(booking.getVersion())
                 .leadId(booking.getLeadId())
                 .clientId(booking.getClientId())
                 .participantId(booking.getParticipantId())

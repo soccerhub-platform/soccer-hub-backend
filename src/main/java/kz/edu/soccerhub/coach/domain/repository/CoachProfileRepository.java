@@ -28,4 +28,10 @@ public interface CoachProfileRepository extends JpaRepository<CoachProfile, UUID
             @Param("branchIds") Set<UUID> branchIds,
             Pageable pageable
     );
+    @Query("""
+        select cp from CoachProfile cp
+        where (cp.createdBy in :creators or exists(select 1 from CoachBranch cb where cb.coachId=cp.id and cb.branchId in :branchIds))
+        and lower(concat(coalesce(cp.firstName,''),' ',coalesce(cp.lastName,''),' ',coalesce(cp.email,''),' ',coalesce(cp.phone,''))) like :search escape '!'
+        """)
+    Page<CoachProfile> findCompanyCoaches(@Param("branchIds") Set<UUID> branchIds,@Param("creators") Set<String> creators,@Param("search") String search,Pageable pageable);
 }

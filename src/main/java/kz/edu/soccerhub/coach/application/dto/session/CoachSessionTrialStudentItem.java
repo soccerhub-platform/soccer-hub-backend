@@ -18,6 +18,7 @@ public record CoachSessionTrialStudentItem(
         String coachRecommendation,
         UUID coachRecommendedGroupId,
         String coachRecommendationComment,
-        LocalDateTime coachRecommendationAt
+        LocalDateTime coachRecommendationAt,
+        long version
 ) {
 }

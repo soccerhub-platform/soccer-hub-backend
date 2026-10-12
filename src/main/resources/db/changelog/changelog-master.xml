@@ -46,5 +46,9 @@
     <include file="/db/changelog/2026-08-27-lead-activity-event-normalization.sql"/>
     <include file="/db/changelog/2026-08-28-contract-source-lead.sql"/>
     <include file="/db/changelog/2026-09-09-lead-workflow.sql"/>
+    <include file="/db/changelog/2026-10-08-branch-management.sql"/>
+    <include file="/db/changelog/2026-10-09-employee-permissions.sql"/>
+    <include file="/db/changelog/2026-10-09-branch-history.sql"/>
+    <include file="/db/changelog/2026-10-11-contract-follow-up.sql"/>
     <include file="/db/changelog/inserts.sql"/>
 </databaseChangeLog>

@@ -13,6 +13,7 @@ import java.util.UUID;
 
 @Builder
 public record AdminTrialDetailsOutput(
+        long version,
         UUID id,
         TrialBookingStatus status,
         TrialAttendanceStatus attendanceStatus,
@@ -36,6 +37,7 @@ public record AdminTrialDetailsOutput(
     ) {
         return AdminTrialDetailsOutput.builder()
                 .id(details.id())
+                .version(details.version())
                 .status(details.status())
                 .attendanceStatus(details.attendanceStatus())
                 .result(details.result())

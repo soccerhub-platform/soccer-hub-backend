@@ -49,10 +49,12 @@ public class PaymentService implements PaymentPort {
     private final ClientActivityPort clientActivityPort;
     private final ContractPaymentCalculator contractPaymentCalculator;
     private final LeadPort leadPort;
+    private final kz.edu.soccerhub.common.port.ContractFollowUpPort followUps;
 
     @Override
     @Transactional
     public PaymentCreateOutput createPayment(PaymentCreateCommand command, UUID actorUserId) {
+        followUps.lockForPayment(command.contractId());
         ContractPaymentContextOutput contract = contractPort.getPaymentContext(command.contractId());
         validateCreateCommand(command, contract);
 
@@ -67,12 +69,14 @@ public class PaymentService implements PaymentPort {
                 .status(PaymentStatus.PAID)
                 .method(command.method())
                 .paidAt(command.paidAt())
-                .recordedAt(LocalDateTime.now())
+                .recordedAt(LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty")))
                 .recordedBy(actorUserId)
                 .comment(trimToNull(command.comment()))
                 .externalReference(trimToNull(command.externalReference()))
                 .build());
 
+        paymentRepository.flush();
+        followUps.paymentRecorded(contract.contractId(),actorUserId);
         ContractPaymentSummaryOutput summary = getContractPaymentSummary(contract.contractId());
         recordPaymentActivity(payment, contract, actorUserId, ClientActivityType.PAYMENT_CREATED);
         syncFirstPaymentToLead(contract.sourceLeadId(), actorUserId);
@@ -165,7 +169,7 @@ public class PaymentService implements PaymentPort {
 
         payment.cancel(trimToNull(command.reason()), trimToNull(command.comment()));
         payment.setRecordedBy(actorUserId);
-        payment.setRecordedAt(LocalDateTime.now());
+        payment.setRecordedAt(LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty")));
 
         ContractPaymentContextOutput contractContext = contractPort.getPaymentContext(payment.getContractId());
         recordPaymentActivity(payment, contractContext, actorUserId, ClientActivityType.PAYMENT_CANCELLED);

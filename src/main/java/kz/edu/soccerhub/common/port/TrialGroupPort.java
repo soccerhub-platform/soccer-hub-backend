@@ -8,11 +8,14 @@ import java.util.Map;
 import java.util.UUID;
 
 public interface TrialGroupPort {
+    UUID branchId(UUID groupId);
 
     /**
      * Validates that the group with the given ID has available capacity for trial bookings.
      * @param groupId the unique identifier of the group to validate
      */
+    void validateSameBranch(UUID sourceGroup,UUID recommendedGroup);
+
     void validateAvailableCapacity(
             UUID groupId,
             UUID studentId,

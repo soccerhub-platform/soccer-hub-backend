@@ -52,6 +52,7 @@ class PaymentServiceTest {
     private ClientActivityPort clientActivityPort;
     @Mock
     private LeadPort leadPort;
+    @Mock private kz.edu.soccerhub.common.port.ContractFollowUpPort followUps;
 
     private PaymentService paymentService;
 
@@ -63,7 +64,7 @@ class PaymentServiceTest {
                 adminPort,
                 clientActivityPort,
                 new ContractPaymentCalculator(),
-                leadPort
+                leadPort, followUps
         );
     }
 

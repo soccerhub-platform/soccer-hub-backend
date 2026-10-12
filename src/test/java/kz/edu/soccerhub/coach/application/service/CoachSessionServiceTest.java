@@ -75,7 +75,7 @@ class CoachSessionServiceTest {
                 groupRepository,
                 coachRosterReader,
                 trialPort,
-                leadPort
+                leadPort, org.mockito.Mockito.mock(CoachHistoryAnalyticsReader.class)
         );
     }
 
@@ -289,7 +289,7 @@ class CoachSessionServiceTest {
                 LeadEvent.COMPLETE_TRIAL,
                 null,
                 null,
-                null
+                coachId
         );
     }
 
@@ -359,7 +359,7 @@ class CoachSessionServiceTest {
                 );
         doThrow(new BadRequestException("Transition not allowed: LOST -> NO_SHOW"))
                 .when(leadPort)
-                .processEvent(leadId, LeadEvent.NO_SHOW, null, null, null);
+                .processEvent(leadId, LeadEvent.NO_SHOW, null, null, coachId);
 
         CoachSessionTrialStudentItem result =
                 service.markTrialAttendance(
@@ -556,4 +556,15 @@ class CoachSessionServiceTest {
 
         verifyNoInteractions(leadPort);
     }
+    @Test void todayIncludesUnmarkedTrialsButExcludesConvertedTrialsFromRecommendationWork() {
+        var coach=UUID.randomUUID();var id=UUID.randomUUID();var group=UUID.randomUUID();var today=LocalDate.now(java.time.ZoneId.of("Asia/Almaty"));
+        when(coachProfileRepository.existsById(coach)).thenReturn(true);
+        when(trainingSessionRepository.findByCoachIdAndSessionDateOrderByScheduledStartAtAsc(coach,today)).thenReturn(List.of(TrainingSession.builder().id(id).coachId(coach).groupId(group).sessionDate(today).scheduledStartAt(today.atTime(10,0)).scheduledEndAt(today.atTime(11,0)).status(TrainingSessionStatus.IN_PROGRESS).build()));
+        when(trialPort.getSessionParticipants(id)).thenReturn(List.of(
+            TrialSessionParticipantDto.builder().trialBookingId(UUID.randomUUID()).attendanceStatus(TrialAttendanceStatus.UNMARKED).result(kz.edu.soccerhub.trial.domain.enums.TrialResult.PENDING).build(),
+            TrialSessionParticipantDto.builder().trialBookingId(UUID.randomUUID()).attendanceStatus(TrialAttendanceStatus.ATTENDED).result(kz.edu.soccerhub.trial.domain.enums.TrialResult.CONVERTED).build(),
+            TrialSessionParticipantDto.builder().trialBookingId(UUID.randomUUID()).attendanceStatus(TrialAttendanceStatus.ATTENDED).result(kz.edu.soccerhub.trial.domain.enums.TrialResult.PENDING).build()));
+        var item=service.getTodaySessions(coach,today,"Asia/Almaty").sessions().getFirst();assertEquals(1,item.unmarkedAttendance());assertEquals(1,item.trialsWithoutRecommendation());
+    }
+
 }

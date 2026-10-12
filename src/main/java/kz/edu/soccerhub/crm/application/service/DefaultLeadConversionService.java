@@ -115,7 +115,7 @@ public class DefaultLeadConversionService implements LeadConversionService {
 
         if (request.conversionMode() == LeadConversionMode.AFTER_TRIAL) {
             trialPort.linkConvertedStudent(
-                    LinkTrialStudentCommand.builder()
+                    LinkTrialStudentCommand.builder().actorId(currentAdminId)
                             .leadId(leadId)
                             .participantId(participant.getId())
                             .clientId(conversion.clientId())

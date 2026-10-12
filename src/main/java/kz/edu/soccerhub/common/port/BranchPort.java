@@ -3,6 +3,8 @@ package kz.edu.soccerhub.common.port;
 import jakarta.validation.constraints.NotNull;
 import kz.edu.soccerhub.common.dto.branch.BranchDto;
 import kz.edu.soccerhub.common.dto.branch.CreateBranchCommand;
+import kz.edu.soccerhub.common.dto.branch.UpdateBranchDetailsCommand;
+import kz.edu.soccerhub.common.dto.branch.ChangeBranchArchiveCommand;
 
 import java.util.Collection;
 import java.util.Optional;
@@ -15,5 +17,7 @@ public interface BranchPort {
     Collection<BranchDto> findAllByIds(Collection<UUID> ids);
     Collection<BranchDto> findByClubId(@NotNull UUID clubId);
     Collection<BranchDto> findByClubIds(Collection<UUID> ids);
+    void updateDetails(UpdateBranchDetailsCommand command);
+    void changeArchive(ChangeBranchArchiveCommand command);
     void delete(@NotNull UUID branchId);
 }

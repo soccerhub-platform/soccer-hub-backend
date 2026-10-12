@@ -32,8 +32,27 @@ class AdminTrialServiceTest {
     @Mock
     private LeadPort leadPort;
 
+    @Mock private kz.edu.soccerhub.common.port.AdminBranchAccessPort branchAccess;
+    @Mock private kz.edu.soccerhub.common.port.TrialSessionPort sessions;
+    @Mock private kz.edu.soccerhub.common.port.GroupPort groups;
+    @Mock private kz.edu.soccerhub.common.port.CompanyOrganizationPort organization;
+    @Mock private kz.edu.soccerhub.common.port.CompanySessionReadPort sessionReader;
+    @Mock private kz.edu.soccerhub.common.port.TrialWorkflowPort workflow;
+    @org.junit.jupiter.api.BeforeEach void access() {
+        UUID branch=UUID.randomUUID();UUID group=UUID.randomUUID();UUID session=UUID.randomUUID();
+        lenient().when(branchAccess.verifyAdminBelongsToBranch(any(),any())).thenReturn(true);
+        lenient().when(trialPort.getTrial(any())).thenReturn(TrialBookingDto.builder().trainingSessionId(session).build());
+        lenient().when(sessions.getSessionDetails(any(UUID.class))).thenReturn(kz.edu.soccerhub.common.dto.trial.TrialSessionContext.builder().groupId(group).build());
+        lenient().when(groups.getGroupById(any())).thenReturn(kz.edu.soccerhub.common.dto.group.GroupDto.builder().branchId(branch).build());
+    }
     @InjectMocks
     private AdminTrialService service;
+
+    @Test void trialOutsideAdminBranchCannotBeUpdated() {
+        when(branchAccess.verifyAdminBelongsToBranch(any(),any())).thenReturn(false);
+        org.junit.jupiter.api.Assertions.assertThrows(kz.edu.soccerhub.common.exception.ForbiddenException.class,()->service.markAttendance(UUID.randomUUID(),UUID.randomUUID(),new AdminMarkTrialAttendanceInput(TrialAttendanceStatus.ATTENDED,null,0L)));
+        verify(trialPort,never()).markAttendance(any());verifyNoInteractions(leadPort);
+    }
 
     @Test
     void createShouldScheduleLeadWithoutMutatingParticipantStage() {

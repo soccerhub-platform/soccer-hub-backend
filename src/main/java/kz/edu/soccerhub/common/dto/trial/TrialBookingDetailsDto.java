@@ -12,6 +12,7 @@ import java.util.UUID;
 
 @Builder
 public record TrialBookingDetailsDto(
+        long version,
         UUID id,
         TrialBookingStatus status,
         TrialAttendanceStatus attendanceStatus,

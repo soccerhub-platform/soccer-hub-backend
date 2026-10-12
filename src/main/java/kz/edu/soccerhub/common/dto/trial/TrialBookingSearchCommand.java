@@ -11,6 +11,7 @@ public record TrialBookingSearchCommand(
         UUID leadId,
         UUID clientId,
         UUID studentId,
-        UUID trainingSessionId
+        UUID trainingSessionId, java.util.Set<UUID> sessionIds
 ) {
+ public TrialBookingSearchCommand(TrialBookingStatus status,UUID leadId,UUID clientId,UUID studentId,UUID trainingSessionId) {this(status,leadId,clientId,studentId,trainingSessionId,null);}
 }

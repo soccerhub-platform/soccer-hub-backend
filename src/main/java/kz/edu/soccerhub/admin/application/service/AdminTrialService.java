@@ -22,12 +22,35 @@ public class AdminTrialService {
 
     private final TrialPort trialPort;
     private final LeadPort leadPort;
+    private final kz.edu.soccerhub.common.port.AdminBranchAccessPort branchAccess;
+    private final kz.edu.soccerhub.common.port.TrialSessionPort sessions;
+    private final kz.edu.soccerhub.common.port.GroupPort groups;
+    private final kz.edu.soccerhub.common.port.CompanyOrganizationPort organization;
+    private final kz.edu.soccerhub.common.port.CompanySessionReadPort sessionReader;
+    private final kz.edu.soccerhub.common.port.TrialWorkflowPort workflow;
+
+    public void requireSessionAccess(UUID actor, UUID sessionId) {
+        UUID branch=groups.getGroupById(sessions.getSessionDetails(sessionId).groupId()).branchId();
+        requireBranch(actor,branch);
+    }
+    public void requireBranch(UUID actor,UUID branch) {
+        if(branch==null || !branchAccess.verifyAdminBelongsToBranch(actor,branch)) throw new kz.edu.soccerhub.common.exception.ForbiddenException("Нет доступа к филиалу");
+    }
+    public void requireTrialAccess(UUID actor,UUID trialId) {requireSessionAccess(actor,trialPort.getTrial(trialId).trainingSessionId());}
+    public java.util.List<kz.edu.soccerhub.common.dto.company.TimelineEvent> history(UUID actor,UUID trialId) {requireTrialAccess(actor,trialId);return workflow.history(trialId);}
+    public Page<TrialBookingListItemDto> scopedList(UUID actor,UUID branch,TrialBookingSearchCommand c,Pageable pageable) {
+        requireBranch(actor,branch);
+        if(!java.util.Set.of("createdAt","id").containsAll(pageable.getSort().stream().map(org.springframework.data.domain.Sort.Order::getProperty).toList())) throw new kz.edu.soccerhub.common.exception.BadRequestException("Недопустимая сортировка пробных");
+        var ids=sessionReader.sessions(organization.groupBranches(java.util.Set.of(branch)).keySet(),null,null).keySet();
+        return trialPort.findList(new TrialBookingSearchCommand(c.status(),c.leadId(),c.clientId(),c.studentId(),c.trainingSessionId(),ids),pageable);
+    }
 
     @Transactional
     public TrialBookingDto create(
             UUID adminId,
             CreateTrialBookingInput input
     ) {
+        requireSessionAccess(adminId,input.trainingSessionId());
         TrialBookingDto booking = trialPort.createTrial(
                 CreateTrialBookingCommand.builder()
                         .leadId(input.leadId())
@@ -76,14 +99,15 @@ public class AdminTrialService {
     public AdminTrialDetailsOutput cancel(
             UUID trialId,
             UUID adminId,
-            String reason
+            String reason, Long version
     ) {
+        requireTrialAccess(adminId,trialId);
         AdminTrialDetailsOutput output = AdminTrialDetailsOutput.from(
                 trialPort.cancelTrial(
                         CancelTrialCommand.builder()
                                 .trialId(trialId)
                                 .adminId(adminId)
-                                .reason(reason)
+                                .reason(reason).version(version)
                                 .build()
                 )
         );
@@ -101,16 +125,19 @@ public class AdminTrialService {
         return output;
     }
 
+    public AdminTrialDetailsOutput cancel(UUID trialId, UUID adminId, String reason) { return cancel(trialId, adminId, reason, null); }
+
     @Transactional
     public AdminTrialDetailsOutput reschedule(
             UUID trialId,
             UUID adminId,
             AdminRescheduleTrialInput input
     ) {
+        requireTrialAccess(adminId,trialId); requireSessionAccess(adminId,input.trainingSessionId());
         return AdminTrialDetailsOutput.from(
                 trialPort.rescheduleTrial(
                         RescheduleTrialBookingCommand.builder()
-                                .trialId(trialId)
+                                .trialId(trialId).version(input.version())
                                 .trainingSessionId(input.trainingSessionId())
                                 .adminId(adminId)
                                 .build()
@@ -125,10 +152,11 @@ public class AdminTrialService {
             AdminMarkTrialAttendanceInput input
     ) {
 
+        requireTrialAccess(adminId,trialId);
         AdminTrialDetailsOutput output = AdminTrialDetailsOutput.from(
                 trialPort.markAttendance(
                         MarkTrialAttendanceCommand.builder()
-                                .trialId(trialId)
+                                .trialId(trialId).version(input.version())
                                 .adminId(adminId)
                                 .status(input.status())
                                 .comment(input.comment())
@@ -179,10 +207,11 @@ public class AdminTrialService {
             UUID adminId,
             AdminRecordTrialResultInput input
     ) {
+        requireTrialAccess(adminId,trialId);
         return AdminTrialDetailsOutput.from(
                 trialPort.recordResult(
                         RecordTrialResultCommand.builder()
-                                .trialId(trialId)
+                                .trialId(trialId).version(input.version())
                                 .adminId(adminId)
                                 .result(input.result())
                                 .recommendedGroupId(input.recommendedGroupId())

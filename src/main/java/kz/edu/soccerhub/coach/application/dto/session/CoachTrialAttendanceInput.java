@@ -7,6 +7,9 @@ import lombok.Builder;
 @Builder
 public record CoachTrialAttendanceInput(
         @NotNull TrialAttendanceStatus status,
-        String comment
+        String comment,
+        @jakarta.validation.constraints.NotNull Long version
 ) {
+    public CoachTrialAttendanceInput(TrialAttendanceStatus status,
+        String comment) { this(status,comment, null); }
 }

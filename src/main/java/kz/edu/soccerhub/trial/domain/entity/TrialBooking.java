@@ -22,6 +22,10 @@ public class TrialBooking extends AbstractAuditableEntity {
     @Column(nullable = false)
     private UUID id;
 
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
+
     @Column(name = "lead_id")
     private UUID leadId;
 
@@ -137,7 +141,7 @@ public class TrialBooking extends AbstractAuditableEntity {
 
         status = TrialBookingStatus.CANCELED;
         cancellationReason = reason;
-        canceledAt = LocalDateTime.now();
+        canceledAt = LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty"));
     }
 
     public void reschedule(UUID newTrainingSessionId) {
@@ -187,7 +191,7 @@ public class TrialBooking extends AbstractAuditableEntity {
         TrialAttendanceStatus previousAttendanceStatus = this.attendanceStatus;
 
         this.attendanceStatus = attendanceStatus;
-        this.attendanceMarkedAt = LocalDateTime.now();
+        this.attendanceMarkedAt = LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty"));
         this.attendanceMarkedBy = adminId;
         this.attendanceComment = comment;
 
@@ -196,7 +200,7 @@ public class TrialBooking extends AbstractAuditableEntity {
             this.status = TrialBookingStatus.COMPLETED;
 
             if (completedAt == null) {
-                this.completedAt = LocalDateTime.now();
+                this.completedAt = LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty"));
             }
         }
 
@@ -312,7 +316,7 @@ public class TrialBooking extends AbstractAuditableEntity {
                         : normalizedComment;
 
         this.coachRecommendationBy = coachId;
-        this.coachRecommendationAt = LocalDateTime.now();
+        this.coachRecommendationAt = LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty"));
     }
 
     public void linkStudent(UUID clientId, UUID studentId) {

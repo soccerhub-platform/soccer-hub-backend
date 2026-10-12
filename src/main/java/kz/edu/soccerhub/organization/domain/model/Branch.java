@@ -5,6 +5,11 @@ import kz.edu.soccerhub.common.domain.model.AbstractAuditableEntity;
 import lombok.*;
 
 import java.util.UUID;
+import java.util.List;
+import java.time.Instant;
+import kz.edu.soccerhub.common.dto.branch.BranchWorkingDay;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "branches")
@@ -30,6 +35,23 @@ public class Branch extends AbstractAuditableEntity {
 
     @Column(nullable = false)
     private boolean active;
+
+    @Column(length = 20)
+    private String phone;
+
+    @Column(length = 254)
+    private String email;
+
+    @Column(name = "manager_admin_id")
+    private UUID managerAdminId;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "working_hours", nullable = false, columnDefinition = "jsonb")
+    @Builder.Default
+    private List<BranchWorkingDay> workingHours = List.of();
+
+    @Column(name = "archived_at")
+    private Instant archivedAt;
 
     @ManyToOne
     @JoinColumn(name = "club_id", insertable = false, updatable = false)

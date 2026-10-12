@@ -10,5 +10,11 @@ public record MarkTrialAttendanceCommand(
         UUID trialId,
         TrialAttendanceStatus status,
         String comment,
-        UUID adminId
-) {}
+        UUID adminId,
+        Long version
+) {
+    public MarkTrialAttendanceCommand(UUID trialId,
+        TrialAttendanceStatus status,
+        String comment,
+        UUID adminId) { this(trialId,status,comment,adminId, null); }
+}

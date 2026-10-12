@@ -17,7 +17,7 @@ class DispatcherAdminServiceTest {
         var authPort = mock(AuthPort.class);
         var branches = mock(DispatcherBranchService.class);
         var service = new DispatcherAdminService(mock(PasswordGenerator.class), branches,
-                mock(ClubPort.class), mock(BranchPort.class), authPort, adminPort);
+                mock(ClubPort.class), mock(BranchPort.class), authPort, adminPort, mock(EmployeeAccessPort.class));
         var dispatcherId = UUID.randomUUID();
         var adminId = UUID.randomUUID();
         when(adminPort.findById(adminId)).thenReturn(Optional.of(AdminDto.builder()
@@ -29,6 +29,7 @@ class DispatcherAdminServiceTest {
         verify(adminPort).changeStatus(adminId, false);
         verify(authPort).disableUser(adminId);
         verify(adminPort).updateAdminInfo(eq(adminId), any());
-        verifyNoInteractions(branches);
+        verify(branches).getDispatcherBranches(dispatcherId);
+        verifyNoMoreInteractions(branches);
     }
 }

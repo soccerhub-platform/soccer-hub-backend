@@ -46,6 +46,7 @@ public class TrialBookingService implements TrialPort {
     );
 
     private final TrialBookingRepository repository;
+    private final TrialOperationJournal journal;
     private final TrialGroupPort groupPort;
     private final TrialSessionPort sessionPort;
     private final TrialStudentPort studentPort;
@@ -64,6 +65,7 @@ public class TrialBookingService implements TrialPort {
         TrialSessionContext session = sessionPort.getBookableSession(command.trainingSessionId());
 
         if (command.leadId() != null) {
+            leadPort.validateBranch(command.leadId(),groupPort.branchId(session.groupId()));
             if (command.participantId() != null) {
                 leadPort.validateParticipant(command.leadId(), command.participantId());
             } else if (command.studentId() != null) {
@@ -77,13 +79,10 @@ public class TrialBookingService implements TrialPort {
 
         if (command.studentId() != null) {
             studentPort.validateExists(command.studentId());
-            groupPort.validateAvailableCapacity(
-                    session.groupId(),
-                    command.studentId(),
-                    session.startsAt().toLocalDate()
-            );
+            studentPort.validateBranch(command.studentId(),groupPort.branchId(session.groupId()));
         }
 
+        groupPort.validateAvailableCapacity(session.groupId(),command.studentId(),session.startsAt().toLocalDate());
         ensureNoActiveTrial(command);
 
         TrialBooking booking = TrialBooking.schedule(
@@ -94,7 +93,10 @@ public class TrialBookingService implements TrialPort {
                 session.sessionId()
         );
 
-        return TrialBookingDto.from(repository.save(booking));
+        var saved=repository.save(booking);
+        repository.flush();
+        journal.append(saved.getId(),command.adminId(),"CREATE","Запись на пробное · " + session.startsAt());
+        return TrialBookingDto.from(saved);
     }
 
     @Override
@@ -141,8 +143,9 @@ public class TrialBookingService implements TrialPort {
     public TrialBookingDetailsDto cancelTrial(CancelTrialCommand command) {
         validateCancelCommand(command);
 
-        TrialBooking booking = getBooking(command.trialId());
+        TrialBooking booking = lockedBooking(command.trialId(), command.version());
         booking.cancel(command.reason());
+        saveOperation(booking, command.adminId(), "CANCEL", "Отмена · " + command.reason());
         return detailsReader.read(booking);
     }
 
@@ -153,21 +156,18 @@ public class TrialBookingService implements TrialPort {
     ) {
         validateRescheduleCommand(command);
 
-        TrialBooking booking = getBooking(command.trialId());
+        TrialBooking booking = lockedBooking(command.trialId(), command.version());
 
         TrialSessionContext session = sessionPort.getBookableSession(
                 command.trainingSessionId()
         );
 
-        if (booking.getStudentId() != null) {
-            groupPort.validateAvailableCapacity(
-                    session.groupId(),
-                    booking.getStudentId(),
-                    session.startsAt().toLocalDate()
-            );
-        }
+        if(booking.getLeadId()!=null)leadPort.validateBranch(booking.getLeadId(),groupPort.branchId(session.groupId()));
+        if(booking.getStudentId()!=null)studentPort.validateBranch(booking.getStudentId(),groupPort.branchId(session.groupId()));
+        groupPort.validateAvailableCapacity(session.groupId(),booking.getStudentId(),session.startsAt().toLocalDate());
 
         booking.reschedule(session.sessionId());
+        saveOperation(booking, command.adminId(), "RESCHEDULE", "Перенос · " + session.startsAt());
 
         return detailsReader.read(booking);
     }
@@ -187,13 +187,22 @@ public class TrialBookingService implements TrialPort {
 
         requireAdminId(command.adminId());
 
-        TrialBooking booking = getBooking(command.trialId());
+        TrialBooking booking = lockedBooking(command.trialId(), command.version());
+        if (command.status() != kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus.ATTENDED
+                && command.status() != kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus.NO_SHOW)
+            throw new BadRequestException("Выберите посещение или неявку");
+        if (booking.getResult() == kz.edu.soccerhub.trial.domain.enums.TrialResult.CONVERTED)
+            throw new BadRequestException("Пробная уже связана с оформлением");
+        var session = sessionPort.getSessionDetails(booking.getTrainingSessionId());
+        if (session.startsAt().isAfter(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty"))))
+            throw new BadRequestException("Посещение можно отметить после начала занятия");
         booking.markAttendance(
                 command.status(),
                 command.adminId(),
                 command.comment()
         );
 
+        saveOperation(booking, command.adminId(), "ATTENDANCE", "Посещение · " + (command.status() == kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus.ATTENDED ? "Посетил" : "Не пришёл") + comment(command.comment()));
         return detailsReader.read(booking);
     }
 
@@ -212,7 +221,16 @@ public class TrialBookingService implements TrialPort {
 
         requireAdminId(command.adminId());
 
-        TrialBooking booking = getBooking(command.trialId());
+        TrialBooking booking = lockedBooking(command.trialId(), command.version());
+        if (command.result() == kz.edu.soccerhub.trial.domain.enums.TrialResult.CONVERTED && (booking.getStudentId()==null||booking.getClientId()==null))
+            throw new BadRequestException("Сначала оформите ученика в карточке лида");
+        if (booking.getResult() == kz.edu.soccerhub.trial.domain.enums.TrialResult.CONVERTED
+                || command.result() == kz.edu.soccerhub.trial.domain.enums.TrialResult.PENDING)
+            throw new BadRequestException("Результат недоступен для изменения");
+        if (command.result() == kz.edu.soccerhub.trial.domain.enums.TrialResult.FOLLOW_UP
+                && (command.nextActionAt() == null || !command.nextActionAt().isAfter(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Almaty")))))
+            throw new BadRequestException("Укажите будущий срок следующего действия");
+        validateRecommendedGroup(booking, command.recommendedGroupId());
         booking.recordResult(
                 command.result(),
                 command.recommendedGroupId(),
@@ -221,6 +239,7 @@ public class TrialBookingService implements TrialPort {
                 command.nextActionAt()
         );
 
+        saveOperation(booking, command.adminId(), "RESULT", "Результат · " + command.result() + (command.nextActionAt() == null ? "" : " · " + command.nextActionType() + " · " + command.nextActionAt()) + comment(command.coachFeedback()));
         return detailsReader.read(booking);
     }
 
@@ -228,14 +247,21 @@ public class TrialBookingService implements TrialPort {
     @Transactional
     public void linkConvertedStudent(LinkTrialStudentCommand command) {
         if (command == null || command.leadId() == null || command.participantId() == null
-                || command.studentId() == null) {
+                || command.studentId() == null || command.actorId()==null) {
             throw new BadRequestException("Lead, participant and student are required");
         }
 
         leadPort.validateParticipant(command.leadId(), command.participantId());
         repository.findAllByLeadIdAndParticipantIdAndStudentIdIsNull(
                         command.leadId(), command.participantId())
-                .forEach(booking -> booking.linkStudent(command.clientId(), command.studentId()));
+                .forEach(booking -> {
+                    var locked=repository.findLockedById(booking.getId()).orElseThrow(()->new NotFoundException("Trial not found",booking.getId()));
+                    locked.linkStudent(command.clientId(),command.studentId());
+                    if(locked.getAttendanceStatus()==kz.edu.soccerhub.trial.domain.enums.TrialAttendanceStatus.ATTENDED) {
+                        locked.recordResult(kz.edu.soccerhub.trial.domain.enums.TrialResult.CONVERTED,locked.getRecommendedGroupId(),locked.getCoachFeedback(),null,null);
+                    }
+                    saveOperation(locked,command.actorId(),"CONVERSION","Ученик оформлен · " + command.studentId());
+                });
     }
 
     @Override
@@ -287,11 +313,9 @@ public class TrialBookingService implements TrialPort {
     ) {
         validateCoachRecommendationCommand(command);
 
-        TrialBooking booking = getBooking(command.trialId());
+        TrialBooking booking = lockedBooking(command.trialId(), command.version());
 
-        if (command.recommendedGroupId() != null) {
-            groupPort.getDetails(command.recommendedGroupId());
-        }
+        validateRecommendedGroup(booking, command.recommendedGroupId());
 
         booking.recordCoachRecommendation(
                 command.recommendation(),
@@ -300,9 +324,31 @@ public class TrialBookingService implements TrialPort {
                 command.coachId()
         );
 
+        saveOperation(booking, command.coachId(), "RECOMMENDATION", "Рекомендация тренера · " + command.recommendation() + comment(command.comment()));
         return sessionParticipantReader
                 .read(List.of(booking))
                 .getFirst();
+    }
+
+    private String comment(String value) { return value == null || value.isBlank() ? "" : "\n" + value.trim(); }
+
+    private void saveOperation(TrialBooking booking, UUID actor, String type, String description) {
+        repository.saveAndFlush(booking);
+        journal.append(booking.getId(), actor, type, description);
+    }
+
+    private void validateRecommendedGroup(TrialBooking booking, UUID groupId) {
+        if (groupId == null) return;
+        groupPort.validateSameBranch(sessionPort.getSessionDetails(booking.getTrainingSessionId()).groupId(),groupId);
+        groupPort.getDetails(groupId);
+        groupPort.validateAvailableCapacity(groupId, booking.getStudentId(), java.time.LocalDate.now(java.time.ZoneId.of("Asia/Almaty")));
+    }
+
+    private TrialBooking lockedBooking(UUID trialId, Long version) {
+        if (version == null || version < 0) throw new BadRequestException("Укажите версию пробного");
+        TrialBooking booking = repository.findLockedById(trialId).orElseThrow(() -> new NotFoundException("Trial booking not found", trialId));
+        if (booking.getVersion() != version) throw new kz.edu.soccerhub.common.exception.ConflictException("Пробная уже изменена. Обновите карточку.", "TRIAL_WORK_CONFLICT", java.util.Map.of("trialId", trialId));
+        return booking;
     }
 
     private TrialBooking getBooking(UUID trialId) {

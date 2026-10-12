@@ -11,6 +11,12 @@ public record RecordTrialCoachRecommendationCommand(
         UUID coachId,
         TrialCoachRecommendation recommendation,
         UUID recommendedGroupId,
-        String comment
+        String comment,
+        Long version
 ) {
+    public RecordTrialCoachRecommendationCommand(UUID trialId,
+        UUID coachId,
+        TrialCoachRecommendation recommendation,
+        UUID recommendedGroupId,
+        String comment) { this(trialId,coachId,recommendation,recommendedGroupId,comment, null); }
 }

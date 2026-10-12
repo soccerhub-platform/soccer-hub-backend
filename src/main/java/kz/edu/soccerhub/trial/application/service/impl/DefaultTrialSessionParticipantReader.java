@@ -67,7 +67,7 @@ public class DefaultTrialSessionParticipantReader
                         ? students.get(booking.getStudentId())
                         : participants.get(booking.getParticipantId());
 
-        return TrialSessionParticipantDto.builder()
+        return TrialSessionParticipantDto.builder().version(booking.getVersion())
                 .trialBookingId(booking.getId())
                 .leadId(booking.getLeadId())
                 .participantId(booking.getParticipantId())
